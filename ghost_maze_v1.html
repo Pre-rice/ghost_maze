@@ -430,6 +430,7 @@
                                 5</div>
                             <div id="player-keys-display" class="label">钥匙:
                                 0</div>
+                            <div id="player-steps-display" class="label">步数: 0</div>
                             <div id="ghost-proximity-display"
                                 class="label">周围鬼数: 0</div>
                         </div>
@@ -570,6 +571,7 @@
                 // DOM Elements
                 this.healthDisplay = document.getElementById('player-health-display');
                 this.keysDisplay = document.getElementById('player-keys-display');
+                this.stepsDisplay = document.getElementById('player-steps-display');
                 this.ghostProximityDisplay = document.getElementById('ghost-proximity-display');
                 this.mapSizeInput = document.getElementById('map-size-input');
                 this.editorMapSizeInput = document.getElementById('editor-map-size-input');
@@ -1108,6 +1110,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.player.y = newY;
                 this.player.steps++;
                 
+                this.updateUIDisplays();               
                 this.updateVisibility();
                 this.checkItemPickup();
 
@@ -1152,6 +1155,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
             updateUIDisplays() {
                 this.healthDisplay.textContent = `生命: ${this.player.hp}`;
                 this.keysDisplay.textContent = `钥匙: ${this.player.keys}`;
+                this.stepsDisplay.textContent = `步数: ${this.player.steps}`;
                 this.updateProximityWarning();
             }
 
