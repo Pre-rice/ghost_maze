@@ -7,7 +7,7 @@
     <style>
         :root {
             --bg-color: #f0f2f5;
-            --danger-bg-color: #680e0e; /* Tweaked for better visibility */
+            --danger-bg-color: #680e0e;
             --container-bg: #ffffff;
             --text-color: #333;
             --border-color: #d9d9d9;
@@ -328,17 +328,10 @@
             .editor-toolbar {
                 justify-content: center;
             }
-        #dpad-controls {
-            display: none !important;
-        }
 
-        /* 
-         * 移动端样式 (屏幕宽度 <= 768px):
-         * 在这里，我们再把它显示出来。
-        */
         @media (max-width: 768px) {
             #dpad-controls {
-                display: grid !important; /* 使用 !important 确保能覆盖上面的隐藏规则 */
+                display: grid !important;
                 grid-template-columns: 60px 60px 60px;
                 grid-template-rows: 60px 60px 60px;
                 position: fixed;
@@ -346,6 +339,7 @@
                 right: 20px;
                 opacity: 0.7;
                 z-index: 100;
+                pointer-events: none;
             }
 
             .dpad-btn {
@@ -360,6 +354,7 @@
                 user-select: none;
                 -webkit-user-select: none;
                 cursor: pointer;
+                pointer-events: auto;
             }
 
             #dpad-up { grid-column: 2; grid-row: 1; }
@@ -2164,7 +2159,7 @@
         const game = new GhostMazeGame();
     });
     </script>
-    <div id="dpad-controls">
+    <div id="dpad-controls" style="display: none;">
         <div id="dpad-up" class="dpad-btn">▲</div>
         <div id="dpad-left" class="dpad-btn">◀</div>
         <div id="dpad-right" class="dpad-btn">▶</div>
