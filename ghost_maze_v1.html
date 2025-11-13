@@ -328,6 +328,50 @@
             .editor-toolbar {
                 justify-content: center;
             }
+        #dpad-controls {
+            display: none !important;
+        }
+
+        /* 
+         * 移动端样式 (屏幕宽度 <= 768px):
+         * 在这里，我们再把它显示出来。
+        */
+        @media (max-width: 768px) {
+            #dpad-controls {
+                display: grid !important; /* 使用 !important 确保能覆盖上面的隐藏规则 */
+                grid-template-columns: 60px 60px 60px;
+                grid-template-rows: 60px 60px 60px;
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                opacity: 0.7;
+                z-index: 100;
+            }
+
+            .dpad-btn {
+                background-color: #333;
+                color: white;
+                border: 2px solid #555;
+                border-radius: 10px;
+                font-size: 24px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                user-select: none;
+                -webkit-user-select: none;
+                cursor: pointer;
+            }
+
+            #dpad-up { grid-column: 2; grid-row: 1; }
+            #dpad-down { grid-column: 2; grid-row: 3; }
+            #dpad-left { grid-column: 1; grid-row: 2; }
+            #dpad-right { grid-column: 3; grid-row: 2; }
+
+            .dpad-btn:active {
+                background-color: #555;
+                transform: scale(0.95);
+            }
+        }
         }
     </style>
 </head>
@@ -478,6 +522,7 @@
                 this.toastTimeout = null;
                 this.animationFrameId = null;
                 this.autoMoveInterval = null;
+                this.dpadInterval = null;
                 
                 const computedStyle = getComputedStyle(document.documentElement);
                 this.colors = {
@@ -577,7 +622,55 @@
                 canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
                 canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
                 canvas.addEventListener('mouseleave', (e) => this.handleCanvasMouseLeave(e));
+                this.bindDpadControls();
             }
+
+            bindDpadControls() {
+    const upBtn = document.getElementById('dpad-up');
+    const downBtn = document.getElementById('dpad-down');
+    const leftBtn = document.getElementById('dpad-left');
+    const rightBtn = document.getElementById('dpad-right');
+
+    const handleDpadPress = (dx, dy) => {
+        if (this.state !== 'playing') return;
+        
+        // 先清除之前的任何移动计时器
+        clearInterval(this.autoMoveInterval);
+        clearInterval(this.dpadInterval);
+
+        // 立即移动一次，提供即时反馈
+        this.movePlayer(dx, dy);
+        
+        // 设置一个计时器，实现按住持续移动
+        this.dpadInterval = setInterval(() => {
+            this.movePlayer(dx, dy);
+        }, 200); // 每200毫秒移动一格
+    };
+
+    const handleDpadRelease = () => {
+        clearInterval(this.dpadInterval);
+    };
+
+    // 为每个按钮绑定触摸和鼠标事件
+    // 使用 touchstart 和 touchend 适配移动端
+    // 使用 mousedown 和 mouseup 方便在桌面端调试
+    const addListeners = (element, dx, dy) => {
+        element.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // 阻止页面滚动或缩放
+            handleDpadPress(dx, dy);
+        });
+        element.addEventListener('mousedown', () => handleDpadPress(dx, dy));
+    };
+
+    addListeners(upBtn, 0, -1);
+    addListeners(downBtn, 0, 1);
+    addListeners(leftBtn, -1, 0);
+    addListeners(rightBtn, 1, 0);
+
+    // 在整个文档上监听抬起事件，这样手指滑出按钮也能停止
+    document.addEventListener('touchend', handleDpadRelease);
+    document.addEventListener('mouseup', handleDpadRelease);
+}
 
             // ==================================================
             //  CUSTOM NOTIFICATIONS & ANIMATION
@@ -1628,6 +1721,9 @@
                     clearInterval(this.autoMoveInterval);
                     this.autoMoveInterval = null;
                 }
+                if (this.dpadInterval) { 
+        clearInterval(this.dpadInterval);
+    }
             }
 
             handleCanvasMouseDown(e) {
