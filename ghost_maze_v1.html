@@ -368,6 +368,51 @@
             }
         }
         }
+
+/* 1. 开关父容器的基础布局 */
+.toggle-controls-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* 仅在移动端两个开关并存时生效 */
+    /* 默认靠左对齐，适用于电脑端只有一个开关的情况 */
+    justify-content: flex-start; 
+}
+
+/* 2. 每个开关的基础样式 */
+.toggle-controls-wrapper .toggle-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%; /* 默认让开关占满父容器宽度 */
+}
+
+/* 3. 默认隐藏方向键开关 */
+#dpad-toggle-container {
+    display: none;
+}
+
+/* 4. 仅在移动端 (屏幕宽度 <= 768px) 应用特殊布局 */
+@media (max-width: 768px) {
+    /* 在移动端，让父容器的对齐方式变为 space-between */
+    .toggle-controls-wrapper {
+        justify-content: space-between;
+    }
+
+    /* 在移动端，让每个开关只占大约一半的宽度 */
+    .toggle-controls-wrapper .toggle-switch {
+        width: 48%;
+    }
+
+    /* 在移动端，显示方向键开关 */
+    #dpad-toggle-container {
+        display: flex;
+    }
+}
+
+/* 用于通过JS来强制隐藏方向键的类 */
+#dpad-controls.hidden {
+    display: none !important;
+}
     </style>
 </head>
 <body>
@@ -403,11 +448,18 @@
                  <div class="control-group">
                     <h3>控制</h3>
                     <button id="reset-map-btn" class="secondary">重置地图</button>
-                    <div class="toggle-switch">
-                        <span class="label">调试视野</span>
-                        <input type="checkbox" id="debug-vision-toggle">
-                        <label for="debug-vision-toggle">Toggle</label>
-                    </div>
+                    <div class="toggle-controls-wrapper">
+<div class="toggle-switch">
+<span class="label">调试视野</span>
+<input type="checkbox" id="debug-vision-toggle">
+<label for="debug-vision-toggle">Toggle</label>
+</div>
+<div id="dpad-toggle-container" class="toggle-switch">
+<span class="label">方向按键</span>
+<input type="checkbox" id="dpad-toggle" checked>
+<label for="dpad-toggle">Toggle</label>
+</div>
+</div>
                 </div>
                 <div class="control-group">
                     <h3>编辑器</h3>
@@ -618,7 +670,26 @@
                 canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
                 canvas.addEventListener('mouseleave', (e) => this.handleCanvasMouseLeave(e));
                 this.bindDpadControls();
+                // 绑定方向键开关
+document.getElementById('dpad-toggle').addEventListener('change', (e) => {
+    this.updateDpadVisibility();
+});
             }
+            updateDpadVisibility() {
+    const dpadToggle = document.getElementById('dpad-toggle');
+    const dpadControls = document.getElementById('dpad-controls');
+    
+    // 决定是否显示的两个条件：
+    // 1. 开关是打开的
+    // 2. 当前不是编辑器模式
+    const shouldShow = dpadToggle.checked && !this.editor.active;
+
+    if (shouldShow) {
+        dpadControls.classList.remove('hidden');
+    } else {
+        dpadControls.classList.add('hidden');
+    }
+}
 
             bindDpadControls() {
     const upBtn = document.getElementById('dpad-up');
@@ -1458,6 +1529,7 @@
                 this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
                 
                 this.drawEditor();
+                this.updateDpadVisibility();
             }
             
             createBlankEditorMap() {
@@ -1525,6 +1597,7 @@
                 };
                 
                 this.startGame(editedMapData);
+                this.updateDpadVisibility(); 
             }
             
             clearEditorMap() {
