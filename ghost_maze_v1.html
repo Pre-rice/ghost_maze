@@ -538,6 +538,7 @@
         <div id="win-overlay" class="overlay">
             <div class="overlay-content">
                 <h2>你赢了！</h2>
+                <p id="win-stats"></p>
                 <div class="buttons">
                     <button id="win-replay-btn">再次游玩该地图</button>
                     <button id="win-new-map-btn">游玩新地图</button>
@@ -604,7 +605,7 @@
                 this.mapData = null;
 
                 // Player
-                this.player = { x: 1, y: 1, hp: 5, initialHp: 5, trail: [], keys: 0 };
+                this.player = { x: 1, y: 1, hp: 5, initialHp: 5, trail: [], keys: 0 , steps: 0};
 
                 // Ghosts & Items
                 this.ghosts = [];
@@ -829,7 +830,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.endPos = mapData.endPos;
                 this.items = mapData.items || [];
                 
-                this.player = { x: 1, y: this.height - 2, hp: 5, initialHp: 5, trail: [], keys: 0 };
+                this.player = { x: 1, y: this.height - 2, hp: 5, initialHp: 5, trail: [], keys: 0 ,steps: 0 };
                 
                 this.ghosts = JSON.parse(JSON.stringify(mapData.initialGhosts));
                 this.ghosts.forEach(g => g.trail = []);
@@ -1105,6 +1106,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
 
                 this.player.x = newX;
                 this.player.y = newY;
+                this.player.steps++;
                 
                 this.updateVisibility();
                 this.checkItemPickup();
@@ -1275,6 +1277,13 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.stopAutoMove();
                 this.stopAnimationLoop();
                 this.state = 'won';
+
+                // 获取用于显示信息的 P 元素
+                const winStats = document.getElementById('win-stats');
+                // 填充内容
+                winStats.textContent = `你以 ${this.player.hp} 点剩余生命和 ${this.player.steps} 步的成绩通关！`;
+
+                // 显示胜利浮窗
                 document.getElementById('win-overlay').style.display = 'flex';
             }
             
