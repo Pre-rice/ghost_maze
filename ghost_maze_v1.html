@@ -1,0 +1,2072 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鬼迷宫</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --danger-bg-color: #680e0e; /* Tweaked for better visibility */
+            --container-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #d9d9d9;
+            --primary-color: #1890ff;
+            --primary-hover-color: #40a9ff;
+            --danger-color: #ff4d4f;
+            --danger-hover-color: #ff7875;
+            --success-color: #52c41a;
+            --disabled-color: #f5f5f5;
+            --disabled-text-color: #bfbfbf;
+
+            /* Game Colors */
+            --ground-color: #dfe3e6;
+            --grid-line-color: #dadee1;
+            --unexplored-color: #0b0b0b;
+            --wall-color: #495360;
+            --player-color: #007bff;
+            --ghost-color: #dc3545;
+            --end-point-color: #28a745;
+            --key-color: #ffc107;
+            --start-room-highlight: rgba(173, 216, 230, 0.4);
+            --hover-highlight-color: #ffc107;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
+            transition: background-color 0.25s ease; /* Faster transition */
+        }
+
+        body.danger-bg {
+            background-color: var(--danger-bg-color);
+        }
+
+        .main-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        #game-canvas {
+            border: 1px solid var(--border-color);
+            background-color: var(--container-bg);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+        }
+
+        .controls-panel {
+            width: 280px;
+            padding: 20px;
+            background-color: var(--container-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control-group h3 {
+            margin: 0;
+            font-size: 16px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+        
+        .control-group .status-bar {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .control-group label, .control-group .label {
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        #ghost-proximity-display.warning {
+            color: var(--danger-color);
+            font-weight: bold;
+        }
+
+        .control-group input[type="number"], .control-group input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        .control-group .share-area {
+            display: flex;
+            gap: 5px;
+        }
+
+        .control-group .share-area input {
+            flex-grow: 1;
+        }
+
+        button, .button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            background-color: var(--primary-color);
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            text-align: center;
+        }
+
+        button:hover, .button:hover {
+            background-color: var(--primary-hover-color);
+        }
+        
+        button.secondary {
+            background-color: #6c757d;
+        }
+        button.secondary:hover {
+            background-color: #5a6268;
+        }
+        
+        button.danger {
+            background-color: var(--danger-color);
+        }
+        button.danger:hover {
+            background-color: var(--danger-hover-color);
+        }
+
+        button:disabled {
+            background-color: var(--disabled-color);
+            color: var(--disabled-text-color);
+            cursor: not-allowed;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .toggle-switch input[type="checkbox"] {
+            height: 0;
+            width: 0;
+            visibility: hidden;
+        }
+
+        .toggle-switch label {
+            cursor: pointer;
+            text-indent: -9999px;
+            width: 50px;
+            height: 25px;
+            background: grey;
+            display: block;
+            border-radius: 100px;
+            position: relative;
+        }
+
+        .toggle-switch label:after {
+            content: '';
+            position: absolute;
+            top: 2.5px;
+            left: 2.5px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 90px;
+            transition: 0.3s;
+        }
+
+        .toggle-switch input:checked + label {
+            background: var(--primary-color);
+        }
+
+        .toggle-switch input:checked + label:after {
+            left: calc(100% - 2.5px);
+            transform: translateX(-100%);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: none; /* Initially hidden */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .overlay-content {
+            background-color: var(--container-bg);
+            padding: 30px 40px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .overlay-content h2, .overlay-content p {
+            margin-top: 0;
+            margin-bottom: 1em;
+        }
+
+        .overlay-content .buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .editor-toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .editor-toolbar button.active {
+            background-color: var(--primary-hover-color);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        /* === Toast Notification Styles === */
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translate(-50%, -100px);
+            padding: 12px 20px;
+            border-radius: 6px;
+            background-color: var(--primary-color);
+            color: white;
+            font-size: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: transform 0.4s ease, opacity 0.4s ease, visibility 0.4s;
+        }
+        .toast.show {
+            transform: translate(-50%, 0);
+            opacity: 1;
+            visibility: visible;
+        }
+        .toast.success {
+            background-color: var(--success-color);
+        }
+        .toast.error {
+            background-color: var(--danger-color);
+        }
+        #game-canvas {
+         -webkit-tap-highlight-color: transparent; /* 核心改动：移除移动端点击时的蓝色高亮效果 */
+        }
+        /* === 移动端适配媒体查询 === */
+        /* 当屏幕宽度小于等于 768px 时，应用以下样式 */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px; /* 为小屏幕调整内边距，避免内容紧贴边缘 */
+                align-items: flex-start; /* 恢复默认的顶部对齐 */
+            }
+
+            .main-container {
+                flex-direction: column; /* 核心改动：将主容器的布局从水平并排变为垂直堆叠 */
+                gap: 15px; /* 调整画布和控制面板垂直堆叠时的间距 */
+                width: 100%;
+            }
+
+            #game-canvas {
+                width: 100%; /* 让画布宽度占满容器宽度 */
+                height: auto; /* 高度自动调整，以保持其原始的1:1宽高比 */
+                order: 1; /* 视觉上确保画布在控制面板的上方 */
+            }
+
+            .controls-panel {
+                width: 100%; /* 控制面板也占满容器宽度 */
+                order: 2; /* 视觉上确保控制面板在画布的下方 */
+                padding: 15px; /* 可以在小屏幕上稍微减少一点内边距 */
+                box-sizing: border-box; /* 确保padding不会撑大宽度 */
+            }
+
+            /* 调整游戏结束、胜利等浮窗在小屏幕上的表现 */
+            .overlay-content {
+                padding: 20px 15px;
+                width: 90%; /* 避免浮窗宽度紧贴屏幕边缘 */
+                box-sizing: border-box;
+            }
+
+            .overlay-content h2 {
+                font-size: 1.5rem; /* 适当调整标题字体大小 */
+            }
+
+            /* 在小屏幕上，浮窗里的按钮也垂直堆叠，更易于点击 */
+            .overlay-content .buttons {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .overlay-content .buttons button {
+                width: 100%; /* 让每个按钮都更容易点击 */
+            }
+            
+            /* 调整编辑器工具栏，允许其在空间不足时换行并居中 */
+            .editor-toolbar {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <canvas id="game-canvas" width="600" height="600"></canvas>
+        
+        <div class="controls-panel">
+            <!-- Game Mode UI -->
+            <div id="game-controls">
+                <div class="control-group">
+                    <h3>状态</h3>
+                    <div class="status-bar">
+                        <div id="player-health-display" class="label">生命: 5</div>
+                        <div id="player-keys-display" class="label">钥匙: 0</div>
+                        <div id="ghost-proximity-display" class="label">周围鬼数: 0</div>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <h3>地图选项</h3>
+                    <label for="map-size-input">地图大小 (8-20):</label>
+                    <input type="number" id="map-size-input" value="10" min="8" max="20">
+                    <button id="generate-map-btn">随机生成新地图</button>
+                </div>
+                <div class="control-group">
+                    <h3>分享</h3>
+                    <div class="share-area">
+                        <input type="text" id="share-code-input" placeholder="在此粘贴分享码">
+                        <button id="load-share-code-btn">加载</button>
+                    </div>
+                    <button id="copy-share-code-btn">复制分享码</button>
+                </div>
+                 <div class="control-group">
+                    <h3>控制</h3>
+                    <button id="reset-map-btn" class="secondary">重置地图</button>
+                    <div class="toggle-switch">
+                        <span class="label">调试视野</span>
+                        <input type="checkbox" id="debug-vision-toggle">
+                        <label for="debug-vision-toggle">Toggle</label>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <h3>编辑器</h3>
+                    <button id="edit-map-btn">编辑地图</button>
+                </div>
+            </div>
+
+            <!-- Editor Mode UI -->
+            <div id="editor-controls" style="display: none;">
+                <div class="control-group">
+                    <h3>编辑器工具</h3>
+                    <div class="editor-toolbar">
+                        <button id="tool-wall" class="tool-btn active">编辑墙壁</button>
+                        <button id="tool-door" class="tool-btn">放置门</button>
+                        <button id="tool-lock" class="tool-btn">放置锁</button>
+                        <button id="tool-key" class="tool-btn">放置钥匙</button>
+                        <button id="tool-end" class="tool-btn">放置终点</button>
+                        <button id="tool-ghost" class="tool-btn">放置鬼</button>
+                        <button id="tool-eraser" class="tool-btn">橡皮擦</button>
+                    </div>
+                </div>
+                 <div class="control-group">
+                    <h3>地图选项</h3>
+                    <label for="editor-map-size-input">地图大小 (8-20):</label>
+                    <input type="number" id="editor-map-size-input" value="10" min="8" max="20">
+                </div>
+                <div class="control-group">
+                    <h3>控制</h3>
+                    <button id="play-edited-map-btn">游玩地图</button>
+                    <button id="clear-map-btn" class="danger">清空地图</button>
+                </div>
+                 <div class="control-group">
+                    <h3>分享</h3>
+                    <div class="share-area">
+                        <input type="text" id="editor-share-code-input" placeholder="在此粘贴分享码">
+                        <button id="editor-load-share-code-btn">加载</button>
+                    </div>
+                    <button id="editor-copy-share-code-btn">复制分享码</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlays -->
+    <div id="death-overlay" class="overlay">
+        <div class="overlay-content">
+            <h2 id="death-message">你死了</h2>
+            <div class="buttons">
+                <button id="revive-btn">复活</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-over-overlay" class="overlay">
+        <div class="overlay-content">
+            <h2>你死了，游戏结束</h2>
+            <div class="buttons">
+                <button id="game-over-replay-btn">再次游玩该地图</button>
+                <button id="game-over-new-map-btn">游玩新地图</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="win-overlay" class="overlay">
+        <div class="overlay-content">
+            <h2>你赢了！</h2>
+            <div class="buttons">
+                <button id="win-replay-btn">再次游玩该地图</button>
+                <button id="win-new-map-btn">游玩新地图</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Overlay -->
+    <div id="confirm-overlay" class="overlay">
+        <div class="overlay-content">
+            <p id="confirm-message">你确定吗？</p>
+            <div class="buttons">
+                <button id="confirm-yes-btn" class="danger">确认</button>
+                <button id="confirm-no-btn" class="secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-notification" class="toast"></div>
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        class GhostMazeGame {
+            constructor() {
+                // DOM Elements
+                this.healthDisplay = document.getElementById('player-health-display');
+                this.keysDisplay = document.getElementById('player-keys-display');
+                this.ghostProximityDisplay = document.getElementById('ghost-proximity-display');
+                this.mapSizeInput = document.getElementById('map-size-input');
+                this.editorMapSizeInput = document.getElementById('editor-map-size-input');
+                this.toastElement = document.getElementById('toast-notification');
+                this.confirmOverlay = document.getElementById('confirm-overlay');
+                this.confirmMessage = document.getElementById('confirm-message');
+                this.confirmYesBtn = document.getElementById('confirm-yes-btn');
+                this.confirmNoBtn = document.getElementById('confirm-no-btn');
+                this.toastTimeout = null;
+                this.animationFrameId = null;
+                this.autoMoveInterval = null;
+                
+                const computedStyle = getComputedStyle(document.documentElement);
+                this.colors = {
+                    ground: computedStyle.getPropertyValue('--ground-color').trim(),
+                    gridLine: computedStyle.getPropertyValue('--grid-line-color').trim(),
+                    unexplored: computedStyle.getPropertyValue('--unexplored-color').trim(),
+                    wall: computedStyle.getPropertyValue('--wall-color').trim(),
+                    player: computedStyle.getPropertyValue('--player-color').trim(),
+                    ghost: computedStyle.getPropertyValue('--ghost-color').trim(),
+                    endPoint: computedStyle.getPropertyValue('--end-point-color').trim(),
+                    key: computedStyle.getPropertyValue('--key-color').trim(),
+                    startRoomHighlight: computedStyle.getPropertyValue('--start-room-highlight').trim(),
+                    hoverHighlight: computedStyle.getPropertyValue('--hover-highlight-color').trim()
+                };
+                
+                // Game State
+                this.state = 'menu';
+                this.width = 10;
+                this.height = 10;
+                this.cellSize = canvas.width / this.width;
+                this.mapData = null;
+
+                // Player
+                this.player = { x: 1, y: 1, hp: 5, initialHp: 5, trail: [], keys: 0 };
+
+                // Ghosts & Items
+                this.ghosts = [];
+                this.ghostCount = 3;
+                this.items = [];
+
+                // Map data structures
+                this.hWalls = [];
+                this.vWalls = [];
+                this.startPos = { x: 1, y: 1 };
+                this.endPos = { x: 0, y: 0 };
+                
+                // Visibility
+                this.seenCells = [];
+                this.debugVision = false;
+
+                // Editor State
+                this.editor = {
+                    active: false,
+                    tool: 'wall',
+                    isDragging: false,
+                    didDrag: false,
+                    dragAxis: null,
+                    lastDragPos: null,
+                    hoveredWall: null
+                };
+
+                this.bindUI();
+                this.showInitialMessage();
+            }
+            
+            showInitialMessage() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'black';
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('点击 "随机生成新地图" 或加载分享码开始游戏', canvas.width / 2, canvas.height / 2);
+            }
+
+            // ==================================================
+            //  UI BINDING & CONTROLS
+            // ==================================================
+            bindUI() {
+                document.getElementById('generate-map-btn').addEventListener('click', () => this.generateNewRandomMap());
+                document.getElementById('load-share-code-btn').addEventListener('click', () => this.loadFromShareCode(document.getElementById('share-code-input').value));
+                document.getElementById('copy-share-code-btn').addEventListener('click', () => this.copyShareCode());
+                document.getElementById('reset-map-btn').addEventListener('click', () => this.resetCurrentMap());
+                document.getElementById('debug-vision-toggle').addEventListener('change', (e) => {
+                    this.debugVision = e.target.checked;
+                    if (this.state !== 'playing') this.draw();
+                });
+                document.getElementById('edit-map-btn').addEventListener('click', () => this.enterEditorMode());
+
+                document.getElementById('revive-btn').addEventListener('click', () => this.revivePlayer());
+                document.getElementById('game-over-replay-btn').addEventListener('click', () => this.resetCurrentMap());
+                document.getElementById('game-over-new-map-btn').addEventListener('click', () => this.generateNewRandomMap());
+                document.getElementById('win-replay-btn').addEventListener('click', () => this.resetCurrentMap());
+                document.getElementById('win-new-map-btn').addEventListener('click', () => this.generateNewRandomMap());
+
+                document.querySelectorAll('.tool-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => this.setEditorTool(e.target.id.split('-')[1]));
+                });
+                this.editorMapSizeInput.addEventListener('change', () => this.resizeAndClearEditor());
+                document.getElementById('play-edited-map-btn').addEventListener('click', () => this.playEditedMap());
+                document.getElementById('clear-map-btn').addEventListener('click', () => this.clearEditorMap());
+                document.getElementById('editor-copy-share-code-btn').addEventListener('click', () => this.copyShareCode(true));
+                document.getElementById('editor-load-share-code-btn').addEventListener('click', () => this.loadFromShareCode(document.getElementById('editor-share-code-input').value, true));
+
+                window.addEventListener('keydown', (e) => this.handleKeyPress(e));
+                
+                canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
+                canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
+                canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+                canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
+                canvas.addEventListener('mouseleave', (e) => this.handleCanvasMouseLeave(e));
+            }
+
+            // ==================================================
+            //  CUSTOM NOTIFICATIONS & ANIMATION
+            // ==================================================
+            showToast(message, duration = 3000, type = 'info') {
+                clearTimeout(this.toastTimeout);
+                this.toastElement.textContent = message;
+                this.toastElement.className = 'toast';
+                if (type !== 'info') {
+                    this.toastElement.classList.add(type);
+                }
+                this.toastElement.classList.add('show');
+                this.toastTimeout = setTimeout(() => {
+                    this.toastElement.classList.remove('show');
+                }, duration);
+            }
+
+            showConfirm(message, onConfirm) {
+                this.confirmMessage.textContent = message;
+                this.confirmOverlay.style.display = 'flex';
+
+                const hide = () => {
+                    this.confirmOverlay.style.display = 'none';
+                    this.confirmYesBtn.onclick = null;
+                    this.confirmNoBtn.onclick = null;
+                };
+
+                this.confirmYesBtn.onclick = () => {
+                    hide();
+                    onConfirm();
+                };
+                this.confirmNoBtn.onclick = hide;
+            }
+
+            startAnimationLoop() {
+                if (this.animationFrameId) return;
+                const trailLifetime = 500; // Trail fades out over 0.5 seconds
+
+                const loop = () => {
+                    const now = Date.now();
+                    
+                    this.player.trail = this.player.trail.filter(p => now - p.timestamp < trailLifetime);
+                    this.ghosts.forEach(g => {
+                        g.trail = g.trail.filter(p => now - p.timestamp < trailLifetime);
+                    });
+
+                    if (this.state === 'playing') {
+                        this.draw();
+                        this.animationFrameId = requestAnimationFrame(loop);
+                    } else {
+                        this.stopAnimationLoop();
+                    }
+                };
+                this.animationFrameId = requestAnimationFrame(loop);
+            }
+
+            stopAnimationLoop() {
+                if (this.animationFrameId) {
+                    cancelAnimationFrame(this.animationFrameId);
+                    this.animationFrameId = null;
+                }
+            }
+
+            // ==================================================
+            //  GAME INITIALIZATION & STATE MANAGEMENT
+            // ==================================================
+            
+            startGame(mapData) {
+                this.stopAnimationLoop();
+                this.mapData = JSON.parse(JSON.stringify(mapData));
+                this.state = 'playing';
+                
+                this.width = mapData.width;
+                this.height = mapData.height;
+                this.cellSize = canvas.width / this.width;
+                
+                this.hWalls = mapData.hWalls;
+                this.vWalls = mapData.vWalls;
+                this.endPos = mapData.endPos;
+                this.items = mapData.items || [];
+                
+                this.player = { x: 1, y: this.height - 2, hp: 5, initialHp: 5, trail: [], keys: 0 };
+                
+                this.ghosts = JSON.parse(JSON.stringify(mapData.initialGhosts));
+                this.ghosts.forEach(g => g.trail = []);
+                
+                this.seenCells = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
+                this.updateVisibility();
+                
+                this.updateUIDisplays();
+                this.hideAllOverlays();
+                this.startAnimationLoop();
+            }
+
+            generateNewRandomMap() {
+                const size = parseInt(this.mapSizeInput.value);
+                if (size < 8 || size > 20) {
+                    this.showToast('地图大小必须在 8 到 20 之间。', 3000, 'error');
+                    return;
+                }
+                const mapData = this.generateMaze(size, size);
+                this.startGame(mapData);
+            }
+            
+            resetCurrentMap() {
+                if (!this.mapData) {
+                    this.showToast("没有可重置的地图。请先生成一个新地图。", 3000, 'error');
+                    return;
+                }
+                this.startGame(this.mapData);
+            }
+
+            // ==================================================
+            //  MAP GENERATION
+            // ==================================================
+
+            generateMaze(width, height) {
+                this.width = width;
+                this.height = height;
+                this.cellSize = canvas.width / this.width;
+
+                const wall = () => ({ type: 1, keys: 0 });
+                const empty = () => ({ type: 0, keys: 0 });
+                const door = () => ({ type: 2, keys: 0 });
+
+                this.hWalls = Array(height + 1).fill(null).map(() => Array(width).fill(null).map(wall));
+                this.vWalls = Array(height).fill(null).map(() => Array(width + 1).fill(null).map(wall));
+
+                const roomY = height - 3;
+                for (let y = roomY; y < roomY + 3; y++) {
+                    for (let x = 0; x < 3; x++) {
+                        if (x < 2) this.vWalls[y][x + 1] = empty();
+                        if (y < roomY + 2) this.hWalls[y + 1][x] = empty();
+                    }
+                }
+                this.vWalls[roomY + 1][3] = door();
+                this.hWalls[roomY][1] = door();
+                
+                this.startPos = { x: 1, y: height - 2 };
+
+                const visited = Array(height).fill(null).map(() => Array(width).fill(false));
+                for (let y = roomY; y < roomY + 3; y++) {
+                    for (let x = 0; x < 3; x++) {
+                        visited[y][x] = true;
+                    }
+                }
+                
+                const stack = [];
+                let startGenX, startGenY;
+                do {
+                    startGenX = Math.floor(Math.random() * width);
+                    startGenY = Math.floor(Math.random() * height);
+                } while (visited[startGenY][startGenX]);
+
+                stack.push({ x: startGenX, y: startGenY });
+                visited[startGenY][startGenX] = true;
+
+                while (stack.length > 0) {
+                    const current = stack.pop();
+                    const neighbors = [];
+                    const dirs = [{x:0, y:-1}, {x:1, y:0}, {x:0, y:1}, {x:-1, y:0}];
+                    for (const dir of dirs) {
+                        const nx = current.x + dir.x;
+                        const ny = current.y + dir.y;
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited[ny][nx]) {
+                            neighbors.push({ x: nx, y: ny, dir: dir });
+                        }
+                    }
+
+                    if (neighbors.length > 0) {
+                        stack.push(current);
+                        const { x: nx, y: ny, dir } = neighbors[Math.floor(Math.random() * neighbors.length)];
+                        if (dir.x === 1) this.vWalls[current.y][current.x + 1] = empty();
+                        else if (dir.x === -1) this.vWalls[current.y][current.x] = empty();
+                        else if (dir.y === 1) this.hWalls[current.y + 1][current.x] = empty();
+                        else if (dir.y === -1) this.hWalls[current.y][current.x] = empty();
+                        visited[ny][nx] = true;
+                        stack.push({ x: nx, y: ny });
+                    }
+                }
+                
+                const wallsToRemove = Math.floor(width * height * 0.08);
+                let removedCount = 0;
+                let attempts = 0;
+                while (removedCount < wallsToRemove && attempts < wallsToRemove * 10) {
+                    attempts++;
+                    const rx = Math.floor(Math.random() * (width - 1));
+                    const ry = Math.floor(Math.random() * (height - 1));
+
+                    if (Math.random() > 0.5) {
+                        if (rx < width - 1 && !(ry >= roomY && ry < roomY + 3 && rx + 1 === 3)) {
+                            if (this.vWalls[ry][rx + 1].type === 1) {
+                                this.vWalls[ry][rx + 1] = empty();
+                                removedCount++;
+                            }
+                        }
+                    } else {
+                        if (ry < height - 1 && !(rx >= 0 && rx < 3 && ry + 1 === roomY)) {
+                             if (this.hWalls[ry + 1][rx].type === 1) {
+                                this.hWalls[ry + 1][rx] = empty();
+                                removedCount++;
+                            }
+                        }
+                    }
+                }
+
+                this.endPos = this.findFarthestEndCell();
+
+                const doorProbability = 0.02;
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const isNearEnd = (Math.abs(x - this.endPos.x) <= 1 && y === this.endPos.y) || (x === this.endPos.x && Math.abs(y - this.endPos.y) <= 1);
+                        if (y < height - 1 && !this.isPosInStartRoom(x, y) && !this.isPosInStartRoom(x, y + 1) && !isNearEnd && Math.random() < doorProbability) this.hWalls[y + 1][x] = door();
+                        if (x < width - 1 && !this.isPosInStartRoom(x, y) && !this.isPosInStartRoom(x + 1, y) && !isNearEnd && Math.random() < doorProbability) this.vWalls[y][x + 1] = door();
+                    }
+                }
+
+                const {x: ex, y: ey} = this.endPos;
+                if (this.hWalls[ey][ex].type === 0) this.hWalls[ey][ex] = { type: 3, keys: 3 };
+                else if (this.hWalls[ey + 1][ex].type === 0) this.hWalls[ey + 1][ex] = { type: 3, keys: 3 };
+                else if (this.vWalls[ey][ex].type === 0) this.vWalls[ey][ex] = { type: 3, keys: 3 };
+                else if (this.vWalls[ey][ex + 1].type === 0) this.vWalls[ey][ex + 1] = { type: 3, keys: 3 };
+
+                const occupied = new Set();
+                occupied.add(`${this.endPos.x},${this.endPos.y}`);
+                for (let y = height - 3; y < height; y++) {
+                    for (let x = 0; x < 3; x++) {
+                        occupied.add(`${x},${y}`);
+                    }
+                }
+
+                const initialGhosts = [];
+                while (initialGhosts.length < this.ghostCount) {
+                    const x = Math.floor(Math.random() * width);
+                    const y = Math.floor(Math.random() * height);
+                    const posKey = `${x},${y}`;
+                    if (!occupied.has(posKey)) {
+                        initialGhosts.push({ x, y, id: initialGhosts.length });
+                        occupied.add(posKey);
+                    }
+                }
+
+                this.items = [];
+                const keysToPlace = 4;
+                const validCells = [];
+                const preferredCells = [];
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        if (!occupied.has(`${x},${y}`)) {
+                            validCells.push({x, y});
+                            let wallCount = 0;
+                            if (this.hWalls[y][x].type > 0) wallCount++;
+                            if (this.hWalls[y + 1][x].type > 0) wallCount++;
+                            if (this.vWalls[y][x].type > 0) wallCount++;
+                            if (this.vWalls[y][x + 1].type > 0) wallCount++;
+                            if (wallCount >= 3) {
+                                preferredCells.push({x, y});
+                            }
+                        }
+                    }
+                }
+
+                for (let i = 0; i < keysToPlace; i++) {
+                    let pos = null;
+                    if (preferredCells.length > 0) {
+                        const index = Math.floor(Math.random() * preferredCells.length);
+                        pos = preferredCells.splice(index, 1)[0];
+                    } else if (validCells.length > 0) {
+                        const index = Math.floor(Math.random() * validCells.length);
+                        pos = validCells.splice(index, 1)[0];
+                    }
+                    if (pos) {
+                        this.items.push({ x: pos.x, y: pos.y, type: 'key' });
+                        const validIndex = validCells.findIndex(c => c.x === pos.x && c.y === pos.y);
+                        if (validIndex > -1) validCells.splice(validIndex, 1);
+                    }
+                }
+
+                return {
+                    width, height,
+                    hWalls: this.hWalls, vWalls: this.vWalls,
+                    endPos: this.endPos, initialGhosts: initialGhosts, items: this.items
+                };
+            }
+            
+            findFarthestEndCell() {
+                const distances = this.calculateDistances(this.startPos);
+                let maxDist = -1;
+                let farthestCell = null;
+
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        if (x === 0 || x === this.width - 1 || y === 0 || y === this.height - 1) {
+                            let wallCount = 0;
+                            if (this.hWalls[y][x].type > 0) wallCount++;
+                            if (this.hWalls[y + 1][x].type > 0) wallCount++;
+                            if (this.vWalls[y][x].type > 0) wallCount++;
+                            if (this.vWalls[y][x + 1].type > 0) wallCount++;
+                            
+                            if (wallCount >= 3) {
+                                if (distances[y][x] > maxDist) {
+                                    maxDist = distances[y][x];
+                                    farthestCell = { x, y };
+                                }
+                            }
+                        }
+                    }
+                }
+                return farthestCell || { x: this.width - 1, y: 0 };
+            }
+
+            // ==================================================
+            //  PLAYER LOGIC
+            // ==================================================
+            handleKeyPress(e) {
+                if (this.state !== 'playing') return;
+                this.stopAutoMove();
+
+                let dx = 0, dy = 0;
+                switch (e.key) {
+                    case 'ArrowUp': case 'w': dy = -1; break;
+                    case 'ArrowDown': case 's': dy = 1; break;
+                    case 'ArrowLeft': case 'a': dx = -1; break;
+                    case 'ArrowRight': case 'd': dx = 1; break;
+                    default: return;
+                }
+                e.preventDefault();
+                this.movePlayer(dx, dy);
+            }
+
+            movePlayer(dx, dy) {
+                if (this.state !== 'playing') return;
+
+                const playerPrevPos = { x: this.player.x, y: this.player.y };
+                const newX = this.player.x + dx;
+                const newY = this.player.y + dy;
+
+                if (newX < 0 || newX >= this.width || newY < 0 || newY >= this.height) return;
+
+                let wall;
+                if (dx === 1) wall = this.vWalls[this.player.y][this.player.x + 1];
+                if (dx === -1) wall = this.vWalls[this.player.y][this.player.x];
+                if (dy === 1) wall = this.hWalls[this.player.y + 1][this.player.x];
+                if (dy === -1) wall = this.hWalls[this.player.y][this.player.x];
+
+                if (wall) {
+                    if (wall.type === 1) return;
+                    if (wall.type === 3 && this.player.keys < wall.keys) return;
+                    if (wall.type === 3 && this.player.keys >= wall.keys) {
+                        wall.type = 0; // Unlock the door
+                    }
+                }
+
+                this.player.trail.unshift({ x: this.player.x, y: this.player.y, timestamp: Date.now() });
+
+                this.player.x = newX;
+                this.player.y = newY;
+                
+                this.updateVisibility();
+                this.checkItemPickup();
+
+                if (this.checkCollisionWithGhosts()) {
+                    this.handlePlayerDeath();
+                    return;
+                }
+
+                this.moveGhosts(playerPrevPos);
+
+                if (this.checkCollisionWithGhosts()) {
+                    this.handlePlayerDeath();
+                    return;
+                }
+                
+                if (this.player.x === this.endPos.x && this.player.y === this.endPos.y) {
+                    this.handleWin();
+                }
+
+                this.updateProximityWarning();
+                if (!this.animationFrameId) this.draw();
+            }
+
+            checkItemPickup() {
+                const itemIndex = this.items.findIndex(item => item.x === this.player.x && item.y === this.player.y);
+                if (itemIndex > -1) {
+                    const item = this.items[itemIndex];
+                    if (item.type === 'key') {
+                        this.player.keys++;
+                    }
+                    this.items.splice(itemIndex, 1);
+                    this.updateUIDisplays();
+                }
+            }
+            
+            resetPlayerPos() {
+                this.player.x = this.startPos.x;
+                this.player.y = this.height - 2;
+                this.player.trail = [];
+            }
+            
+            updateUIDisplays() {
+                this.healthDisplay.textContent = `生命: ${this.player.hp}`;
+                this.keysDisplay.textContent = `钥匙: ${this.player.keys}`;
+                this.updateProximityWarning();
+            }
+
+            updateProximityWarning() {
+                let nearbyGhosts = 0;
+                for (let y = this.player.y - 1; y <= this.player.y + 1; y++) {
+                    for (let x = this.player.x - 1; x <= this.player.x + 1; x++) {
+                        if (this.ghosts.some(g => g.x === x && g.y === y)) {
+                            nearbyGhosts++;
+                        }
+                    }
+                }
+                this.ghostProximityDisplay.textContent = `周围鬼数: ${nearbyGhosts}`;
+                if (nearbyGhosts > 0) {
+                    document.body.classList.add('danger-bg');
+                    this.ghostProximityDisplay.classList.add('warning');
+                } else {
+                    document.body.classList.remove('danger-bg');
+                    this.ghostProximityDisplay.classList.remove('warning');
+                }
+            }
+
+            // ==================================================
+            //  GHOST LOGIC
+            // ==================================================
+            
+            canGhostSeePlayer(ghost, playerPos) {
+                if (!playerPos || ghost.x !== playerPos.x && ghost.y !== playerPos.y) return false;
+                
+                if (ghost.x === playerPos.x) {
+                    const startY = Math.min(ghost.y, playerPos.y);
+                    const endY = Math.max(ghost.y, playerPos.y);
+                    for (let y = startY; y < endY; y++) {
+                        if (this.hWalls[y + 1][ghost.x].type > 0) return false;
+                    }
+                } else {
+                    const startX = Math.min(ghost.x, playerPos.x);
+                    const endX = Math.max(ghost.x, playerPos.x);
+                    for (let x = startX; x < endX; x++) {
+                        if (this.vWalls[ghost.y][x + 1].type > 0) return false;
+                    }
+                }
+                return true;
+            }
+
+            moveGhosts(playerPrevPos) {
+                const ghostOrder = this.ghosts.map((_, i) => i).sort(() => Math.random() - 0.5);
+
+                for (const i of ghostOrder) {
+                    const ghost = this.ghosts[i];
+                    const sawBefore = this.canGhostSeePlayer(ghost, playerPrevPos);
+                    const seesAfter = this.canGhostSeePlayer(ghost, this.player);
+
+                    let target = null;
+                    if (!sawBefore && seesAfter) target = this.player;
+                    if (sawBefore && !seesAfter) target = playerPrevPos;
+                    if (sawBefore && seesAfter) target = this.player;
+                    
+                    if (!target) {
+                        if (ghost.pendingMove) {
+                            const {nx, ny} = ghost.pendingMove;
+                             if (!this.isCellOccupiedByGhost(nx, ny, ghost.id)) {
+                                ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                                ghost.x = nx; ghost.y = ny;
+                            }
+                            ghost.pendingMove = null;
+                        }
+                        continue;
+                    }
+                    
+                    const path = this.findShortestPath(ghost, target);
+                    if (path && path.length > 1) {
+                        const nextStep = path[1];
+                        if (!this.isCellOccupiedByGhost(nextStep.x, nextStep.y, ghost.id)) {
+                            ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                            ghost.x = nextStep.x; ghost.y = nextStep.y;
+                            ghost.pendingMove = null;
+                        } else {
+                            ghost.pendingMove = { nx: nextStep.x, ny: nextStep.y };
+                        }
+                    }
+                }
+            }
+            
+            isCellOccupiedByGhost(x, y, selfId = -1) {
+                return this.ghosts.some(g => g.id !== selfId && g.x === x && g.y === y);
+            }
+
+            // ==================================================
+            //  GAME ENDING & OVERLAYS
+            // ==================================================
+            
+            checkCollisionWithGhosts() {
+                return this.ghosts.some(g => g.x === this.player.x && g.y === this.player.y);
+            }
+
+            handlePlayerDeath() {
+                this.stopAutoMove();
+                this.stopAnimationLoop();
+                this.player.hp--;
+                this.updateUIDisplays();
+                this.state = 'dead';
+                this.draw();
+
+                if (this.player.hp > 0) {
+                    document.getElementById('death-message').textContent = `你死了 (剩余血量 ${this.player.hp})`;
+                    document.getElementById('death-overlay').style.display = 'flex';
+                } else {
+                    document.getElementById('game-over-overlay').style.display = 'flex';
+                }
+            }
+            
+            revivePlayer() {
+                this.resetPlayerPos();
+                this.state = 'playing';
+                this.hideAllOverlays();
+                this.updateVisibility();
+                this.updateProximityWarning();
+                this.startAnimationLoop();
+            }
+
+            handleWin() {
+                this.stopAutoMove();
+                this.stopAnimationLoop();
+                this.state = 'won';
+                document.getElementById('win-overlay').style.display = 'flex';
+            }
+            
+            hideAllOverlays() {
+                document.getElementById('death-overlay').style.display = 'none';
+                document.getElementById('game-over-overlay').style.display = 'none';
+                document.getElementById('win-overlay').style.display = 'none';
+            }
+
+            // ==================================================
+            //  VISIBILITY
+            // ==================================================
+            updateVisibility() {
+                const roomY = this.height - 3;
+                for (let y = roomY; y < roomY + 3; y++) {
+                    for (let x = 0; x < 3; x++) {
+                        this.seenCells[y][x] = true;
+                    }
+                }
+
+                const { x, y } = this.player;
+                this.seenCells[y][x] = true;
+
+                for (let i = x + 1; i < this.width; i++) {
+                    if (this.vWalls[y][i].type > 0) break;
+                    this.seenCells[y][i] = true;
+                }
+                for (let i = x - 1; i >= 0; i--) {
+                    if (this.vWalls[y][i + 1].type > 0) break;
+                    this.seenCells[y][i] = true;
+                }
+                for (let i = y + 1; i < this.height; i++) {
+                    if (this.hWalls[i][x].type > 0) break;
+                    this.seenCells[i][x] = true;
+                }
+                for (let i = y - 1; i >= 0; i--) {
+                    if (this.hWalls[i + 1][x].type > 0) break;
+                    this.seenCells[i][x] = true;
+                }
+            }
+
+            // ==================================================
+            //  DRAWING
+            // ==================================================
+            draw() {
+                if (this.state === 'menu') return;
+                if (this.editor.active) {
+                    this.drawEditor();
+                    return;
+                }
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const cs = this.cellSize;
+                const now = Date.now();
+                const trailLifetime = 500;
+                const initialAlpha = 0.3;
+
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        ctx.fillStyle = this.colors.ground;
+                        ctx.fillRect(x * cs, y * cs, cs, cs);
+                    }
+                }
+                
+                this.player.trail.forEach(p => {
+                    if (this.seenCells[p.y][p.x] || this.debugVision) {
+                        const age = now - p.timestamp;
+                        const alpha = initialAlpha * (1 - age / trailLifetime);
+                        this.drawCircle(p.x, p.y, this.colors.player, alpha);
+                    }
+                });
+                this.ghosts.forEach(ghost => {
+                    ghost.trail.forEach(p => {
+                        if (this.seenCells[p.y][p.x] || this.debugVision) {
+                            const age = now - p.timestamp;
+                            const alpha = initialAlpha * (1 - age / trailLifetime);
+                            this.drawCircle(p.x, p.y, this.colors.ghost, alpha);
+                        }
+                    });
+                });
+
+                ctx.strokeStyle = this.colors.gridLine;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let i = 0; i <= this.width; i++) {
+                    const x = Math.round(i * cs) + 0.5;
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, this.height * cs);
+                }
+                for (let i = 0; i <= this.height; i++) {
+                    const y = Math.round(i * cs) + 0.5;
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(this.width * cs, y);
+                }
+                ctx.stroke();
+
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        if (!this.seenCells[y][x] && !this.debugVision) {
+                            ctx.fillStyle = this.colors.unexplored;
+                            ctx.fillRect(x * cs, y * cs, cs, cs);
+                        }
+                    }
+                }
+
+                ctx.beginPath();
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        if (this.seenCells[y][x] || this.debugVision) {
+                            if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
+                            if (this.hWalls[y + 1][x].type > 0) this.drawWallOrDoor(x * cs, (y + 1) * cs, (x + 1) * cs, (y + 1) * cs, this.hWalls[y + 1][x]);
+                            if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
+                            if (this.vWalls[y][x + 1].type > 0) this.drawWallOrDoor((x + 1) * cs, y * cs, (x + 1) * cs, (y + 1) * cs, this.vWalls[y][x + 1]);
+                        }
+                    }
+                }
+                ctx.stroke();
+                this.drawLockNumbers(true);
+
+                this.items.forEach(item => {
+                    if (this.seenCells[item.y][item.x] || this.debugVision) {
+                        this.drawItem(item);
+                    }
+                });
+
+                if (this.endPos && (this.seenCells[this.endPos.y][this.endPos.x] || this.debugVision)) {
+                    this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
+                }
+
+                this.drawCircle(this.player.x, this.player.y, this.colors.player);
+                
+                this.ghosts.forEach(ghost => {
+                    if (this.seenCells[ghost.y][ghost.x] || this.debugVision) {
+                        this.drawCircle(ghost.x, ghost.y, this.colors.ghost);
+                    }
+                });
+            }
+
+            drawWallOrDoor(x1, y1, x2, y2, wallObject, isHighlight = false) {
+                const type = wallObject.type;
+                if (isHighlight) {
+                    ctx.strokeStyle = this.colors.hoverHighlight;
+                    ctx.lineWidth = Math.max(3, this.cellSize / 8);
+                } else {
+                    ctx.strokeStyle = this.colors.wall;
+                    ctx.lineWidth = (type === 3) ? Math.max(4, this.cellSize / 8) : Math.max(2, this.cellSize / 10);
+                }
+                
+                if (type === 1 || type === 3) { // Wall or Lock
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                } else if (type === 2) { // Door
+                    const isHorizontal = y1 === y2;
+                    const length = isHorizontal ? x2 - x1 : y2 - y1;
+                    const gap = length / 3;
+                    if (isHorizontal) {
+                        ctx.moveTo(x1, y1); ctx.lineTo(x1 + gap, y1);
+                        ctx.moveTo(x2 - gap, y2); ctx.lineTo(x2, y2);
+                    } else {
+                        ctx.moveTo(x1, y1); ctx.lineTo(x1, y1 + gap);
+                        ctx.moveTo(x2, y2 - gap); ctx.lineTo(x2, y2);
+                    }
+                }
+            }
+
+            drawLockNumbers(inGame = false) {
+                const cs = this.cellSize;
+                for (let y = 0; y <= this.height; y++) {
+                    for (let x = 0; x <= this.width; x++) {
+                        if (inGame) {
+                            const isVisible = (y < this.height && x < this.width && this.seenCells[y][x]) ||
+                                            (y > 0 && x < this.width && this.seenCells[y-1][x]) ||
+                                            (y < this.height && x > 0 && this.seenCells[y][x-1]);
+                            if (!isVisible && !this.debugVision) continue;
+                        }
+
+                        if (y < this.height && x < this.width) {
+                            if (this.hWalls[y][x].type === 3) {
+                                this.drawNumberOnWall(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x].keys);
+                            }
+                            if (this.vWalls[y][x].type === 3) {
+                                this.drawNumberOnWall(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x].keys);
+                            }
+                        }
+                    }
+                }
+            }
+
+            drawNumberOnWall(x1, y1, x2, y2, number) {
+                const centerX = (x1 + x2) / 2;
+                const centerY = (y1 + y2) / 2;
+                const fontSize = this.cellSize * 0.4;
+                ctx.font = `bold ${fontSize}px sans-serif`;
+                ctx.fillStyle = this.colors.key;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(number.toString(), centerX, centerY);
+            }
+
+            drawCircle(x, y, color, alpha = 1.0) {
+                if (alpha <= 0) return;
+                const cs = this.cellSize;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(x * cs + cs / 2, y * cs + cs / 2, cs * 0.35, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+
+            drawItem(item) {
+                if (item.type === 'key') {
+                    const cs = this.cellSize;
+                    const centerX = item.x * cs + cs / 2;
+                    const centerY = item.y * cs + cs / 2;
+                    const size = cs * 0.3;
+                    ctx.fillStyle = this.colors.key;
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, centerY - size); // Top
+                    ctx.lineTo(centerX + size, centerY); // Right
+                    ctx.lineTo(centerX, centerY + size); // Bottom
+                    ctx.lineTo(centerX - size, centerY); // Left
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+
+            // ==================================================
+            //  EDITOR LOGIC
+            // ==================================================
+            
+            enterEditorMode() {
+                this.stopAnimationLoop();
+                if (!this.mapData) {
+                    this.width = 10;
+                    this.height = 10;
+                    this.createBlankEditorMap();
+                    this.mapData = {
+                        width: this.width, height: this.height,
+                        hWalls: JSON.parse(JSON.stringify(this.hWalls)),
+                        vWalls: JSON.parse(JSON.stringify(this.vWalls)),
+                        endPos: null,
+                        initialGhosts: [],
+                        items: []
+                    };
+                }
+
+                this.state = 'editor';
+                this.editor.active = true;
+                this.setEditorTool('wall');
+                
+                document.getElementById('game-controls').style.display = 'none';
+                document.getElementById('editor-controls').style.display = 'block';
+                
+                this.width = this.mapData.width;
+                this.height = this.mapData.height;
+                this.editorMapSizeInput.value = this.width;
+                this.cellSize = canvas.width / this.width;
+                this.hWalls = JSON.parse(JSON.stringify(this.mapData.hWalls));
+                this.vWalls = JSON.parse(JSON.stringify(this.mapData.vWalls));
+                this.endPos = this.mapData.endPos ? {...this.mapData.endPos} : null;
+                this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts || []));
+                this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
+                
+                this.drawEditor();
+            }
+            
+            createBlankEditorMap() {
+                this.cellSize = canvas.width / this.width;
+                
+                const wall = () => ({ type: 1, keys: 0 });
+                const empty = () => ({ type: 0, keys: 0 });
+                const door = () => ({ type: 2, keys: 0 });
+
+                this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty));
+                this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty));
+                
+                for (let x = 0; x < this.width; x++) {
+                    this.hWalls[0][x] = wall();
+                    this.hWalls[this.height][x] = wall();
+                }
+                for (let y = 0; y < this.height; y++) {
+                    this.vWalls[y][0] = wall();
+                    this.vWalls[y][this.width] = wall();
+                }
+                
+                const roomY = this.height - 3;
+                for (let x = 0; x < 3; x++) this.hWalls[roomY + 3][x] = wall();
+                for (let y = roomY; y < roomY + 3; y++) this.vWalls[y][0] = wall();
+                this.hWalls[roomY][0] = wall(); this.hWalls[roomY][2] = wall();
+                this.vWalls[roomY][3] = wall(); this.vWalls[roomY+2][3] = wall();
+                this.hWalls[roomY][1] = door();
+                this.vWalls[roomY+1][3] = door();
+                
+                this.startPos = { x: 1, y: this.height - 2 };
+                this.endPos = null;
+                this.ghosts = [];
+                this.items = [];
+            }
+
+            resizeAndClearEditor() {
+                const size = parseInt(this.editorMapSizeInput.value);
+                if (size < 8 || size > 20) {
+                    this.showToast('地图大小必须在 8 到 20 之间。', 3000, 'error');
+                    this.editorMapSizeInput.value = this.width;
+                    return;
+                }
+                this.width = size;
+                this.height = size;
+                this.createBlankEditorMap();
+                this.drawEditor();
+            }
+            
+            playEditedMap() {
+                if (!this.endPos) {
+                    this.showToast('请在地图上放置一个终点。', 3000, 'error');
+                    return;
+                }
+                
+                this.editor.active = false;
+                document.getElementById('game-controls').style.display = 'block';
+                document.getElementById('editor-controls').style.display = 'none';
+                
+                const editedMapData = {
+                    width: this.width, height: this.height,
+                    hWalls: this.hWalls, vWalls: this.vWalls,
+                    endPos: this.endPos,
+                    initialGhosts: this.ghosts.map((g, i) => ({x: g.x, y: g.y, id: i})),
+                    items: this.items
+                };
+                
+                this.startGame(editedMapData);
+            }
+            
+            clearEditorMap() {
+                this.showConfirm('你确定要清空所有墙壁、实体和物品吗？', () => {
+                    this.createBlankEditorMap();
+                    this.drawEditor();
+                });
+            }
+            
+            setEditorTool(tool) {
+                this.editor.tool = tool;
+                document.querySelectorAll('.tool-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.id === `tool-${tool}`);
+                });
+                this.editor.hoveredWall = null;
+                this.drawEditor();
+            }
+            
+            drawEditor() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const cs = this.cellSize;
+
+                ctx.fillStyle = this.colors.ground;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = this.colors.startRoomHighlight;
+                ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs);
+
+                ctx.strokeStyle = this.colors.gridLine;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let i = 0; i <= this.width; i++) {
+                    const x = Math.round(i * cs) + 0.5;
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, this.height * cs);
+                }
+                for (let i = 0; i <= this.height; i++) {
+                    const y = Math.round(i * cs) + 0.5;
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(this.width * cs, y);
+                }
+                ctx.stroke();
+                
+                ctx.beginPath();
+                for (let y = 0; y <= this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        if (this.hWalls[y][x].type > 0) {
+                            this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
+                        }
+                    }
+                }
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x <= this.width; x++) {
+                        if (this.vWalls[y][x].type > 0) {
+                            this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
+                        }
+                    }
+                }
+                ctx.stroke();
+                this.drawLockNumbers();
+                
+                if (this.editor.hoveredWall && !this.editor.isDragging) {
+                    ctx.beginPath();
+                    const {x, y, type} = this.editor.hoveredWall;
+                    const wallType = this.editor.tool === 'door' ? 2 : (this.editor.tool === 'lock' ? 3 : 1);
+                    if (type === 'h') {
+                        this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, {type: wallType, keys: '?'}, true);
+                    } else {
+                        this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, {type: wallType, keys: '?'}, true);
+                    }
+                    ctx.stroke();
+                }
+
+                this.items.forEach(item => this.drawItem(item));
+                if (this.endPos) this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
+                this.ghosts.forEach(g => this.drawCircle(g.x, g.y, this.colors.ghost));
+                this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
+            }
+            
+            // Editor Mouse Handlers
+            getMousePos(e) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                return {
+                    x: (e.clientX - rect.left) * scaleX,
+                    y: (e.clientY - rect.top) * scaleY
+                };
+            }
+            
+            isPosInStartRoom(cellX, cellY) {
+                const roomY = this.height - 3;
+                return cellX >= 0 && cellX < 3 && cellY >= roomY && cellY < roomY + 3;
+            }
+            
+            isWallEditable(wall) {
+                if (!wall) return false;
+                const {x, y, type} = wall;
+                
+                if (type === 'h' && (y === 0 || y === this.height)) return false;
+                if (type === 'v' && (x === 0 || x === this.width)) return false;
+                
+                const roomY = this.height - 3;
+                if (type === 'h' && y === roomY && x >= 0 && x < 3) return false;
+                if (type === 'h' && y === roomY + 3 && x >= 0 && x < 3) return false;
+                if (type === 'v' && x === 0 && y >= roomY && y < roomY + 3) return false;
+                if (type === 'v' && x === 3 && y >= roomY && y < roomY + 3) return false;
+                
+                if (x >= 0 && x < 3 && y > roomY && y < roomY + 3) {
+                     if (type === 'h') return false;
+                }
+                if (y >= roomY && y < roomY + 3 && x > 0 && x < 3) {
+                     if (type === 'v') return false;
+                }
+
+                return true;
+            }
+
+            isCellOccupiedInEditor(x, y) {
+                if (this.endPos && this.endPos.x === x && this.endPos.y === y) return true;
+                if (this.ghosts.some(g => g.x === x && g.y === y)) return true;
+                if (this.items.some(i => i.x === x && i.y === y)) return true;
+                return false;
+            }
+
+            eraseAtPos(pos) {
+                const wall = this.getWallAtPos(pos.x, pos.y);
+                if (wall && this.isWallEditable(wall)) {
+                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 0, keys: 0 };
+                    else this.vWalls[wall.y][wall.x] = { type: 0, keys: 0 };
+                }
+
+                const cellX = Math.floor(pos.x / this.cellSize);
+                const cellY = Math.floor(pos.y / this.cellSize);
+                if (!this.isPosInStartRoom(cellX, cellY)) {
+                    if (this.endPos && this.endPos.x === cellX && this.endPos.y === cellY) {
+                        this.endPos = null;
+                    }
+                    this.ghosts = this.ghosts.filter(g => g.x !== cellX || g.y !== cellY);
+                    this.items = this.items.filter(i => i.x !== cellX || i.y !== cellY);
+                }
+                this.drawEditor();
+            }
+
+            handleCanvasClick(e) {
+                if (this.state !== 'playing' || this.editor.active) return;
+                this.stopAutoMove();
+
+                const pos = this.getMousePos(e);
+                const targetX = Math.floor(pos.x / this.cellSize);
+                const targetY = Math.floor(pos.y / this.cellSize);
+
+                if (targetX < 0 || targetX >= this.width || targetY < 0 || targetY >= this.height) return;
+                
+                const dx = targetX - this.player.x;
+                const dy = targetY - this.player.y;
+
+                if (Math.abs(dx) + Math.abs(dy) === 1) {
+                    this.movePlayer(dx, dy);
+                    return;
+                }
+
+                if (!this.seenCells[targetY][targetX] && !this.debugVision) return;
+
+                const path = this.findPlayerPath(this.player, {x: targetX, y: targetY});
+                
+                if (path && path.length > 1) {
+                    let currentStep = 1;
+                    const move = () => {
+                        if (currentStep >= path.length || this.state !== 'playing') {
+                            this.stopAutoMove();
+                            return;
+                        }
+                        const nextPos = path[currentStep];
+                        const dx = nextPos.x - this.player.x;
+                        const dy = nextPos.y - this.player.y;
+                        this.movePlayer(dx, dy);
+                        currentStep++;
+                    };
+                    move(); // First move is instant
+                    if (path.length > 2) {
+                        this.autoMoveInterval = setInterval(move, 200);
+                    }
+                }
+            }
+
+            stopAutoMove() {
+                if (this.autoMoveInterval) {
+                    clearInterval(this.autoMoveInterval);
+                    this.autoMoveInterval = null;
+                }
+            }
+
+            handleCanvasMouseDown(e) {
+                if (!this.editor.active) return;
+                
+                this.editor.isDragging = true;
+                this.editor.didDrag = false;
+
+                const pos = this.getMousePos(e);
+
+                if (this.editor.tool === 'wall') {
+                    const wall = this.getWallAtPos(pos.x, pos.y);
+                    if (wall && this.isWallEditable(wall)) {
+                        this.editor.dragAxis = wall.type;
+                        this.toggleWall(wall);
+                        this.editor.lastDragPos = wall;
+                    } else {
+                        this.editor.dragAxis = null;
+                    }
+                } else if (this.editor.tool === 'eraser') {
+                    this.eraseAtPos(pos);
+                }
+            }
+
+            handleCanvasMouseMove(e) {
+                if (!this.editor.active) return;
+
+                if (!this.editor.isDragging) {
+                    if (this.editor.tool === 'wall' || this.editor.tool === 'door' || this.editor.tool === 'lock') {
+                        const pos = this.getMousePos(e);
+                        const wall = this.getWallAtPos(pos.x, pos.y);
+                        if (wall && this.isWallEditable(wall)) {
+                            if (!this.editor.hoveredWall || this.editor.hoveredWall.x !== wall.x || this.editor.hoveredWall.y !== wall.y || this.editor.hoveredWall.type !== wall.type) {
+                                this.editor.hoveredWall = wall;
+                                this.drawEditor();
+                            }
+                        } else if (this.editor.hoveredWall) {
+                            this.editor.hoveredWall = null;
+                            this.drawEditor();
+                        }
+                    }
+                    return;
+                }
+
+                this.editor.didDrag = true;
+                this.editor.hoveredWall = null;
+
+                if (this.editor.tool === 'wall' && this.editor.dragAxis) {
+                    const pos = this.getMousePos(e);
+                    let wall;
+                    if (this.editor.dragAxis === 'h') {
+                        const x = Math.floor(pos.x / this.cellSize);
+                        const y = this.editor.lastDragPos.y;
+                        wall = { type: 'h', x, y };
+                    } else {
+                        const y = Math.floor(pos.y / this.cellSize);
+                        const x = this.editor.lastDragPos.x;
+                        wall = { type: 'v', x, y };
+                    }
+                    
+                    if (wall && this.isWallEditable(wall) && (wall.x !== this.editor.lastDragPos.x || wall.y !== this.editor.lastDragPos.y)) {
+                        if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 1, keys: 0 };
+                        else this.vWalls[wall.y][wall.x] = { type: 1, keys: 0 };
+                        this.drawEditor();
+                        this.editor.lastDragPos = wall;
+                    }
+                } else if (this.editor.tool === 'eraser') {
+                    this.eraseAtPos(this.getMousePos(e));
+                }
+            }
+            
+            handleCanvasMouseUp(e) {
+                if (!this.editor.active) return;
+
+                if (this.editor.isDragging && !this.editor.didDrag) {
+                    const pos = this.getMousePos(e);
+                    const cellX = Math.floor(pos.x / this.cellSize);
+                    const cellY = Math.floor(pos.y / this.cellSize);
+                    
+                    const wall = this.getWallAtPos(pos.x, pos.y);
+                    if (wall && this.isWallEditable(wall)) {
+                        if (this.editor.tool === 'door') {
+                            if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 2, keys: 0 };
+                            else this.vWalls[wall.y][wall.x] = { type: 2, keys: 0 };
+                        } else if (this.editor.tool === 'lock') {
+                            const numStr = prompt('请输入锁需要的钥匙数量:', '0');
+                            if (numStr !== null) {
+                                const keys = parseInt(numStr);
+                                if (!isNaN(keys) && keys >= 0) {
+                                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 3, keys: keys };
+                                    else this.vWalls[wall.y][wall.x] = { type: 3, keys: keys };
+                                } else {
+                                    this.showToast('请输入一个有效的非负整数。', 3000, 'error');
+                                }
+                            }
+                        }
+                    }
+
+                    if (!this.isPosInStartRoom(cellX, cellY)) {
+                        const existingItemIndex = this.items.findIndex(i => i.x === cellX && i.y === cellY);
+                        const isOccupied = this.isCellOccupiedInEditor(cellX, cellY);
+
+                        switch (this.editor.tool) {
+                            case 'end':
+                                if (!isOccupied || (this.endPos && this.endPos.x === cellX && this.endPos.y === cellY)) {
+                                    this.endPos = { x: cellX, y: cellY };
+                                }
+                                break;
+                            case 'ghost':
+                                const existingGhostIndex = this.ghosts.findIndex(g => g.x === cellX && g.y === cellY);
+                                if (existingGhostIndex > -1) {
+                                    this.ghosts.splice(existingGhostIndex, 1);
+                                } else if (!isOccupied) {
+                                    this.ghosts.push({ x: cellX, y: cellY });
+                                }
+                                break;
+                            case 'key':
+                                if (existingItemIndex > -1 && this.items[existingItemIndex].type === 'key') {
+                                    this.items.splice(existingItemIndex, 1);
+                                } else if (!isOccupied) {
+                                    this.items.push({ x: cellX, y: cellY, type: 'key' });
+                                }
+                                break;
+                        }
+                    }
+                    this.drawEditor();
+                }
+                
+                this.editor.isDragging = false;
+                this.editor.didDrag = false;
+                this.editor.dragAxis = null;
+                this.editor.lastDragPos = null;
+            }
+            
+            handleCanvasMouseLeave(e) {
+                if (this.editor.hoveredWall) {
+                    this.editor.hoveredWall = null;
+                    this.drawEditor();
+                }
+                this.editor.isDragging = false;
+                this.editor.didDrag = false;
+                this.editor.dragAxis = null;
+                this.editor.lastDragPos = null;
+            }
+            
+            getWallAtPos(mouseX, mouseY) {
+                const cs = this.cellSize;
+                const tolerance = cs / 5;
+                const gridX = mouseX / cs;
+                const gridY = mouseY / cs;
+                const x = Math.floor(gridX);
+                const y = Math.floor(gridY);
+                
+                const nearHorizontal = Math.abs(gridY - Math.round(gridY)) * cs < tolerance;
+                const nearVertical = Math.abs(gridX - Math.round(gridX)) * cs < tolerance;
+                
+                if (nearHorizontal && !nearVertical) {
+                    return { type: 'h', x: x, y: Math.round(gridY) };
+                }
+                if (nearVertical && !nearHorizontal) {
+                    return { type: 'v', x: Math.round(gridX), y: y };
+                }
+                return null;
+            }
+            
+            toggleWall(wall) {
+                const {x, y, type} = wall;
+                if (type === 'h' && y >= 0 && y <= this.height && x >= 0 && x < this.width) {
+                    this.hWalls[y][x].type = this.hWalls[y][x].type === 1 ? 0 : 1;
+                } else if (type === 'v' && x >= 0 && x <= this.width && y >= 0 && y < this.height) {
+                    this.vWalls[y][x].type = this.vWalls[y][x].type === 1 ? 0 : 1;
+                }
+                this.drawEditor();
+            }
+
+            // ==================================================
+            //  UTILITIES (Pathfinding, Share Code)
+            // ==================================================
+            
+            calculateDistances(startNode) {
+                const distances = Array(this.height).fill(null).map(() => Array(this.width).fill(Infinity));
+                const queue = [{ x: startNode.x, y: startNode.y, dist: 0 }];
+                distances[startNode.y][startNode.x] = 0;
+
+                while (queue.length > 0) {
+                    const { x, y, dist } = queue.shift();
+                    
+                    const neighbors = [ {dx:0, dy:-1}, {dx:1, dy:0}, {dx:0, dy:1}, {dx:-1, dy:0} ];
+                    for (const {dx, dy} of neighbors) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        
+                        if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height) {
+                            if (dx === 1 && (this.vWalls[y][x + 1].type === 1 || this.vWalls[y][x + 1].type === 3)) continue;
+                            if (dx === -1 && (this.vWalls[y][x].type === 1 || this.vWalls[y][x].type === 3)) continue;
+                            if (dy === 1 && (this.hWalls[y + 1][x].type === 1 || this.hWalls[y + 1][x].type === 3)) continue;
+                            if (dy === -1 && (this.hWalls[y][x].type === 1 || this.hWalls[y][x].type === 3)) continue;
+                            
+                            if (distances[ny][nx] === Infinity) {
+                                distances[ny][nx] = dist + 1;
+                                queue.push({ x: nx, y: ny, dist: dist + 1 });
+                            }
+                        }
+                    }
+                }
+                return distances;
+            }
+            
+            findShortestPath(start, end) {
+                const queue = [[{x: start.x, y: start.y}]];
+                const visited = new Set([`${start.x},${start.y}`]);
+
+                while (queue.length > 0) {
+                    const path = queue.shift();
+                    const { x, y } = path[path.length - 1];
+
+                    if (x === end.x && y === end.y) {
+                        return path;
+                    }
+
+                    const neighbors = [ {dx:0, dy:-1}, {dx:1, dy:0}, {dx:0, dy:1}, {dx:-1, dy:0} ];
+                    for (const {dx, dy} of neighbors) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        const key = `${nx},${ny}`;
+
+                        if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height && !visited.has(key)) {
+                            if (dx === 1 && this.vWalls[y][x + 1].type > 0) continue;
+                            if (dx === -1 && this.vWalls[y][x].type > 0) continue;
+                            if (dy === 1 && this.hWalls[y + 1][x].type > 0) continue;
+                            if (dy === -1 && this.hWalls[y][x].type > 0) continue;
+                            
+                            visited.add(key);
+                            const newPath = [...path, {x: nx, y: ny}];
+                            queue.push(newPath);
+                        }
+                    }
+                }
+                return null;
+            }
+
+            findPlayerPath(start, end) {
+                const queue = [[{x: start.x, y: start.y}]];
+                const visited = new Set([`${start.x},${start.y}`]);
+
+                while (queue.length > 0) {
+                    const path = queue.shift();
+                    const { x, y } = path[path.length - 1];
+
+                    if (x === end.x && y === end.y) {
+                        return path;
+                    }
+
+                    const neighbors = [ {dx:0, dy:-1}, {dx:1, dy:0}, {dx:0, dy:1}, {dx:-1, dy:0} ];
+                    for (const {dx, dy} of neighbors) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        const key = `${nx},${ny}`;
+
+                        if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height && !visited.has(key)) {
+                            if (!this.seenCells[ny][nx] && !this.debugVision) continue;
+                            if (dx === 1 && (this.vWalls[y][x + 1].type === 1 || this.vWalls[y][x + 1].type === 3)) continue;
+                            if (dx === -1 && (this.vWalls[y][x].type === 1 || this.vWalls[y][x].type === 3)) continue;
+                            if (dy === 1 && (this.hWalls[y + 1][x].type === 1 || this.hWalls[y + 1][x].type === 3)) continue;
+                            if (dy === -1 && (this.hWalls[y][x].type === 1 || this.hWalls[y][x].type === 3)) continue;
+                            
+                            visited.add(key);
+                            const newPath = [...path, {x: nx, y: ny}];
+                            queue.push(newPath);
+                        }
+                    }
+                }
+                return null;
+            }           
+            
+            generateShareCode(isEditor = false) {
+                try {
+                    let mapSource;
+                    if (isEditor) {
+                        // 在编辑器模式下，打包当前编辑器的实时状态
+                        mapSource = {
+                            width: this.width, height: this.height,
+                            hWalls: this.hWalls, vWalls: this.vWalls,
+                            endPos: this.endPos,
+                            ghosts: this.ghosts,
+                            items: this.items
+                        };
+                    } else {
+                        // 在游戏模式下，打包原始的 mapData
+                        if (!this.mapData) return null;
+                        mapSource = {
+                            width: this.mapData.width, height: this.mapData.height,
+                            hWalls: this.mapData.hWalls, vWalls: this.mapData.vWalls,
+                            endPos: this.mapData.endPos,
+                            ghosts: this.mapData.initialGhosts,
+                            items: this.mapData.items
+                        };
+                    }
+
+                    // 新格式: [头部信息]|[墙壁数据]|[实体数据]
+
+                    // 1. 头部信息: 宽度x高度 (例如 "10x10")
+                    const header = `${mapSource.width}x${mapSource.height}`;
+
+                    // 2. 墙壁数据: 将所有墙壁状态压缩成一个长字符串
+                    let wallData = '';
+                    const wallToString = (wall) => {
+                        if (wall.type === 3) return `L${wall.keys}`; // L for Lock
+                        return wall.type.toString(); // 0, 1, 2
+                    };
+                    mapSource.hWalls.forEach(row => row.forEach(wall => wallData += wallToString(wall)));
+                    mapSource.vWalls.forEach(row => row.forEach(wall => wallData += wallToString(wall)));
+
+                    // 3. 实体数据: E for End, G for Ghost, K for Key
+                    let entityData = [];
+                    if (mapSource.endPos) {
+                        entityData.push(`E${mapSource.endPos.x},${mapSource.endPos.y}`);
+                    }
+                    if (mapSource.ghosts) {
+                        mapSource.ghosts.forEach(g => entityData.push(`G${g.x},${g.y}`));
+                    }
+                    if (mapSource.items) {
+                        mapSource.items.forEach(i => {
+                            if (i.type === 'key') entityData.push(`K${i.x},${i.y}`);
+                        });
+                    }
+                    
+                    const finalString = `${header}|${wallData}|${entityData.join(';')}`;
+                    
+                    // 最后进行btoa编码，确保可以安全地在任何地方粘贴
+                    return btoa(finalString);
+
+                } catch (e) {
+                    console.error("Error generating compact share code:", e);
+                    return null;
+                }
+            }
+
+            loadFromShareCode(code, isEditor = false) {
+                if (!code) {
+                    this.showToast('请输入分享码。', 3000, 'error');
+                    return;
+                }
+                try {
+                    const decodedString = atob(code);
+                    const parts = decodedString.split('|');
+                    if (parts.length !== 3) throw new Error("Invalid code format");
+
+                    const [header, wallData, entityData] = parts;
+
+                    // 1. 解析头部
+                    const [width, height] = header.split('x').map(Number);
+                    if (isNaN(width) || isNaN(height)) throw new Error("Invalid map dimensions");
+
+                    // 2. 解析墙壁数据
+                    const hWalls = Array(height + 1).fill(null).map(() => Array(width).fill(null));
+                    const vWalls = Array(height).fill(null).map(() => Array(width + 1).fill(null));
+                    
+                    let wallIndex = 0;
+                    const parseWall = () => {
+                        const char = wallData[wallIndex];
+                        if (char === 'L') {
+                            // 锁，需要读取后面的数字
+                            const keyCount = parseInt(wallData[wallIndex + 1]);
+                            wallIndex += 2;
+                            return { type: 3, keys: keyCount };
+                        } else {
+                            wallIndex += 1;
+                            return { type: parseInt(char), keys: 0 };
+                        }
+                    };
+
+                    for (let y = 0; y <= height; y++) {
+                        for (let x = 0; x < width; x++) { hWalls[y][x] = parseWall(); }
+                    }
+                    for (let y = 0; y < height; y++) {
+                        for (let x = 0; x <= width; x++) { vWalls[y][x] = parseWall(); }
+                    }
+
+                    // 3. 解析实体数据
+                    let endPos = null;
+                    const initialGhosts = [];
+                    const items = [];
+                    if (entityData) {
+                        entityData.split(';').forEach(item => {
+                            if (!item) return; // 处理末尾可能出现的空字符串
+                            const type = item[0];
+                            const coords = item.substring(1).split(',').map(Number);
+                            const [x, y] = coords;
+
+                            switch (type) {
+                                case 'E': endPos = { x, y }; break;
+                                case 'G': initialGhosts.push({ x, y }); break;
+                                case 'K': items.push({ x, y, type: 'key' }); break;
+                            }
+                        });
+                    }
+                    
+                    const mapData = { width, height, hWalls, vWalls, endPos, initialGhosts, items };
+
+                    if (isEditor) {
+                        this.width = mapData.width;
+                        this.height = mapData.height;
+                        this.editorMapSizeInput.value = this.width;
+                        this.cellSize = canvas.width / this.width;
+                        this.hWalls = mapData.hWalls;
+                        this.vWalls = mapData.vWalls;
+                        this.endPos = mapData.endPos;
+                        this.ghosts = mapData.initialGhosts || [];
+                        this.items = mapData.items || [];
+                        this.drawEditor();
+                    } else {
+                        this.startGame(mapData);
+                    }
+
+                } catch (e) {
+                    console.error("Error loading from compact share code:", e);
+                    this.showToast('加载分享码失败，格式不正确或已损坏。', 3000, 'error');
+                }
+            }
+
+            copyShareCode(isEditor = false) {
+                const code = this.generateShareCode(isEditor);
+                if (code) {
+                    navigator.clipboard.writeText(code).then(() => {
+                        this.showToast('分享码已复制到剪贴板！', 2000, 'success');
+                    }, () => {
+                        this.showToast('复制分享码失败。', 3000, 'error');
+                    });
+                } else {
+                    this.showToast('无法生成分享码，请先创建地图。', 3000, 'error');
+                }
+            }
+
+            
+        }
+
+        const game = new GhostMazeGame();
+    });
+    </script>
+</body>
+</html>
