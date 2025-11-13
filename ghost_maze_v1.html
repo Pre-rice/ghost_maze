@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鬼迷宫</title>
-    <style>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>鬼迷宫</title>
+        <style>
         :root {
             --bg-color: #f0f2f5;
             --danger-bg-color: #680e0e;
@@ -414,141 +414,152 @@
     display: none !important;
 }
     </style>
-</head>
-<body>
+    </head>
+    <body>
 
-    <div class="main-container">
-        <canvas id="game-canvas" width="600" height="600"></canvas>
-        
-        <div class="controls-panel">
-            <!-- Game Mode UI -->
-            <div id="game-controls">
-                <div class="control-group">
-                    <h3>状态</h3>
-                    <div class="status-bar">
-                        <div id="player-health-display" class="label">生命: 5</div>
-                        <div id="player-keys-display" class="label">钥匙: 0</div>
-                        <div id="ghost-proximity-display" class="label">周围鬼数: 0</div>
+        <div class="main-container">
+            <canvas id="game-canvas" width="600" height="600"></canvas>
+
+            <div class="controls-panel">
+                <!-- Game Mode UI -->
+                <div id="game-controls">
+                    <div class="control-group">
+                        <h3>状态</h3>
+                        <div class="status-bar">
+                            <div id="player-health-display" class="label">生命:
+                                5</div>
+                            <div id="player-keys-display" class="label">钥匙:
+                                0</div>
+                            <div id="ghost-proximity-display"
+                                class="label">周围鬼数: 0</div>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <h3>地图选项</h3>
+                        <label for="map-size-input">地图大小 (8-20):</label>
+                        <input type="number" id="map-size-input" value="10"
+                            min="8" max="20">
+                        <button id="generate-map-btn">随机生成新地图</button>
+                    </div>
+                    <div class="control-group">
+                        <h3>分享</h3>
+                        <div class="share-area">
+                            <input type="text" id="share-code-input"
+                                placeholder="在此粘贴分享码">
+                            <button id="load-share-code-btn">加载</button>
+                        </div>
+                        <button id="copy-share-code-btn">复制分享码</button>
+                    </div>
+                    <div class="control-group">
+                        <h3>控制</h3>
+                        <button id="reset-map-btn"
+                            class="secondary">重置地图</button>
+                        <div class="toggle-controls-wrapper">
+                            <div class="toggle-switch">
+                                <span class="label">调试视野</span>
+                                <input type="checkbox" id="debug-vision-toggle">
+                                <label for="debug-vision-toggle">Toggle</label>
+                            </div>
+                            <div id="dpad-toggle-container"
+                                class="toggle-switch">
+                                <span class="label">方向按键</span>
+                                <input type="checkbox" id="dpad-toggle" checked>
+                                <label for="dpad-toggle">Toggle</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <h3>编辑器</h3>
+                        <button id="edit-map-btn">编辑地图</button>
                     </div>
                 </div>
-                <div class="control-group">
-                    <h3>地图选项</h3>
-                    <label for="map-size-input">地图大小 (8-20):</label>
-                    <input type="number" id="map-size-input" value="10" min="8" max="20">
-                    <button id="generate-map-btn">随机生成新地图</button>
-                </div>
-                <div class="control-group">
-                    <h3>分享</h3>
-                    <div class="share-area">
-                        <input type="text" id="share-code-input" placeholder="在此粘贴分享码">
-                        <button id="load-share-code-btn">加载</button>
-                    </div>
-                    <button id="copy-share-code-btn">复制分享码</button>
-                </div>
-                 <div class="control-group">
-                    <h3>控制</h3>
-                    <button id="reset-map-btn" class="secondary">重置地图</button>
-                    <div class="toggle-controls-wrapper">
-<div class="toggle-switch">
-<span class="label">调试视野</span>
-<input type="checkbox" id="debug-vision-toggle">
-<label for="debug-vision-toggle">Toggle</label>
-</div>
-<div id="dpad-toggle-container" class="toggle-switch">
-<span class="label">方向按键</span>
-<input type="checkbox" id="dpad-toggle" checked>
-<label for="dpad-toggle">Toggle</label>
-</div>
-</div>
-                </div>
-                <div class="control-group">
-                    <h3>编辑器</h3>
-                    <button id="edit-map-btn">编辑地图</button>
-                </div>
-            </div>
 
-            <!-- Editor Mode UI -->
-            <div id="editor-controls" style="display: none;">
-                <div class="control-group">
-                    <h3>编辑器工具</h3>
-                    <div class="editor-toolbar">
-                        <button id="tool-wall" class="tool-btn active">编辑墙壁</button>
-                        <button id="tool-door" class="tool-btn">放置门</button>
-                        <button id="tool-lock" class="tool-btn">放置锁</button>
-                        <button id="tool-key" class="tool-btn">放置钥匙</button>
-                        <button id="tool-end" class="tool-btn">放置终点</button>
-                        <button id="tool-ghost" class="tool-btn">放置鬼</button>
-                        <button id="tool-eraser" class="tool-btn">橡皮擦</button>
+                <!-- Editor Mode UI -->
+                <div id="editor-controls" style="display: none;">
+                    <div class="control-group">
+                        <h3>编辑器工具</h3>
+                        <div class="editor-toolbar">
+                            <button id="tool-wall"
+                                class="tool-btn active">编辑墙壁</button>
+                            <button id="tool-door" class="tool-btn">放置门</button>
+                            <button id="tool-lock" class="tool-btn">放置锁</button>
+                            <button id="tool-key" class="tool-btn">放置钥匙</button>
+                            <button id="tool-end" class="tool-btn">放置终点</button>
+                            <button id="tool-ghost"
+                                class="tool-btn">放置鬼</button>
+                            <button id="tool-eraser"
+                                class="tool-btn">橡皮擦</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <h3>地图选项</h3>
+                        <label for="editor-map-size-input">地图大小 (8-20):</label>
+                        <input type="number" id="editor-map-size-input"
+                            value="10" min="8" max="20">
+                    </div>
+                    <div class="control-group">
+                        <h3>控制</h3>
+                        <button id="play-edited-map-btn">游玩地图</button>
+                        <button id="clear-map-btn" class="danger">清空地图</button>
+                    </div>
+                    <div class="control-group">
+                        <h3>分享</h3>
+                        <div class="share-area">
+                            <input type="text" id="editor-share-code-input"
+                                placeholder="在此粘贴分享码">
+                            <button id="editor-load-share-code-btn">加载</button>
+                        </div>
+                        <button id="editor-copy-share-code-btn">复制分享码</button>
                     </div>
                 </div>
-                 <div class="control-group">
-                    <h3>地图选项</h3>
-                    <label for="editor-map-size-input">地图大小 (8-20):</label>
-                    <input type="number" id="editor-map-size-input" value="10" min="8" max="20">
-                </div>
-                <div class="control-group">
-                    <h3>控制</h3>
-                    <button id="play-edited-map-btn">游玩地图</button>
-                    <button id="clear-map-btn" class="danger">清空地图</button>
-                </div>
-                 <div class="control-group">
-                    <h3>分享</h3>
-                    <div class="share-area">
-                        <input type="text" id="editor-share-code-input" placeholder="在此粘贴分享码">
-                        <button id="editor-load-share-code-btn">加载</button>
-                    </div>
-                    <button id="editor-copy-share-code-btn">复制分享码</button>
+            </div>
+        </div>
+
+        <!-- Overlays -->
+        <div id="death-overlay" class="overlay">
+            <div class="overlay-content">
+                <h2 id="death-message">你死了</h2>
+                <div class="buttons">
+                    <button id="revive-btn">复活</button>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Overlays -->
-    <div id="death-overlay" class="overlay">
-        <div class="overlay-content">
-            <h2 id="death-message">你死了</h2>
-            <div class="buttons">
-                <button id="revive-btn">复活</button>
+        <div id="game-over-overlay" class="overlay">
+            <div class="overlay-content">
+                <h2>你死了，游戏结束</h2>
+                <div class="buttons">
+                    <button id="game-over-replay-btn">再次游玩该地图</button>
+                    <button id="game-over-new-map-btn">游玩新地图</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div id="game-over-overlay" class="overlay">
-        <div class="overlay-content">
-            <h2>你死了，游戏结束</h2>
-            <div class="buttons">
-                <button id="game-over-replay-btn">再次游玩该地图</button>
-                <button id="game-over-new-map-btn">游玩新地图</button>
+        <div id="win-overlay" class="overlay">
+            <div class="overlay-content">
+                <h2>你赢了！</h2>
+                <div class="buttons">
+                    <button id="win-replay-btn">再次游玩该地图</button>
+                    <button id="win-new-map-btn">游玩新地图</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div id="win-overlay" class="overlay">
-        <div class="overlay-content">
-            <h2>你赢了！</h2>
-            <div class="buttons">
-                <button id="win-replay-btn">再次游玩该地图</button>
-                <button id="win-new-map-btn">游玩新地图</button>
+        <!-- Custom Confirm Overlay -->
+        <div id="confirm-overlay" class="overlay">
+            <div class="overlay-content">
+                <p id="confirm-message">你确定吗？</p>
+                <div class="buttons">
+                    <button id="confirm-yes-btn" class="danger">确认</button>
+                    <button id="confirm-no-btn" class="secondary">取消</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- Custom Confirm Overlay -->
-    <div id="confirm-overlay" class="overlay">
-        <div class="overlay-content">
-            <p id="confirm-message">你确定吗？</p>
-            <div class="buttons">
-                <button id="confirm-yes-btn" class="danger">确认</button>
-                <button id="confirm-no-btn" class="secondary">取消</button>
-            </div>
-        </div>
-    </div>
+        <!-- Toast Notification -->
+        <div id="toast-notification" class="toast"></div>
 
-    <!-- Toast Notification -->
-    <div id="toast-notification" class="toast"></div>
-
-
-    <script>
+        <script>
     document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
@@ -1874,8 +1885,15 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     const wall = this.getWallAtPos(pos.x, pos.y);
                     if (wall && this.isWallEditable(wall)) {
                         if (this.editor.tool === 'door') {
-                            if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 2, keys: 0 };
-                            else this.vWalls[wall.y][wall.x] = { type: 2, keys: 0 };
+                            // 新增的切换逻辑
+                            if (wall.type === 'h') {
+                                const currentType = this.hWalls[wall.y][wall.x].type;
+                                // 如果当前是门(2)，则变为空白(0)，否则变为门(2)
+                                this.hWalls[wall.y][wall.x] = { type: currentType === 2 ? 0 : 2, keys: 0 };
+                            } else {
+                                const currentType = this.vWalls[wall.y][wall.x].type;
+                                this.vWalls[wall.y][wall.x] = { type: currentType === 2 ? 0 : 2, keys: 0 };
+                            }
                         } else if (this.editor.tool === 'lock') {
                             const numStr = prompt('请输入锁需要的钥匙数量:', '0');
                             if (numStr !== null) {
@@ -2232,11 +2250,11 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
         const game = new GhostMazeGame();
     });
     </script>
-    <div id="dpad-controls" style="display: none;">
-        <div id="dpad-up" class="dpad-btn">▲</div>
-        <div id="dpad-left" class="dpad-btn">◀</div>
-        <div id="dpad-right" class="dpad-btn">▶</div>
-        <div id="dpad-down" class="dpad-btn">▼</div>
-    </div>
-</body>
+        <div id="dpad-controls" style="display: none;">
+            <div id="dpad-up" class="dpad-btn">▲</div>
+            <div id="dpad-left" class="dpad-btn">◀</div>
+            <div id="dpad-right" class="dpad-btn">▶</div>
+            <div id="dpad-down" class="dpad-btn">▼</div>
+        </div>
+    </body>
 </html>
