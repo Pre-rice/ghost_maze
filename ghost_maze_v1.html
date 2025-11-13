@@ -558,7 +558,7 @@
 
         <!-- Toast Notification -->
         <div id="toast-notification" class="toast"></div>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
         <script>
     document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('game-canvas');
@@ -2089,126 +2089,83 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 try {
                     let mapSource;
                     if (isEditor) {
-                        // 在编辑器模式下，打包当前编辑器的实时状态
                         mapSource = {
-                            width: this.width, height: this.height,
-                            hWalls: this.hWalls, vWalls: this.vWalls,
-                            endPos: this.endPos,
-                            ghosts: this.ghosts,
-                            items: this.items
+                            w: this.width, h: this.height,
+                            hw: this.hWalls, vw: this.vWalls,
+                            e: this.endPos,
+                            g: this.ghosts,
+                            i: this.items
                         };
                     } else {
-                        // 在游戏模式下，打包原始的 mapData
                         if (!this.mapData) return null;
                         mapSource = {
-                            width: this.mapData.width, height: this.mapData.height,
-                            hWalls: this.mapData.hWalls, vWalls: this.mapData.vWalls,
-                            endPos: this.mapData.endPos,
-                            ghosts: this.mapData.initialGhosts,
-                            items: this.mapData.items
+                            w: this.mapData.width, h: this.mapData.height,
+                            hw: this.mapData.hWalls, vw: this.mapData.vWalls,
+                            e: this.mapData.endPos,
+                            g: this.mapData.initialGhosts,
+                            i: this.mapData.items
                         };
                     }
 
-                    // 新格式: [头部信息]|[墙壁数据]|[实体数据]
+                    // 1. 将地图对象序列化为 JSON 字符串
+                    const jsonString = JSON.stringify(mapSource);
 
-                    // 1. 头部信息: 宽度x高度 (例如 "10x10")
-                    const header = `${mapSource.width}x${mapSource.height}`;
+                    // 2. 使用 pako (zlib) 压缩 JSON 字符串
+                    //    pako.deflate 返回的是一个 Uint8Array (二进制数组)
+                    const compressedData = pako.deflate(jsonString);
 
-                    // 2. 墙壁数据: 将所有墙壁状态压缩成一个长字符串
-                    let wallData = '';
-                    const wallToString = (wall) => {
-                        if (wall.type === 3) return `L${wall.keys}`; // L for Lock
-                        return wall.type.toString(); // 0, 1, 2
-                    };
-                    mapSource.hWalls.forEach(row => row.forEach(wall => wallData += wallToString(wall)));
-                    mapSource.vWalls.forEach(row => row.forEach(wall => wallData += wallToString(wall)));
-
-                    // 3. 实体数据: E for End, G for Ghost, K for Key
-                    let entityData = [];
-                    if (mapSource.endPos) {
-                        entityData.push(`E${mapSource.endPos.x},${mapSource.endPos.y}`);
-                    }
-                    if (mapSource.ghosts) {
-                        mapSource.ghosts.forEach(g => entityData.push(`G${g.x},${g.y}`));
-                    }
-                    if (mapSource.items) {
-                        mapSource.items.forEach(i => {
-                            if (i.type === 'key') entityData.push(`K${i.x},${i.y}`);
-                        });
-                    }
+                    // 3. 将二进制数据转换为 Base64 字符串
+                    //    btoa() 需要一个字符串，所以我们先将每个字节转换为字符
+                    const binaryString = String.fromCharCode.apply(null, compressedData);
+                    const shareCode = btoa(binaryString);
                     
-                    const finalString = `${header}|${wallData}|${entityData.join(';')}`;
-                    
-                    // 最后进行btoa编码，确保可以安全地在任何地方粘贴
-                    return btoa(finalString);
+                    return shareCode;
 
                 } catch (e) {
-                    console.error("Error generating compact share code:", e);
+                    console.error("Error generating compressed share code:", e);
+                    this.showToast('生成分享码失败。', 3000, 'error');
                     return null;
                 }
             }
 
+            /**
+             * [新] 从高度压缩的分享码加载地图
+             * 流程: Base64解码 -> Inflate解压 -> JSON解析 -> 对象
+             */
             loadFromShareCode(code, isEditor = false) {
                 if (!code) {
                     this.showToast('请输入分享码。', 3000, 'error');
                     return;
                 }
                 try {
-                    const decodedString = atob(code);
-                    const parts = decodedString.split('|');
-                    if (parts.length !== 3) throw new Error("Invalid code format");
+                    // 1. Base64 解码为二进制字符串
+                    const binaryString = atob(code);
+                    const len = binaryString.length;
+                    const bytes = new Uint8Array(len);
+                    for (let i = 0; i < len; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
 
-                    const [header, wallData, entityData] = parts;
+                    // 2. 使用 pako (zlib) 解压缩二进制数据为 JSON 字符串
+                    const jsonString = pako.inflate(bytes, { to: 'string' });
 
-                    // 1. 解析头部
-                    const [width, height] = header.split('x').map(Number);
-                    if (isNaN(width) || isNaN(height)) throw new Error("Invalid map dimensions");
+                    // 3. 将 JSON 字符串解析回地图对象
+                    const data = JSON.parse(jsonString);
 
-                    // 2. 解析墙壁数据
-                    const hWalls = Array(height + 1).fill(null).map(() => Array(width).fill(null));
-                    const vWalls = Array(height).fill(null).map(() => Array(width + 1).fill(null));
-                    
-                    let wallIndex = 0;
-                    const parseWall = () => {
-                        const char = wallData[wallIndex];
-                        if (char === 'L') {
-                            // 锁，需要读取后面的数字
-                            const keyCount = parseInt(wallData[wallIndex + 1]);
-                            wallIndex += 2;
-                            return { type: 3, keys: keyCount };
-                        } else {
-                            wallIndex += 1;
-                            return { type: parseInt(char), keys: 0 };
-                        }
+                    // 验证数据基本结构
+                    if (!data.w || !data.h || !data.hw || !data.vw) {
+                        throw new Error("Invalid map data structure");
+                    }
+
+                    const mapData = {
+                        width: data.w,
+                        height: data.h,
+                        hWalls: data.hw,
+                        vWalls: data.vw,
+                        endPos: data.e || null,
+                        initialGhosts: data.g || [],
+                        items: data.i || []
                     };
-
-                    for (let y = 0; y <= height; y++) {
-                        for (let x = 0; x < width; x++) { hWalls[y][x] = parseWall(); }
-                    }
-                    for (let y = 0; y < height; y++) {
-                        for (let x = 0; x <= width; x++) { vWalls[y][x] = parseWall(); }
-                    }
-
-                    // 3. 解析实体数据
-                    let endPos = null;
-                    const initialGhosts = [];
-                    const items = [];
-                    if (entityData) {
-                        entityData.split(';').forEach(item => {
-                            if (!item) return; // 处理末尾可能出现的空字符串
-                            const type = item[0];
-                            const coords = item.substring(1).split(',').map(Number);
-                            const [x, y] = coords;
-
-                            switch (type) {
-                                case 'E': endPos = { x, y }; break;
-                                case 'G': initialGhosts.push({ x, y }); break;
-                                case 'K': items.push({ x, y, type: 'key' }); break;
-                            }
-                        });
-                    }
-                    
-                    const mapData = { width, height, hWalls, vWalls, endPos, initialGhosts, items };
 
                     if (isEditor) {
                         this.width = mapData.width;
@@ -2218,15 +2175,16 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                         this.hWalls = mapData.hWalls;
                         this.vWalls = mapData.vWalls;
                         this.endPos = mapData.endPos;
-                        this.ghosts = mapData.initialGhosts || [];
-                        this.items = mapData.items || [];
+                        this.ghosts = mapData.initialGhosts; // 在编辑器里也用 initialGhosts
+                        this.items = mapData.items;
                         this.drawEditor();
                     } else {
                         this.startGame(mapData);
                     }
+                    this.showToast('地图加载成功！', 2000, 'success');
 
                 } catch (e) {
-                    console.error("Error loading from compact share code:", e);
+                    console.error("Error loading from compressed share code:", e);
                     this.showToast('加载分享码失败，格式不正确或已损坏。', 3000, 'error');
                 }
             }
