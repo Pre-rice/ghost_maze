@@ -1,0 +1,18 @@
+<!-- ... 这是您现有的 <script> 标签 ... -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // ... 您所有的游戏JS代码 ...
+        });
+    </script>
+
+    <!-- ▼▼▼ 在这里粘贴下面的新代码 ▼▼▼ -->
+    <div id="dpad-controls">
+        <div id="dpad-up" class="dpad-btn">▲</div>
+        <div id="dpad-left" class="dpad-btn">◀</div>
+        <div id="dpad-right" class="dpad-btn">▶</div>
+        <div id="dpad-down" class="dpad-btn">▼</div>
+    </div>
+    <!-- ▲▲▲ 新代码粘贴结束 ▲▲▲ -->
+
+</body>
+</html>
