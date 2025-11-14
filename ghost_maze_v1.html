@@ -425,12 +425,13 @@
                 <div id="game-controls">
                     <div class="control-group">
                         <h3>状态</h3>
-                        <div class="status-bar">
+                        <div class="status-bar status-bar-fixed">
                             <div id="player-health-display" class="label">生命:
                                 5</div>
                             <div id="player-keys-display" class="label">钥匙:
                                 0</div>
-                            <div id="player-steps-display" class="label">步数: 0</div>
+                            <div id="player-steps-display" class="label">步数:
+                                0</div>
                             <div id="ghost-proximity-display"
                                 class="label">周围鬼数: 0</div>
                         </div>
@@ -560,7 +561,8 @@
 
         <!-- Toast Notification -->
         <div id="toast-notification" class="toast"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
         <script>
     document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('game-canvas');
@@ -657,7 +659,15 @@
                 document.getElementById('reset-map-btn').addEventListener('click', () => this.resetCurrentMap());
                 document.getElementById('debug-vision-toggle').addEventListener('change', (e) => {
                     this.debugVision = e.target.checked;
-                    if (this.state !== 'playing') this.draw();
+
+                    // 无论在什么模式下（游戏、编辑器等），只要有地图，切换视野都应该重绘画布
+                    // 这样可以实时显示或隐藏战争迷雾
+                    this.draw();
+
+                    // 额外地，如果当前正在游戏中，我们还必须立即更新警报状态
+                    if (this.state === 'playing') {
+                        this.updateProximityWarning();
+                    }
                 });
                 document.getElementById('edit-map-btn').addEventListener('click', () => this.enterEditorMode());
 
@@ -1160,16 +1170,34 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
             }
 
             updateProximityWarning() {
-                let nearbyGhosts = 0;
-                for (let y = this.player.y - 1; y <= this.player.y + 1; y++) {
-                    for (let x = this.player.x - 1; x <= this.player.x + 1; x++) {
-                        if (this.ghosts.some(g => g.x === x && g.y === y)) {
-                            nearbyGhosts++;
+                let totalNearbyGhosts = 0;
+                let invisibleNearbyGhosts = 0;
+
+                // 遍历所有鬼，检查它们的状态
+                for (const ghost of this.ghosts) {
+                    // 检查鬼是否在玩家周围的 3x3 范围内
+                    const isNearby = Math.abs(ghost.x - this.player.x) <= 1 && Math.abs(ghost.y - this.player.y) <= 1;
+
+                    if (isNearby) {
+                        // 只要在范围内，就计入总数
+                        totalNearbyGhosts++;
+
+                        // 检查鬼所在的格子是否可见
+                        // this.seenCells[ghost.y][ghost.x] 会返回 true (可见) 或 false (不可见)
+                        const isVisible = this.seenCells[ghost.y][ghost.x] || this.debugVision;
+
+                        // 如果鬼是不可见的，才计入“危险”鬼的数量
+                        if (!isVisible) {
+                            invisibleNearbyGhosts++;
                         }
                     }
                 }
-                this.ghostProximityDisplay.textContent = `周围鬼数: ${nearbyGhosts}`;
-                if (nearbyGhosts > 0) {
+
+                // UI上的文本依然显示范围内的鬼总数，这对玩家是有效信息
+                this.ghostProximityDisplay.textContent = `周围鬼数: ${totalNearbyGhosts}`;
+
+                // 核心修改：只有当存在不可见的鬼时，才触发视觉警报
+                if (invisibleNearbyGhosts > 0) {
                     document.body.classList.add('danger-bg');
                     this.ghostProximityDisplay.classList.add('warning');
                 } else {
