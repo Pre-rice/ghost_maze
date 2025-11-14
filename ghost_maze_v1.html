@@ -1231,6 +1231,7 @@
 
                 this.player.trail.unshift({ x: this.player.x, y: this.player.y, timestamp: Date.now() });
 
+                // --- 玩家移动 ---
                 this.player.x = newX;
                 this.player.y = newY;
                 this.player.steps++;
@@ -1243,30 +1244,34 @@
                 this.updateVisibility();
                 this.checkItemPickup();
 
-                // Win check must be before death checks
+                // 胜利判定优先于所有死亡判定
                 if (this.player.x === this.endPos.x && this.player.y === this.endPos.y) {
                     this.handleWin();
                     return;
                 }
 
-                // Stamina death check
+                // 死亡判定 1: 体力耗尽
                 if (this.gameMode === 'death-loop' && this.player.stamina <= 0) {
                     this.handlePlayerDeath('stamina_depleted');
                     return;
                 }
 
+                // 死亡判定 2: 检查玩家移动后是否撞上（静止的）鬼
                 if (this.checkCollisionWithGhosts()) {
                     this.handlePlayerDeath('ghost');
                     return;
                 }
 
+                // --- 鬼魂移动 ---
                 this.moveGhosts(playerPrevPos);
 
+                // 死亡判定 3: 检查鬼魂移动后是否撞上玩家
                 if (this.checkCollisionWithGhosts()) {
                     this.handlePlayerDeath('ghost');
                     return;
                 }
                 
+                // --- 回合结束 ---
                 this.updateProximityWarning();
                 if (!this.animationFrameId) this.draw();
             }
@@ -1358,10 +1363,10 @@
             }
 
             moveGhosts(playerPrevPos) {
-                const ghostOrder = this.ghosts.map((_, i) => i).sort(() => Math.random() - 0.5);
+                let moveIntents = [];
 
-                for (const i of ghostOrder) {
-                    const ghost = this.ghosts[i];
+                // 阶段一：收集所有鬼的移动意图
+                for (const ghost of this.ghosts) {
                     const sawBefore = this.canGhostSeePlayer(ghost, playerPrevPos);
                     const seesAfter = this.canGhostSeePlayer(ghost, this.player);
 
@@ -1370,29 +1375,67 @@
                     if (sawBefore && !seesAfter) target = playerPrevPos;
                     if (sawBefore && seesAfter) target = this.player;
                     
-                    if (!target) {
-                        if (ghost.pendingMove) {
-                            const {nx, ny} = ghost.pendingMove;
-                             if (!this.isCellOccupiedByGhost(nx, ny, ghost.id)) {
-                                ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
-                                ghost.x = nx; ghost.y = ny;
-                            }
-                            ghost.pendingMove = null;
+                    if (target) {
+                        const path = this.findShortestPath(ghost, target);
+                        if (path && path.length > 1) {
+                            moveIntents.push({ ghost: ghost, nextStep: path[1] });
                         }
-                        continue;
+                    }
+                }
+
+                if (moveIntents.length === 0) return;
+
+                // 阶段二：循环解析和执行，直到无法再取得进展
+                // 增加一个循环次数上限，防止意外的死循环
+                let maxIterations = this.ghosts.length + 1; 
+                let madeProgress = true;
+
+                while (madeProgress && moveIntents.length > 0 && maxIterations > 0) {
+                    madeProgress = false;
+                    maxIterations--;
+
+                    // 获取所有当前被占据的格子
+                    const occupiedCells = new Set(this.ghosts.map(g => `${g.x},${g.y}`));
+                    
+                    let possibleMoves = [];
+                    let remainingIntents = [];
+
+                    // 筛选出本轮所有理论上可行的移动（目标格子当前是空的）
+                    for (const intent of moveIntents) {
+                        const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                        if (!occupiedCells.has(targetKey)) {
+                            possibleMoves.push(intent);
+                        } else {
+                            remainingIntents.push(intent);
+                        }
+                    }
+
+                    // 解决“争抢同一个格子”的冲突
+                    const finalMovesThisPass = [];
+                    const claimedTargets = new Set();
+                    for (const intent of possibleMoves) {
+                        const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                        if (!claimedTargets.has(targetKey)) {
+                            finalMovesThisPass.push(intent);
+                            claimedTargets.add(targetKey);
+                        } else {
+                            // 这个移动因为冲突而失败，留到下一轮
+                            remainingIntents.push(intent);
+                        }
+                    }
+
+                    // 如果有可以成功移动的鬼，则执行移动
+                    if (finalMovesThisPass.length > 0) {
+                        for (const { ghost, nextStep } of finalMovesThisPass) {
+                            ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                            ghost.x = nextStep.x;
+                            ghost.y = nextStep.y;
+                        }
+                        madeProgress = true; // 标记本轮取得了进展
                     }
                     
-                    const path = this.findShortestPath(ghost, target);
-                    if (path && path.length > 1) {
-                        const nextStep = path[1];
-                        if (!this.isCellOccupiedByGhost(nextStep.x, nextStep.y, ghost.id)) {
-                            ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
-                            ghost.x = nextStep.x; ghost.y = nextStep.y;
-                            ghost.pendingMove = null;
-                        } else {
-                            ghost.pendingMove = { nx: nextStep.x, ny: nextStep.y };
-                        }
-                    }
+                    // 更新意图列表，准备下一轮解析
+                    moveIntents = remainingIntents;
                 }
             }
             
