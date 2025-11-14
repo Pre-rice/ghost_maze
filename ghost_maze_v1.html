@@ -1229,8 +1229,8 @@
                     }
                 }
 
-                // 玩家执行移动
                 this.player.trail.unshift({ x: this.player.x, y: this.player.y, timestamp: Date.now() });
+
                 this.player.x = newX;
                 this.player.y = newY;
                 this.player.steps++;
@@ -1243,37 +1243,30 @@
                 this.updateVisibility();
                 this.checkItemPickup();
 
-                // --- 核心判定逻辑区 ---
-
-                // 判定 1：胜利（最优先）
+                // Win check must be before death checks
                 if (this.player.x === this.endPos.x && this.player.y === this.endPos.y) {
                     this.handleWin();
                     return;
                 }
 
-                // 判定 2：体力耗尽
+                // Stamina death check
                 if (this.gameMode === 'death-loop' && this.player.stamina <= 0) {
                     this.handlePlayerDeath('stamina_depleted');
                     return;
                 }
 
-                // 判定 3：玩家移动后，是否主动撞上了鬼？
                 if (this.checkCollisionWithGhosts()) {
                     this.handlePlayerDeath('ghost');
                     return;
                 }
 
-                // 轮到鬼移动
                 this.moveGhosts(playerPrevPos);
 
-                // 判定 4：【！！！关键修复！！！】鬼移动后，是否撞上了玩家？
                 if (this.checkCollisionWithGhosts()) {
                     this.handlePlayerDeath('ghost');
                     return;
                 }
                 
-                // --- 核心判定逻辑区结束 ---
-
                 this.updateProximityWarning();
                 if (!this.animationFrameId) this.draw();
             }
@@ -1365,10 +1358,10 @@
             }
 
             moveGhosts(playerPrevPos) {
-                const moveIntents = [];
+                const ghostOrder = this.ghosts.map((_, i) => i).sort(() => Math.random() - 0.5);
 
-                // --- 阶段一：收集所有鬼的移动意图 ---
-                for (const ghost of this.ghosts) {
+                for (const i of ghostOrder) {
+                    const ghost = this.ghosts[i];
                     const sawBefore = this.canGhostSeePlayer(ghost, playerPrevPos);
                     const seesAfter = this.canGhostSeePlayer(ghost, this.player);
 
@@ -1377,58 +1370,29 @@
                     if (sawBefore && !seesAfter) target = playerPrevPos;
                     if (sawBefore && seesAfter) target = this.player;
                     
-                    if (target) {
-                        const path = this.findShortestPath(ghost, target);
-                        if (path && path.length > 1) {
-                            moveIntents.push({ ghost: ghost, nextStep: path[1] });
+                    if (!target) {
+                        if (ghost.pendingMove) {
+                            const {nx, ny} = ghost.pendingMove;
+                             if (!this.isCellOccupiedByGhost(nx, ny, ghost.id)) {
+                                ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                                ghost.x = nx; ghost.y = ny;
+                            }
+                            ghost.pendingMove = null;
                         }
+                        continue;
                     }
-                }
-
-                if (moveIntents.length === 0) return;
-
-                // --- 阶段二：循环解析和执行，直到无法再移动 ---
-                let madeProgress = true;
-                while (madeProgress && moveIntents.length > 0) {
-                    madeProgress = false;
                     
-                    // 获取所有当前还未移动的鬼的位置，以及它们的目标位置
-                    const movingGhostIds = new Set(moveIntents.map(intent => intent.ghost.id));
-                    const stationaryGhostPositions = new Set();
-                    this.ghosts.forEach(g => {
-                        if (!movingGhostIds.has(g.id)) {
-                            stationaryGhostPositions.add(`${g.x},${g.y}`);
-                        }
-                    });
-
-                    const successfulMoves = [];
-                    const remainingIntents = [];
-                    const claimedTargets = new Set();
-
-                    // 预判本轮可以成功移动的鬼
-                    for (const intent of moveIntents) {
-                        const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
-                        // 检查目标点是否被静止的鬼占据，或者是否已被本轮其他鬼预定
-                        if (!stationaryGhostPositions.has(targetKey) && !claimedTargets.has(targetKey)) {
-                            successfulMoves.push(intent);
-                            claimedTargets.add(targetKey);
-                        } else {
-                            remainingIntents.push(intent);
-                        }
-                    }
-
-                    // 如果有可以成功移动的鬼，则执行移动
-                    if (successfulMoves.length > 0) {
-                        for (const { ghost, nextStep } of successfulMoves) {
+                    const path = this.findShortestPath(ghost, target);
+                    if (path && path.length > 1) {
+                        const nextStep = path[1];
+                        if (!this.isCellOccupiedByGhost(nextStep.x, nextStep.y, ghost.id)) {
                             ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
-                            ghost.x = nextStep.x;
-                            ghost.y = nextStep.y;
+                            ghost.x = nextStep.x; ghost.y = nextStep.y;
+                            ghost.pendingMove = null;
+                        } else {
+                            ghost.pendingMove = { nx: nextStep.x, ny: nextStep.y };
                         }
-                        madeProgress = true;
                     }
-                    
-                    // 更新意图列表，准备下一轮解析
-                    moveIntents = remainingIntents;
                 }
             }
             
