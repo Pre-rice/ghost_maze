@@ -382,7 +382,9 @@
                 right: 20px;
                 opacity: 0.7;
                 z-index: 100;
-                pointer-events: none;
+                background-color: transparent;
+                touch-action: none;
+                transform-origin: center center;
             }
 
             .dpad-btn {
@@ -397,13 +399,22 @@
                 user-select: none;
                 -webkit-user-select: none;
                 cursor: pointer;
-                pointer-events: auto;
             }
 
             #dpad-up { grid-column: 2; grid-row: 1; }
             #dpad-down { grid-column: 2; grid-row: 3; }
             #dpad-left { grid-column: 1; grid-row: 2; }
             #dpad-right { grid-column: 3; grid-row: 2; }
+            
+            /* === 新增: 拖动把手的样式 === */
+            #dpad-grip {
+                grid-column: 2;
+                grid-row: 2;
+                background-color: rgba(85, 85, 85, 0.8);
+                border-radius: 50%;
+                cursor: move;
+                border: 2px solid #333;
+            }
 
             .dpad-btn:active {
                 background-color: #555;
@@ -698,6 +709,19 @@
                     hoveredWall: null
                 };
 
+                this.dpad = {
+                    element: document.getElementById('dpad-controls'),
+                    grip: document.getElementById('dpad-grip'),
+                    isDragging: false,
+                    isResizing: false,
+                    startX: 0,
+                    startY: 0,
+                    initialLeft: 0,
+                    initialTop: 0,
+                    initialDist: 0,
+                    currentScale: 1
+                };
+
                 this.bindUI();
                 this.showInitialMessage();
             }
@@ -785,6 +809,109 @@
                 this.bindDpadControls();
                 document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     this.updateDpadVisibility();
+                });
+
+                this.initializeDpadTouchControls();
+            }
+
+            initializeDpadTouchControls() {
+                const dpad = this.dpad;
+
+                // 1. 从 localStorage 加载并应用状态
+                const savedLeft = localStorage.getItem('dpadLeft');
+                const savedTop = localStorage.getItem('dpadTop');
+                const savedScale = localStorage.getItem('dpadScale');
+
+                if (savedScale) {
+                    dpad.currentScale = parseFloat(savedScale);
+                    dpad.element.style.transform = `scale(${dpad.currentScale})`;
+                }
+
+                if (savedLeft && savedTop) {
+                    dpad.element.style.left = savedLeft;
+                    dpad.element.style.top = savedTop;
+                    dpad.element.style.right = 'auto';
+                    dpad.element.style.bottom = 'auto';
+                }
+
+                // 辅助函数：确保元素使用JS定位
+                const ensureJsPositioning = () => {
+                    if (dpad.element.style.left === '' || dpad.element.style.top === '') {
+                        const rect = dpad.element.getBoundingClientRect();
+                        dpad.element.style.left = `${rect.left}px`;
+                        dpad.element.style.top = `${rect.top}px`;
+                        dpad.element.style.right = 'auto';
+                        dpad.element.style.bottom = 'auto';
+                    }
+                };
+
+                // 2. 绑定触摸事件
+                // 2a. 在中心的把手上绑定【单指拖动】
+                dpad.grip.addEventListener('touchstart', (e) => {
+                    const touches = e.touches;
+                    if (touches.length === 1) {
+                        e.preventDefault();
+                        ensureJsPositioning();
+                        dpad.isDragging = true;
+                        dpad.startX = touches[0].clientX;
+                        dpad.startY = touches[0].clientY;
+                        dpad.initialLeft = parseFloat(dpad.element.style.left);
+                        dpad.initialTop = parseFloat(dpad.element.style.top);
+                    }
+                }, { passive: false });
+
+                // 2b. 在整个方向键容器上绑定【双指缩放】
+                dpad.element.addEventListener('touchstart', (e) => {
+                    const touches = e.touches;
+                    if (touches.length === 2) {
+                        e.preventDefault();
+                        ensureJsPositioning();
+                        dpad.isResizing = true;
+                        const dx = touches[0].clientX - touches[1].clientX;
+                        const dy = touches[0].clientY - touches[1].clientY;
+                        dpad.initialDist = Math.sqrt(dx * dx + dy * dy);
+                    }
+                }, { passive: false });
+
+
+                document.addEventListener('touchmove', (e) => {
+                    if (!dpad.isDragging && !dpad.isResizing) return;
+                    e.preventDefault();
+                    const touches = e.touches;
+
+                    if (dpad.isDragging && touches.length === 1) {
+                        const dx = touches[0].clientX - dpad.startX;
+                        const dy = touches[0].clientY - dpad.startY;
+                        dpad.element.style.left = `${dpad.initialLeft + dx}px`;
+                        dpad.element.style.top = `${dpad.initialTop + dy}px`;
+                    } else if (dpad.isResizing && touches.length === 2) {
+                        const dx = touches[0].clientX - touches[1].clientX;
+                        const dy = touches[0].clientY - touches[1].clientY;
+                        const currentDist = Math.sqrt(dx * dx + dy * dy);
+                        const scaleChange = currentDist / dpad.initialDist;
+                        let newScale = dpad.currentScale * scaleChange;
+                        newScale = Math.max(0.5, Math.min(2.5, newScale));
+                        dpad.element.style.transform = `scale(${newScale})`;
+                    }
+                }, { passive: false });
+
+                document.addEventListener('touchend', (e) => {
+                    if (dpad.isResizing) {
+                        const transformStyle = dpad.element.style.transform;
+                        const scaleMatch = transformStyle.match(/scale\((.+)\)/);
+                        if (scaleMatch) {
+                            dpad.currentScale = parseFloat(scaleMatch[1]);
+                        }
+                        localStorage.setItem('dpadScale', dpad.currentScale);
+                    }
+                    
+                    if (dpad.isDragging) {
+                        localStorage.setItem('dpadLeft', dpad.element.style.left);
+                        localStorage.setItem('dpadTop', dpad.element.style.top);
+                    }
+
+                    dpad.isDragging = false;
+                    dpad.isResizing = false;
                 });
             }
 
@@ -1840,10 +1967,10 @@
             }
             
             playEditedMap() {
-                if (!this.endPos) {
-                    this.showToast('请在地图上放置一个终点。', 3000, 'error');
-                    return;
-                }
+                // if (!this.endPos) {
+                //     this.showToast('请在地图上放置一个终点。', 3000, 'error');
+                //     return;
+                // }
                 
                 this.editor.active = false;
                 document.getElementById('game-controls').style.display = 'block';
@@ -2460,6 +2587,7 @@
         <div id="dpad-controls" style="display: none;">
             <div id="dpad-up" class="dpad-btn">▲</div>
             <div id="dpad-left" class="dpad-btn">◀</div>
+            <div id="dpad-grip"></div> <!-- 新增的拖动把手 -->
             <div id="dpad-right" class="dpad-btn">▶</div>
             <div id="dpad-down" class="dpad-btn">▼</div>
         </div>
