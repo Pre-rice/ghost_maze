@@ -2219,6 +2219,22 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
         }
 
         const game = new GhostMazeGame();
+
+        // 添加URL参数解析功能
+        function loadMapFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const shareCode = urlParams.get('code');
+            
+            if (shareCode) {
+                // 延迟执行以确保游戏完全初始化
+                setTimeout(() => {
+                    game.loadFromShareCode(shareCode);
+                }, 100);
+            }
+        }
+        
+        // 页面加载完成后检查URL参数
+        window.addEventListener('load', loadMapFromURL);
     });
     </script>
         <div id="dpad-controls" style="display: none;">
