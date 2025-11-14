@@ -1,13 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>鬼迷宫</title>
-        <style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鬼迷宫</title>
+    <style>
         :root {
             --bg-color: #f0f2f5;
-            --danger-bg-color: #680e0e;
             --container-bg: #ffffff;
             --text-color: #333;
             --border-color: #d9d9d9;
@@ -27,9 +26,8 @@
             --player-color: #007bff;
             --ghost-color: #dc3545;
             --end-point-color: #28a745;
-            --key-color: #ffc107;
-            --start-room-highlight: rgba(173, 216, 230, 0.4);
-            --hover-highlight-color: #ffc107;
+            --start-room-highlight: rgba(173, 216, 230, 0.4); /* Light blue with transparency */
+            --hover-highlight-color: #ffc107; /* Yellow for hover */
         }
 
         body {
@@ -43,11 +41,6 @@
             padding: 20px;
             min-height: 100vh;
             box-sizing: border-box;
-            transition: background-color 0.25s ease; /* Faster transition */
-        }
-
-        body.danger-bg {
-            background-color: var(--danger-bg-color);
         }
 
         .main-container {
@@ -60,7 +53,6 @@
             border: 1px solid var(--border-color);
             background-color: var(--container-bg);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            cursor: pointer;
         }
 
         .controls-panel {
@@ -87,20 +79,9 @@
             padding-bottom: 8px;
         }
         
-        .control-group .status-bar {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-        }
-
         .control-group label, .control-group .label {
             font-weight: 500;
             font-size: 14px;
-        }
-
-        #ghost-proximity-display.warning {
-            color: var(--danger-color);
-            font-weight: bold;
         }
 
         .control-group input[type="number"], .control-group input[type="text"] {
@@ -237,7 +218,6 @@
             display: flex;
             gap: 10px;
             margin-bottom: 15px;
-            flex-wrap: wrap;
         }
         
         .editor-toolbar button.active {
@@ -273,295 +253,129 @@
         .toast.error {
             background-color: var(--danger-color);
         }
-        #game-canvas {
-         -webkit-tap-highlight-color: transparent; /* 核心改动：移除移动端点击时的蓝色高亮效果 */
-        }
-        /* === 移动端适配媒体查询 === */
-        /* 当屏幕宽度小于等于 768px 时，应用以下样式 */
-        @media (max-width: 768px) {
-            body {
-                padding: 10px; /* 为小屏幕调整内边距，避免内容紧贴边缘 */
-                align-items: flex-start; /* 恢复默认的顶部对齐 */
-            }
 
-            .main-container {
-                flex-direction: column; /* 核心改动：将主容器的布局从水平并排变为垂直堆叠 */
-                gap: 15px; /* 调整画布和控制面板垂直堆叠时的间距 */
-                width: 100%;
-            }
-
-            #game-canvas {
-                width: 100%; /* 让画布宽度占满容器宽度 */
-                height: auto; /* 高度自动调整，以保持其原始的1:1宽高比 */
-                order: 1; /* 视觉上确保画布在控制面板的上方 */
-            }
-
-            .controls-panel {
-                width: 100%; /* 控制面板也占满容器宽度 */
-                order: 2; /* 视觉上确保控制面板在画布的下方 */
-                padding: 15px; /* 可以在小屏幕上稍微减少一点内边距 */
-                box-sizing: border-box; /* 确保padding不会撑大宽度 */
-            }
-
-            /* 调整游戏结束、胜利等浮窗在小屏幕上的表现 */
-            .overlay-content {
-                padding: 20px 15px;
-                width: 90%; /* 避免浮窗宽度紧贴屏幕边缘 */
-                box-sizing: border-box;
-            }
-
-            .overlay-content h2 {
-                font-size: 1.5rem; /* 适当调整标题字体大小 */
-            }
-
-            /* 在小屏幕上，浮窗里的按钮也垂直堆叠，更易于点击 */
-            .overlay-content .buttons {
-                flex-direction: column;
-                gap: 10px;
-            }
-            
-            .overlay-content .buttons button {
-                width: 100%; /* 让每个按钮都更容易点击 */
-            }
-            
-            /* 调整编辑器工具栏，允许其在空间不足时换行并居中 */
-            .editor-toolbar {
-                justify-content: center;
-            }
-
-        @media (max-width: 768px) {
-            #dpad-controls {
-                display: grid !important;
-                grid-template-columns: 60px 60px 60px;
-                grid-template-rows: 60px 60px 60px;
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                opacity: 0.7;
-                z-index: 100;
-                pointer-events: none;
-            }
-
-            .dpad-btn {
-                background-color: #333;
-                color: white;
-                border: 2px solid #555;
-                border-radius: 10px;
-                font-size: 24px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                user-select: none;
-                -webkit-user-select: none;
-                cursor: pointer;
-                pointer-events: auto;
-            }
-
-            #dpad-up { grid-column: 2; grid-row: 1; }
-            #dpad-down { grid-column: 2; grid-row: 3; }
-            #dpad-left { grid-column: 1; grid-row: 2; }
-            #dpad-right { grid-column: 3; grid-row: 2; }
-
-            .dpad-btn:active {
-                background-color: #555;
-                transform: scale(0.95);
-            }
-        }
-        }
-
-/* 1. 开关父容器的基础布局 */
-.toggle-controls-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 15px; /* 仅在移动端两个开关并存时生效 */
-    /* 默认靠左对齐，适用于电脑端只有一个开关的情况 */
-    justify-content: flex-start; 
-}
-
-/* 2. 每个开关的基础样式 */
-.toggle-controls-wrapper .toggle-switch {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%; /* 默认让开关占满父容器宽度 */
-}
-
-/* 3. 默认隐藏方向键开关 */
-#dpad-toggle-container {
-    display: none;
-}
-
-/* 4. 仅在移动端 (屏幕宽度 <= 768px) 应用特殊布局 */
-@media (max-width: 768px) {
-    /* 在移动端，让父容器的对齐方式变为 space-between */
-    .toggle-controls-wrapper {
-        justify-content: space-between;
-    }
-
-    /* 在移动端，让每个开关只占大约一半的宽度 */
-    .toggle-controls-wrapper .toggle-switch {
-        width: 48%;
-    }
-
-    /* 在移动端，显示方向键开关 */
-    #dpad-toggle-container {
-        display: flex;
-    }
-}
-
-/* 用于通过JS来强制隐藏方向键的类 */
-#dpad-controls.hidden {
-    display: none !important;
-}
     </style>
-    </head>
-    <body>
+</head>
+<body>
 
-        <div class="main-container">
-            <canvas id="game-canvas" width="600" height="600"></canvas>
-
-            <div class="controls-panel">
-                <!-- Game Mode UI -->
-                <div id="game-controls">
-                    <div class="control-group">
-                        <h3>状态</h3>
-                        <div class="status-bar">
-                            <div id="player-health-display" class="label">生命:
-                                5</div>
-                            <div id="player-keys-display" class="label">钥匙:
-                                0</div>
-                            <div id="player-steps-display" class="label">步数: 0</div>
-                            <div id="ghost-proximity-display"
-                                class="label">周围鬼数: 0</div>
-                        </div>
+    <div class="main-container">
+        <canvas id="game-canvas" width="600" height="600"></canvas>
+        
+        <div class="controls-panel">
+            <!-- Game Mode UI -->
+            <div id="game-controls">
+                <div class="control-group">
+                    <h3>状态</h3>
+                    <div id="player-health-display" class="label">生命值: 5</div>
+                </div>
+                <div class="control-group">
+                    <h3>地图选项</h3>
+                    <label for="map-size-input">地图大小 (8-20):</label>
+                    <input type="number" id="map-size-input" value="10" min="8" max="20">
+                    <button id="generate-map-btn">随机生成新地图</button>
+                </div>
+                <div class="control-group">
+                    <h3>分享</h3>
+                    <div class="share-area">
+                        <input type="text" id="share-code-input" placeholder="在此粘贴分享码">
+                        <button id="load-share-code-btn">加载</button>
                     </div>
-                    <div class="control-group">
-                        <h3>地图选项</h3>
-                        <label for="map-size-input">地图大小 (8-20):</label>
-                        <input type="number" id="map-size-input" value="10"
-                            min="8" max="20">
-                        <button id="generate-map-btn">随机生成新地图</button>
-                    </div>
-                    <div class="control-group">
-                        <h3>分享</h3>
-                        <div class="share-area">
-                            <input type="text" id="share-code-input"
-                                placeholder="在此粘贴分享码">
-                            <button id="load-share-code-btn">加载</button>
-                        </div>
-                        <button id="copy-share-code-btn">复制分享码</button>
-                    </div>
-                    <div class="control-group">
-                        <h3>控制</h3>
-                        <button id="reset-map-btn"
-                            class="secondary">重置地图</button>
-                        <div class="toggle-controls-wrapper">
-                            <div class="toggle-switch">
-                                <span class="label">调试视野</span>
-                                <input type="checkbox" id="debug-vision-toggle">
-                                <label for="debug-vision-toggle">Toggle</label>
-                            </div>
-                            <div id="dpad-toggle-container"
-                                class="toggle-switch">
-                                <span class="label">方向按键</span>
-                                <input type="checkbox" id="dpad-toggle" checked>
-                                <label for="dpad-toggle">Toggle</label>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <h3>编辑器</h3>
-                        <button id="edit-map-btn">编辑地图</button>
+                    <button id="copy-share-code-btn">复制分享码</button>
+                </div>
+                 <div class="control-group">
+                    <h3>控制</h3>
+                    <button id="reset-map-btn" class="secondary">重置地图</button>
+                    <div class="toggle-switch">
+                        <span class="label">调试视野</span>
+                        <input type="checkbox" id="debug-vision-toggle">
+                        <label for="debug-vision-toggle">Toggle</label>
                     </div>
                 </div>
+                <div class="control-group">
+                    <h3>编辑器</h3>
+                    <button id="edit-map-btn">编辑地图</button>
+                </div>
+            </div>
 
-                <!-- Editor Mode UI -->
-                <div id="editor-controls" style="display: none;">
-                    <div class="control-group">
-                        <h3>编辑器工具</h3>
-                        <div class="editor-toolbar">
-                            <button id="tool-wall"
-                                class="tool-btn active">编辑墙壁</button>
-                            <button id="tool-door" class="tool-btn">放置门</button>
-                            <button id="tool-lock" class="tool-btn">放置锁</button>
-                            <button id="tool-key" class="tool-btn">放置钥匙</button>
-                            <button id="tool-end" class="tool-btn">放置终点</button>
-                            <button id="tool-ghost"
-                                class="tool-btn">放置鬼</button>
-                            <button id="tool-eraser"
-                                class="tool-btn">橡皮擦</button>
-                        </div>
+            <!-- Editor Mode UI -->
+            <div id="editor-controls" style="display: none;">
+                <div class="control-group">
+                    <h3>编辑器工具</h3>
+                    <div class="editor-toolbar">
+                        <button id="tool-wall" class="tool-btn active">编辑墙壁</button>
+                        <button id="tool-end" class="tool-btn">放置终点</button>
+                        <button id="tool-ghost" class="tool-btn">放置鬼</button>
+                        <button id="tool-eraser" class="tool-btn">橡皮擦</button>
                     </div>
-                    <div class="control-group">
-                        <h3>地图选项</h3>
-                        <label for="editor-map-size-input">地图大小 (8-20):</label>
-                        <input type="number" id="editor-map-size-input"
-                            value="10" min="8" max="20">
+                </div>
+                 <div class="control-group">
+                    <h3>地图选项</h3>
+                    <label for="editor-map-size-input">地图大小 (8-20):</label>
+                    <input type="number" id="editor-map-size-input" value="10" min="8" max="20">
+                </div>
+                <div class="control-group">
+                    <h3>控制</h3>
+                    <button id="play-edited-map-btn">游玩地图</button>
+                    <button id="clear-map-btn" class="danger">清空地图</button>
+                </div>
+                 <div class="control-group">
+                    <h3>分享</h3>
+                    <div class="share-area">
+                        <input type="text" id="editor-share-code-input" placeholder="在此粘贴分享码">
+                        <button id="editor-load-share-code-btn">加载</button>
                     </div>
-                    <div class="control-group">
-                        <h3>控制</h3>
-                        <button id="play-edited-map-btn">游玩地图</button>
-                        <button id="clear-map-btn" class="danger">清空地图</button>
-                    </div>
-                    <div class="control-group">
-                        <h3>分享</h3>
-                        <div class="share-area">
-                            <input type="text" id="editor-share-code-input"
-                                placeholder="在此粘贴分享码">
-                            <button id="editor-load-share-code-btn">加载</button>
-                        </div>
-                        <button id="editor-copy-share-code-btn">复制分享码</button>
-                    </div>
+                    <button id="editor-copy-share-code-btn">复制分享码</button>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Overlays -->
-        <div id="death-overlay" class="overlay">
-            <div class="overlay-content">
-                <h2 id="death-message">你死了</h2>
-                <div class="buttons">
-                    <button id="revive-btn">复活</button>
-                </div>
+    <!-- Overlays -->
+    <div id="death-overlay" class="overlay">
+        <div class="overlay-content">
+            <h2 id="death-message">你死了</h2>
+            <div class="buttons">
+                <button id="revive-btn">复活</button>
             </div>
         </div>
+    </div>
 
-        <div id="game-over-overlay" class="overlay">
-            <div class="overlay-content">
-                <h2>你死了，游戏结束</h2>
-                <div class="buttons">
-                    <button id="game-over-replay-btn">再次游玩该地图</button>
-                    <button id="game-over-new-map-btn">游玩新地图</button>
-                </div>
+    <div id="game-over-overlay" class="overlay">
+        <div class="overlay-content">
+            <h2>你死了，游戏结束</h2>
+            <div class="buttons">
+                <button id="game-over-replay-btn">再次游玩该地图</button>
+                <button id="game-over-new-map-btn">游玩新地图</button>
             </div>
         </div>
+    </div>
 
-        <div id="win-overlay" class="overlay">
-            <div class="overlay-content">
-                <h2>你赢了！</h2>
-                <p id="win-stats"></p>
-                <div class="buttons">
-                    <button id="win-replay-btn">再次游玩该地图</button>
-                    <button id="win-new-map-btn">游玩新地图</button>
-                </div>
+    <div id="win-overlay" class="overlay">
+        <div class="overlay-content">
+            <h2>你赢了！</h2>
+            <div class="buttons">
+                <button id="win-replay-btn">再次游玩该地图</button>
+                <button id="win-new-map-btn">游玩新地图</button>
             </div>
         </div>
+    </div>
 
-        <!-- Custom Confirm Overlay -->
-        <div id="confirm-overlay" class="overlay">
-            <div class="overlay-content">
-                <p id="confirm-message">你确定吗？</p>
-                <div class="buttons">
-                    <button id="confirm-yes-btn" class="danger">确认</button>
-                    <button id="confirm-no-btn" class="secondary">取消</button>
-                </div>
+    <!-- Custom Confirm Overlay -->
+    <div id="confirm-overlay" class="overlay">
+        <div class="overlay-content">
+            <p id="confirm-message">你确定吗？</p>
+            <div class="buttons">
+                <button id="confirm-yes-btn" class="danger">确认</button>
+                <button id="confirm-no-btn" class="secondary">取消</button>
             </div>
         </div>
+    </div>
 
-        <!-- Toast Notification -->
-        <div id="toast-notification" class="toast"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-        <script>
+    <!-- Toast Notification -->
+    <div id="toast-notification" class="toast"></div>
+
+
+    <script>
     document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
@@ -570,9 +384,6 @@
             constructor() {
                 // DOM Elements
                 this.healthDisplay = document.getElementById('player-health-display');
-                this.keysDisplay = document.getElementById('player-keys-display');
-                this.stepsDisplay = document.getElementById('player-steps-display');
-                this.ghostProximityDisplay = document.getElementById('ghost-proximity-display');
                 this.mapSizeInput = document.getElementById('map-size-input');
                 this.editorMapSizeInput = document.getElementById('editor-map-size-input');
                 this.toastElement = document.getElementById('toast-notification');
@@ -582,8 +393,6 @@
                 this.confirmNoBtn = document.getElementById('confirm-no-btn');
                 this.toastTimeout = null;
                 this.animationFrameId = null;
-                this.autoMoveInterval = null;
-                this.dpadInterval = null;
                 
                 const computedStyle = getComputedStyle(document.documentElement);
                 this.colors = {
@@ -594,7 +403,6 @@
                     player: computedStyle.getPropertyValue('--player-color').trim(),
                     ghost: computedStyle.getPropertyValue('--ghost-color').trim(),
                     endPoint: computedStyle.getPropertyValue('--end-point-color').trim(),
-                    key: computedStyle.getPropertyValue('--key-color').trim(),
                     startRoomHighlight: computedStyle.getPropertyValue('--start-room-highlight').trim(),
                     hoverHighlight: computedStyle.getPropertyValue('--hover-highlight-color').trim()
                 };
@@ -607,12 +415,11 @@
                 this.mapData = null;
 
                 // Player
-                this.player = { x: 1, y: 1, hp: 5, initialHp: 5, trail: [], keys: 0 , steps: 0};
+                this.player = { x: 1, y: 1, hp: 5, initialHp: 5, trail: [] };
 
-                // Ghosts & Items
+                // Ghosts
                 this.ghosts = [];
                 this.ghostCount = 3;
-                this.items = [];
 
                 // Map data structures
                 this.hWalls = [];
@@ -678,79 +485,11 @@
 
                 window.addEventListener('keydown', (e) => this.handleKeyPress(e));
                 
-                canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
                 canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
                 canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
                 canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
                 canvas.addEventListener('mouseleave', (e) => this.handleCanvasMouseLeave(e));
-                this.bindDpadControls();
-                // 绑定方向键开关
-document.getElementById('dpad-toggle').addEventListener('change', (e) => {
-    this.updateDpadVisibility();
-});
             }
-            updateDpadVisibility() {
-    const dpadToggle = document.getElementById('dpad-toggle');
-    const dpadControls = document.getElementById('dpad-controls');
-    
-    // 决定是否显示的两个条件：
-    // 1. 开关是打开的
-    // 2. 当前不是编辑器模式
-    const shouldShow = dpadToggle.checked && !this.editor.active;
-
-    if (shouldShow) {
-        dpadControls.classList.remove('hidden');
-    } else {
-        dpadControls.classList.add('hidden');
-    }
-}
-
-            bindDpadControls() {
-    const upBtn = document.getElementById('dpad-up');
-    const downBtn = document.getElementById('dpad-down');
-    const leftBtn = document.getElementById('dpad-left');
-    const rightBtn = document.getElementById('dpad-right');
-
-    const handleDpadPress = (dx, dy) => {
-        if (this.state !== 'playing') return;
-        
-        // 先清除之前的任何移动计时器
-        clearInterval(this.autoMoveInterval);
-        clearInterval(this.dpadInterval);
-
-        // 立即移动一次，提供即时反馈
-        this.movePlayer(dx, dy);
-        
-        // 设置一个计时器，实现按住持续移动
-        this.dpadInterval = setInterval(() => {
-            this.movePlayer(dx, dy);
-        }, 200); // 每200毫秒移动一格
-    };
-
-    const handleDpadRelease = () => {
-        clearInterval(this.dpadInterval);
-    };
-
-    // 为每个按钮绑定触摸和鼠标事件
-    // 使用 touchstart 和 touchend 适配移动端
-    // 使用 mousedown 和 mouseup 方便在桌面端调试
-    const addListeners = (element, dx, dy) => {
-        element.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // 阻止页面滚动或缩放
-            handleDpadPress(dx, dy);
-        });
-        element.addEventListener('mousedown', () => handleDpadPress(dx, dy));
-    };
-
-    addListeners(upBtn, 0, -1);
-    addListeners(downBtn, 0, 1);
-    addListeners(leftBtn, -1, 0);
-    addListeners(rightBtn, 1, 0);
-
-    // 在整个文档上监听抬起事件，这样手指滑出按钮也能停止
-    document.addEventListener('touchend', handleDpadRelease);
-    document.addEventListener('mouseup', handleDpadRelease);
-}
 
             // ==================================================
             //  CUSTOM NOTIFICATIONS & ANIMATION
@@ -792,6 +531,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 const loop = () => {
                     const now = Date.now();
                     
+                    // Filter out old trail points
                     this.player.trail = this.player.trail.filter(p => now - p.timestamp < trailLifetime);
                     this.ghosts.forEach(g => {
                         g.trail = g.trail.filter(p => now - p.timestamp < trailLifetime);
@@ -830,9 +570,8 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.hWalls = mapData.hWalls;
                 this.vWalls = mapData.vWalls;
                 this.endPos = mapData.endPos;
-                this.items = mapData.items || [];
                 
-                this.player = { x: 1, y: this.height - 2, hp: 5, initialHp: 5, trail: [], keys: 0 ,steps: 0 };
+                this.player = { x: 1, y: this.height - 2, hp: 5, initialHp: 5, trail: [] };
                 
                 this.ghosts = JSON.parse(JSON.stringify(mapData.initialGhosts));
                 this.ghosts.forEach(g => g.trail = []);
@@ -840,7 +579,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.seenCells = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
                 this.updateVisibility();
                 
-                this.updateUIDisplays();
+                this.updateHealthDisplay();
                 this.hideAllOverlays();
                 this.startAnimationLoop();
             }
@@ -872,22 +611,18 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.height = height;
                 this.cellSize = canvas.width / this.width;
 
-                const wall = () => ({ type: 1, keys: 0 });
-                const empty = () => ({ type: 0, keys: 0 });
-                const door = () => ({ type: 2, keys: 0 });
-
-                this.hWalls = Array(height + 1).fill(null).map(() => Array(width).fill(null).map(wall));
-                this.vWalls = Array(height).fill(null).map(() => Array(width + 1).fill(null).map(wall));
+                this.hWalls = Array(height + 1).fill(null).map(() => Array(width).fill(true));
+                this.vWalls = Array(height).fill(null).map(() => Array(width + 1).fill(true));
 
                 const roomY = height - 3;
                 for (let y = roomY; y < roomY + 3; y++) {
                     for (let x = 0; x < 3; x++) {
-                        if (x < 2) this.vWalls[y][x + 1] = empty();
-                        if (y < roomY + 2) this.hWalls[y + 1][x] = empty();
+                        if (x < 2) this.vWalls[y][x + 1] = false;
+                        if (y < roomY + 2) this.hWalls[y + 1][x] = false;
                     }
                 }
-                this.vWalls[roomY + 1][3] = door();
-                this.hWalls[roomY][1] = door();
+                this.vWalls[roomY + 1][3] = false;
+                this.hWalls[roomY][1] = false;
                 
                 this.startPos = { x: 1, y: height - 2 };
 
@@ -923,10 +658,10 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     if (neighbors.length > 0) {
                         stack.push(current);
                         const { x: nx, y: ny, dir } = neighbors[Math.floor(Math.random() * neighbors.length)];
-                        if (dir.x === 1) this.vWalls[current.y][current.x + 1] = empty();
-                        else if (dir.x === -1) this.vWalls[current.y][current.x] = empty();
-                        else if (dir.y === 1) this.hWalls[current.y + 1][current.x] = empty();
-                        else if (dir.y === -1) this.hWalls[current.y][current.x] = empty();
+                        if (dir.x === 1) this.vWalls[current.y][current.x + 1] = false;
+                        else if (dir.x === -1) this.vWalls[current.y][current.x] = false;
+                        else if (dir.y === 1) this.hWalls[current.y + 1][current.x] = false;
+                        else if (dir.y === -1) this.hWalls[current.y][current.x] = false;
                         visited[ny][nx] = true;
                         stack.push({ x: nx, y: ny });
                     }
@@ -942,15 +677,15 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
 
                     if (Math.random() > 0.5) {
                         if (rx < width - 1 && !(ry >= roomY && ry < roomY + 3 && rx + 1 === 3)) {
-                            if (this.vWalls[ry][rx + 1].type === 1) {
-                                this.vWalls[ry][rx + 1] = empty();
+                            if (this.vWalls[ry][rx + 1]) {
+                                this.vWalls[ry][rx + 1] = false;
                                 removedCount++;
                             }
                         }
                     } else {
                         if (ry < height - 1 && !(rx >= 0 && rx < 3 && ry + 1 === roomY)) {
-                             if (this.hWalls[ry + 1][rx].type === 1) {
-                                this.hWalls[ry + 1][rx] = empty();
+                             if (this.hWalls[ry + 1][rx]) {
+                                this.hWalls[ry + 1][rx] = false;
                                 removedCount++;
                             }
                         }
@@ -959,21 +694,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
 
                 this.endPos = this.findFarthestEndCell();
 
-                const doorProbability = 0.02;
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const isNearEnd = (Math.abs(x - this.endPos.x) <= 1 && y === this.endPos.y) || (x === this.endPos.x && Math.abs(y - this.endPos.y) <= 1);
-                        if (y < height - 1 && !this.isPosInStartRoom(x, y) && !this.isPosInStartRoom(x, y + 1) && !isNearEnd && Math.random() < doorProbability) this.hWalls[y + 1][x] = door();
-                        if (x < width - 1 && !this.isPosInStartRoom(x, y) && !this.isPosInStartRoom(x + 1, y) && !isNearEnd && Math.random() < doorProbability) this.vWalls[y][x + 1] = door();
-                    }
-                }
-
-                const {x: ex, y: ey} = this.endPos;
-                if (this.hWalls[ey][ex].type === 0) this.hWalls[ey][ex] = { type: 3, keys: 3 };
-                else if (this.hWalls[ey + 1][ex].type === 0) this.hWalls[ey + 1][ex] = { type: 3, keys: 3 };
-                else if (this.vWalls[ey][ex].type === 0) this.vWalls[ey][ex] = { type: 3, keys: 3 };
-                else if (this.vWalls[ey][ex + 1].type === 0) this.vWalls[ey][ex + 1] = { type: 3, keys: 3 };
-
+                const initialGhosts = [];
                 const occupied = new Set();
                 occupied.add(`${this.endPos.x},${this.endPos.y}`);
                 for (let y = height - 3; y < height; y++) {
@@ -982,7 +703,6 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     }
                 }
 
-                const initialGhosts = [];
                 while (initialGhosts.length < this.ghostCount) {
                     const x = Math.floor(Math.random() * width);
                     const y = Math.floor(Math.random() * height);
@@ -993,46 +713,10 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     }
                 }
 
-                this.items = [];
-                const keysToPlace = 4;
-                const validCells = [];
-                const preferredCells = [];
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        if (!occupied.has(`${x},${y}`)) {
-                            validCells.push({x, y});
-                            let wallCount = 0;
-                            if (this.hWalls[y][x].type > 0) wallCount++;
-                            if (this.hWalls[y + 1][x].type > 0) wallCount++;
-                            if (this.vWalls[y][x].type > 0) wallCount++;
-                            if (this.vWalls[y][x + 1].type > 0) wallCount++;
-                            if (wallCount >= 3) {
-                                preferredCells.push({x, y});
-                            }
-                        }
-                    }
-                }
-
-                for (let i = 0; i < keysToPlace; i++) {
-                    let pos = null;
-                    if (preferredCells.length > 0) {
-                        const index = Math.floor(Math.random() * preferredCells.length);
-                        pos = preferredCells.splice(index, 1)[0];
-                    } else if (validCells.length > 0) {
-                        const index = Math.floor(Math.random() * validCells.length);
-                        pos = validCells.splice(index, 1)[0];
-                    }
-                    if (pos) {
-                        this.items.push({ x: pos.x, y: pos.y, type: 'key' });
-                        const validIndex = validCells.findIndex(c => c.x === pos.x && c.y === pos.y);
-                        if (validIndex > -1) validCells.splice(validIndex, 1);
-                    }
-                }
-
                 return {
                     width, height,
                     hWalls: this.hWalls, vWalls: this.vWalls,
-                    endPos: this.endPos, initialGhosts: initialGhosts, items: this.items
+                    endPos: this.endPos, initialGhosts: initialGhosts
                 };
             }
             
@@ -1045,10 +729,10 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     for (let x = 0; x < this.width; x++) {
                         if (x === 0 || x === this.width - 1 || y === 0 || y === this.height - 1) {
                             let wallCount = 0;
-                            if (this.hWalls[y][x].type > 0) wallCount++;
-                            if (this.hWalls[y + 1][x].type > 0) wallCount++;
-                            if (this.vWalls[y][x].type > 0) wallCount++;
-                            if (this.vWalls[y][x + 1].type > 0) wallCount++;
+                            if (this.hWalls[y][x]) wallCount++;
+                            if (this.hWalls[y + 1][x]) wallCount++;
+                            if (this.vWalls[y][x]) wallCount++;
+                            if (this.vWalls[y][x + 1]) wallCount++;
                             
                             if (wallCount >= 3) {
                                 if (distances[y][x] > maxDist) {
@@ -1067,7 +751,6 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
             // ==================================================
             handleKeyPress(e) {
                 if (this.state !== 'playing') return;
-                this.stopAutoMove();
 
                 let dx = 0, dy = 0;
                 switch (e.key) {
@@ -1089,30 +772,17 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 const newY = this.player.y + dy;
 
                 if (newX < 0 || newX >= this.width || newY < 0 || newY >= this.height) return;
-
-                let wall;
-                if (dx === 1) wall = this.vWalls[this.player.y][this.player.x + 1];
-                if (dx === -1) wall = this.vWalls[this.player.y][this.player.x];
-                if (dy === 1) wall = this.hWalls[this.player.y + 1][this.player.x];
-                if (dy === -1) wall = this.hWalls[this.player.y][this.player.x];
-
-                if (wall) {
-                    if (wall.type === 1) return;
-                    if (wall.type === 3 && this.player.keys < wall.keys) return;
-                    if (wall.type === 3 && this.player.keys >= wall.keys) {
-                        wall.type = 0; // Unlock the door
-                    }
-                }
+                if (dx === 1 && this.vWalls[this.player.y][this.player.x + 1]) return;
+                if (dx === -1 && this.vWalls[this.player.y][this.player.x]) return;
+                if (dy === 1 && this.hWalls[this.player.y + 1][this.player.x]) return;
+                if (dy === -1 && this.hWalls[this.player.y][this.player.x]) return;
 
                 this.player.trail.unshift({ x: this.player.x, y: this.player.y, timestamp: Date.now() });
 
                 this.player.x = newX;
                 this.player.y = newY;
-                this.player.steps++;
                 
-                this.updateUIDisplays();               
                 this.updateVisibility();
-                this.checkItemPickup();
 
                 if (this.checkCollisionWithGhosts()) {
                     this.handlePlayerDeath();
@@ -1130,20 +800,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     this.handleWin();
                 }
 
-                this.updateProximityWarning();
                 if (!this.animationFrameId) this.draw();
-            }
-
-            checkItemPickup() {
-                const itemIndex = this.items.findIndex(item => item.x === this.player.x && item.y === this.player.y);
-                if (itemIndex > -1) {
-                    const item = this.items[itemIndex];
-                    if (item.type === 'key') {
-                        this.player.keys++;
-                    }
-                    this.items.splice(itemIndex, 1);
-                    this.updateUIDisplays();
-                }
             }
             
             resetPlayerPos() {
@@ -1152,30 +809,8 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.player.trail = [];
             }
             
-            updateUIDisplays() {
-                this.healthDisplay.textContent = `生命: ${this.player.hp}`;
-                this.keysDisplay.textContent = `钥匙: ${this.player.keys}`;
-                this.stepsDisplay.textContent = `步数: ${this.player.steps}`;
-                this.updateProximityWarning();
-            }
-
-            updateProximityWarning() {
-                let nearbyGhosts = 0;
-                for (let y = this.player.y - 1; y <= this.player.y + 1; y++) {
-                    for (let x = this.player.x - 1; x <= this.player.x + 1; x++) {
-                        if (this.ghosts.some(g => g.x === x && g.y === y)) {
-                            nearbyGhosts++;
-                        }
-                    }
-                }
-                this.ghostProximityDisplay.textContent = `周围鬼数: ${nearbyGhosts}`;
-                if (nearbyGhosts > 0) {
-                    document.body.classList.add('danger-bg');
-                    this.ghostProximityDisplay.classList.add('warning');
-                } else {
-                    document.body.classList.remove('danger-bg');
-                    this.ghostProximityDisplay.classList.remove('warning');
-                }
+            updateHealthDisplay() {
+                this.healthDisplay.textContent = `生命值: ${this.player.hp}`;
             }
 
             // ==================================================
@@ -1189,13 +824,13 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     const startY = Math.min(ghost.y, playerPos.y);
                     const endY = Math.max(ghost.y, playerPos.y);
                     for (let y = startY; y < endY; y++) {
-                        if (this.hWalls[y + 1][ghost.x].type > 0) return false;
+                        if (this.hWalls[y + 1][ghost.x]) return false;
                     }
                 } else {
                     const startX = Math.min(ghost.x, playerPos.x);
                     const endX = Math.max(ghost.x, playerPos.x);
                     for (let x = startX; x < endX; x++) {
-                        if (this.vWalls[ghost.y][x + 1].type > 0) return false;
+                        if (this.vWalls[ghost.y][x + 1]) return false;
                     }
                 }
                 return true;
@@ -1253,10 +888,9 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
             }
 
             handlePlayerDeath() {
-                this.stopAutoMove();
                 this.stopAnimationLoop();
                 this.player.hp--;
-                this.updateUIDisplays();
+                this.updateHealthDisplay();
                 this.state = 'dead';
                 this.draw();
 
@@ -1273,21 +907,12 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.state = 'playing';
                 this.hideAllOverlays();
                 this.updateVisibility();
-                this.updateProximityWarning();
                 this.startAnimationLoop();
             }
 
             handleWin() {
-                this.stopAutoMove();
                 this.stopAnimationLoop();
                 this.state = 'won';
-
-                // 获取用于显示信息的 P 元素
-                const winStats = document.getElementById('win-stats');
-                // 填充内容
-                winStats.textContent = `你以 ${this.player.hp} 点剩余生命和 ${this.player.steps} 步的成绩通关！`;
-
-                // 显示胜利浮窗
                 document.getElementById('win-overlay').style.display = 'flex';
             }
             
@@ -1312,19 +937,19 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.seenCells[y][x] = true;
 
                 for (let i = x + 1; i < this.width; i++) {
-                    if (this.vWalls[y][i].type > 0) break;
+                    if (this.vWalls[y][i]) break;
                     this.seenCells[y][i] = true;
                 }
                 for (let i = x - 1; i >= 0; i--) {
-                    if (this.vWalls[y][i + 1].type > 0) break;
+                    if (this.vWalls[y][i + 1]) break;
                     this.seenCells[y][i] = true;
                 }
                 for (let i = y + 1; i < this.height; i++) {
-                    if (this.hWalls[i][x].type > 0) break;
+                    if (this.hWalls[i][x]) break;
                     this.seenCells[i][x] = true;
                 }
                 for (let i = y - 1; i >= 0; i--) {
-                    if (this.hWalls[i + 1][x].type > 0) break;
+                    if (this.hWalls[i + 1][x]) break;
                     this.seenCells[i][x] = true;
                 }
             }
@@ -1393,25 +1018,32 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     }
                 }
 
+                ctx.strokeStyle = this.colors.wall;
+                ctx.lineWidth = Math.max(2, cs / 10);
                 ctx.beginPath();
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
                         if (this.seenCells[y][x] || this.debugVision) {
-                            if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
-                            if (this.hWalls[y + 1][x].type > 0) this.drawWallOrDoor(x * cs, (y + 1) * cs, (x + 1) * cs, (y + 1) * cs, this.hWalls[y + 1][x]);
-                            if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
-                            if (this.vWalls[y][x + 1].type > 0) this.drawWallOrDoor((x + 1) * cs, y * cs, (x + 1) * cs, (y + 1) * cs, this.vWalls[y][x + 1]);
+                            if (this.hWalls[y][x]) {
+                                ctx.moveTo(x * cs, y * cs);
+                                ctx.lineTo((x + 1) * cs, y * cs);
+                            }
+                            if (this.hWalls[y + 1][x]) {
+                                ctx.moveTo(x * cs, (y + 1) * cs);
+                                ctx.lineTo((x + 1) * cs, (y + 1) * cs);
+                            }
+                            if (this.vWalls[y][x]) {
+                                ctx.moveTo(x * cs, y * cs);
+                                ctx.lineTo(x * cs, (y + 1) * cs);
+                            }
+                            if (this.vWalls[y][x + 1]) {
+                                ctx.moveTo((x + 1) * cs, y * cs);
+                                ctx.lineTo((x + 1) * cs, (y + 1) * cs);
+                            }
                         }
                     }
                 }
                 ctx.stroke();
-                this.drawLockNumbers(true);
-
-                this.items.forEach(item => {
-                    if (this.seenCells[item.y][item.x] || this.debugVision) {
-                        this.drawItem(item);
-                    }
-                });
 
                 if (this.endPos && (this.seenCells[this.endPos.y][this.endPos.x] || this.debugVision)) {
                     this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
@@ -1426,67 +1058,6 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 });
             }
 
-            drawWallOrDoor(x1, y1, x2, y2, wallObject, isHighlight = false) {
-                const type = wallObject.type;
-                if (isHighlight) {
-                    ctx.strokeStyle = this.colors.hoverHighlight;
-                    ctx.lineWidth = Math.max(3, this.cellSize / 8);
-                } else {
-                    ctx.strokeStyle = this.colors.wall;
-                    ctx.lineWidth = (type === 3) ? Math.max(4, this.cellSize / 8) : Math.max(2, this.cellSize / 10);
-                }
-                
-                if (type === 1 || type === 3) { // Wall or Lock
-                    ctx.moveTo(x1, y1);
-                    ctx.lineTo(x2, y2);
-                } else if (type === 2) { // Door
-                    const isHorizontal = y1 === y2;
-                    const length = isHorizontal ? x2 - x1 : y2 - y1;
-                    const gap = length / 3;
-                    if (isHorizontal) {
-                        ctx.moveTo(x1, y1); ctx.lineTo(x1 + gap, y1);
-                        ctx.moveTo(x2 - gap, y2); ctx.lineTo(x2, y2);
-                    } else {
-                        ctx.moveTo(x1, y1); ctx.lineTo(x1, y1 + gap);
-                        ctx.moveTo(x2, y2 - gap); ctx.lineTo(x2, y2);
-                    }
-                }
-            }
-
-            drawLockNumbers(inGame = false) {
-                const cs = this.cellSize;
-                for (let y = 0; y <= this.height; y++) {
-                    for (let x = 0; x <= this.width; x++) {
-                        if (inGame) {
-                            const isVisible = (y < this.height && x < this.width && this.seenCells[y][x]) ||
-                                            (y > 0 && x < this.width && this.seenCells[y-1][x]) ||
-                                            (y < this.height && x > 0 && this.seenCells[y][x-1]);
-                            if (!isVisible && !this.debugVision) continue;
-                        }
-
-                        if (y < this.height && x < this.width) {
-                            if (this.hWalls[y][x].type === 3) {
-                                this.drawNumberOnWall(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x].keys);
-                            }
-                            if (this.vWalls[y][x].type === 3) {
-                                this.drawNumberOnWall(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x].keys);
-                            }
-                        }
-                    }
-                }
-            }
-
-            drawNumberOnWall(x1, y1, x2, y2, number) {
-                const centerX = (x1 + x2) / 2;
-                const centerY = (y1 + y2) / 2;
-                const fontSize = this.cellSize * 0.4;
-                ctx.font = `bold ${fontSize}px sans-serif`;
-                ctx.fillStyle = this.colors.key;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(number.toString(), centerX, centerY);
-            }
-
             drawCircle(x, y, color, alpha = 1.0) {
                 if (alpha <= 0) return;
                 const cs = this.cellSize;
@@ -1498,23 +1069,6 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 ctx.globalAlpha = 1.0;
             }
 
-            drawItem(item) {
-                if (item.type === 'key') {
-                    const cs = this.cellSize;
-                    const centerX = item.x * cs + cs / 2;
-                    const centerY = item.y * cs + cs / 2;
-                    const size = cs * 0.3;
-                    ctx.fillStyle = this.colors.key;
-                    ctx.beginPath();
-                    ctx.moveTo(centerX, centerY - size); // Top
-                    ctx.lineTo(centerX + size, centerY); // Right
-                    ctx.lineTo(centerX, centerY + size); // Bottom
-                    ctx.lineTo(centerX - size, centerY); // Left
-                    ctx.closePath();
-                    ctx.fill();
-                }
-            }
-
             // ==================================================
             //  EDITOR LOGIC
             // ==================================================
@@ -1524,14 +1078,14 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 if (!this.mapData) {
                     this.width = 10;
                     this.height = 10;
+                    this.cellSize = canvas.width / this.width;
                     this.createBlankEditorMap();
                     this.mapData = {
                         width: this.width, height: this.height,
                         hWalls: JSON.parse(JSON.stringify(this.hWalls)),
                         vWalls: JSON.parse(JSON.stringify(this.vWalls)),
                         endPos: null,
-                        initialGhosts: [],
-                        items: []
+                        initialGhosts: []
                     };
                 }
 
@@ -1550,50 +1104,43 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 this.vWalls = JSON.parse(JSON.stringify(this.mapData.vWalls));
                 this.endPos = this.mapData.endPos ? {...this.mapData.endPos} : null;
                 this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts || []));
-                this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
                 
                 this.drawEditor();
-                this.updateDpadVisibility();
             }
             
             createBlankEditorMap() {
                 this.cellSize = canvas.width / this.width;
                 
-                const wall = () => ({ type: 1, keys: 0 });
-                const empty = () => ({ type: 0, keys: 0 });
-                const door = () => ({ type: 2, keys: 0 });
-
-                this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty));
-                this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty));
+                this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(false));
+                this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(false));
                 
                 for (let x = 0; x < this.width; x++) {
-                    this.hWalls[0][x] = wall();
-                    this.hWalls[this.height][x] = wall();
+                    this.hWalls[0][x] = true;
+                    this.hWalls[this.height][x] = true;
                 }
                 for (let y = 0; y < this.height; y++) {
-                    this.vWalls[y][0] = wall();
-                    this.vWalls[y][this.width] = wall();
+                    this.vWalls[y][0] = true;
+                    this.vWalls[y][this.width] = true;
                 }
                 
                 const roomY = this.height - 3;
-                for (let x = 0; x < 3; x++) this.hWalls[roomY + 3][x] = wall();
-                for (let y = roomY; y < roomY + 3; y++) this.vWalls[y][0] = wall();
-                this.hWalls[roomY][0] = wall(); this.hWalls[roomY][2] = wall();
-                this.vWalls[roomY][3] = wall(); this.vWalls[roomY+2][3] = wall();
-                this.hWalls[roomY][1] = door();
-                this.vWalls[roomY+1][3] = door();
+                for (let x = 0; x < 3; x++) this.hWalls[roomY + 3][x] = true;
+                for (let y = roomY; y < roomY + 3; y++) this.vWalls[y][0] = true;
+                this.hWalls[roomY][0] = true; this.hWalls[roomY][2] = true;
+                this.vWalls[roomY][3] = true; this.vWalls[roomY+2][3] = true;
+                this.hWalls[roomY][1] = false;
+                this.vWalls[roomY+1][3] = false;
                 
                 this.startPos = { x: 1, y: this.height - 2 };
                 this.endPos = null;
                 this.ghosts = [];
-                this.items = [];
             }
 
             resizeAndClearEditor() {
                 const size = parseInt(this.editorMapSizeInput.value);
                 if (size < 8 || size > 20) {
                     this.showToast('地图大小必须在 8 到 20 之间。', 3000, 'error');
-                    this.editorMapSizeInput.value = this.width;
+                    this.editorMapSizeInput.value = this.width; // Revert to old value
                     return;
                 }
                 this.width = size;
@@ -1604,7 +1151,21 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
             
             playEditedMap() {
                 if (!this.endPos) {
-                    this.showToast('请在地图上放置一个终点。', 3000, 'error');
+                    this.showToast('校验失败！请在地图上放置一个终点。', 3000, 'error');
+                    return;
+                }
+                
+                const distances = this.calculateDistances(this.startPos);
+                let reachableCells = 0;
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        if (distances[y][x] !== Infinity) {
+                            reachableCells++;
+                        }
+                    }
+                }
+                if (reachableCells < this.width * this.height) {
+                    this.showToast('校验失败！请确保所有格子都是连通的。', 3000, 'error');
                     return;
                 }
                 
@@ -1616,16 +1177,14 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     width: this.width, height: this.height,
                     hWalls: this.hWalls, vWalls: this.vWalls,
                     endPos: this.endPos,
-                    initialGhosts: this.ghosts.map((g, i) => ({x: g.x, y: g.y, id: i})),
-                    items: this.items
+                    initialGhosts: this.ghosts.map((g, i) => ({x: g.x, y: g.y, id: i}))
                 };
                 
                 this.startGame(editedMapData);
-                this.updateDpadVisibility(); 
             }
             
             clearEditorMap() {
-                this.showConfirm('你确定要清空所有墙壁、实体和物品吗？', () => {
+                this.showConfirm('你确定要清空所有墙壁、鬼和终点吗？', () => {
                     this.createBlankEditorMap();
                     this.drawEditor();
                 });
@@ -1665,37 +1224,42 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 }
                 ctx.stroke();
                 
+                ctx.strokeStyle = this.colors.wall;
+                ctx.lineWidth = Math.max(2, cs / 10);
                 ctx.beginPath();
                 for (let y = 0; y <= this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
-                        if (this.hWalls[y][x].type > 0) {
-                            this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
+                        if (this.hWalls[y][x]) {
+                            ctx.moveTo(x * cs, y * cs);
+                            ctx.lineTo((x + 1) * cs, y * cs);
                         }
                     }
                 }
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x <= this.width; x++) {
-                        if (this.vWalls[y][x].type > 0) {
-                            this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
+                        if (this.vWalls[y][x]) {
+                            ctx.moveTo(x * cs, y * cs);
+                            ctx.lineTo(x * cs, (y + 1) * cs);
                         }
                     }
                 }
                 ctx.stroke();
-                this.drawLockNumbers();
                 
                 if (this.editor.hoveredWall && !this.editor.isDragging) {
+                    ctx.strokeStyle = this.colors.hoverHighlight;
+                    ctx.lineWidth = Math.max(3, cs / 8);
                     ctx.beginPath();
                     const {x, y, type} = this.editor.hoveredWall;
-                    const wallType = this.editor.tool === 'door' ? 2 : (this.editor.tool === 'lock' ? 3 : 1);
                     if (type === 'h') {
-                        this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, {type: wallType, keys: '?'}, true);
+                        ctx.moveTo(x * cs, y * cs);
+                        ctx.lineTo((x + 1) * cs, y * cs);
                     } else {
-                        this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, {type: wallType, keys: '?'}, true);
+                        ctx.moveTo(x * cs, y * cs);
+                        ctx.lineTo(x * cs, (y + 1) * cs);
                     }
                     ctx.stroke();
                 }
 
-                this.items.forEach(item => this.drawItem(item));
                 if (this.endPos) this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
                 this.ghosts.forEach(g => this.drawCircle(g.x, g.y, this.colors.ghost));
                 this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
@@ -1740,18 +1304,11 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 return true;
             }
 
-            isCellOccupiedInEditor(x, y) {
-                if (this.endPos && this.endPos.x === x && this.endPos.y === y) return true;
-                if (this.ghosts.some(g => g.x === x && g.y === y)) return true;
-                if (this.items.some(i => i.x === x && i.y === y)) return true;
-                return false;
-            }
-
             eraseAtPos(pos) {
                 const wall = this.getWallAtPos(pos.x, pos.y);
                 if (wall && this.isWallEditable(wall)) {
-                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 0, keys: 0 };
-                    else this.vWalls[wall.y][wall.x] = { type: 0, keys: 0 };
+                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = false;
+                    else this.vWalls[wall.y][wall.x] = false;
                 }
 
                 const cellX = Math.floor(pos.x / this.cellSize);
@@ -1761,61 +1318,8 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                         this.endPos = null;
                     }
                     this.ghosts = this.ghosts.filter(g => g.x !== cellX || g.y !== cellY);
-                    this.items = this.items.filter(i => i.x !== cellX || i.y !== cellY);
                 }
                 this.drawEditor();
-            }
-
-            handleCanvasClick(e) {
-                if (this.state !== 'playing' || this.editor.active) return;
-                this.stopAutoMove();
-
-                const pos = this.getMousePos(e);
-                const targetX = Math.floor(pos.x / this.cellSize);
-                const targetY = Math.floor(pos.y / this.cellSize);
-
-                if (targetX < 0 || targetX >= this.width || targetY < 0 || targetY >= this.height) return;
-                
-                const dx = targetX - this.player.x;
-                const dy = targetY - this.player.y;
-
-                if (Math.abs(dx) + Math.abs(dy) === 1) {
-                    this.movePlayer(dx, dy);
-                    return;
-                }
-
-                if (!this.seenCells[targetY][targetX] && !this.debugVision) return;
-
-                const path = this.findPlayerPath(this.player, {x: targetX, y: targetY});
-                
-                if (path && path.length > 1) {
-                    let currentStep = 1;
-                    const move = () => {
-                        if (currentStep >= path.length || this.state !== 'playing') {
-                            this.stopAutoMove();
-                            return;
-                        }
-                        const nextPos = path[currentStep];
-                        const dx = nextPos.x - this.player.x;
-                        const dy = nextPos.y - this.player.y;
-                        this.movePlayer(dx, dy);
-                        currentStep++;
-                    };
-                    move(); // First move is instant
-                    if (path.length > 2) {
-                        this.autoMoveInterval = setInterval(move, 200);
-                    }
-                }
-            }
-
-            stopAutoMove() {
-                if (this.autoMoveInterval) {
-                    clearInterval(this.autoMoveInterval);
-                    this.autoMoveInterval = null;
-                }
-                if (this.dpadInterval) { 
-        clearInterval(this.dpadInterval);
-    }
             }
 
             handleCanvasMouseDown(e) {
@@ -1844,7 +1348,7 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 if (!this.editor.active) return;
 
                 if (!this.editor.isDragging) {
-                    if (this.editor.tool === 'wall' || this.editor.tool === 'door' || this.editor.tool === 'lock') {
+                    if (this.editor.tool === 'wall') { // Eraser no longer shows hover
                         const pos = this.getMousePos(e);
                         const wall = this.getWallAtPos(pos.x, pos.y);
                         if (wall && this.isWallEditable(wall)) {
@@ -1877,8 +1381,9 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     }
                     
                     if (wall && this.isWallEditable(wall) && (wall.x !== this.editor.lastDragPos.x || wall.y !== this.editor.lastDragPos.y)) {
-                        if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 1, keys: 0 };
-                        else this.vWalls[wall.y][wall.x] = { type: 1, keys: 0 };
+                        // Drag only adds walls
+                        if (wall.type === 'h') this.hWalls[wall.y][wall.x] = true;
+                        else this.vWalls[wall.y][wall.x] = true;
                         this.drawEditor();
                         this.editor.lastDragPos = wall;
                     }
@@ -1895,55 +1400,17 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     const cellX = Math.floor(pos.x / this.cellSize);
                     const cellY = Math.floor(pos.y / this.cellSize);
                     
-                    const wall = this.getWallAtPos(pos.x, pos.y);
-                    if (wall && this.isWallEditable(wall)) {
-                        if (this.editor.tool === 'door') {
-                            // 新增的切换逻辑
-                            if (wall.type === 'h') {
-                                const currentType = this.hWalls[wall.y][wall.x].type;
-                                // 如果当前是门(2)，则变为空白(0)，否则变为门(2)
-                                this.hWalls[wall.y][wall.x] = { type: currentType === 2 ? 0 : 2, keys: 0 };
-                            } else {
-                                const currentType = this.vWalls[wall.y][wall.x].type;
-                                this.vWalls[wall.y][wall.x] = { type: currentType === 2 ? 0 : 2, keys: 0 };
-                            }
-                        } else if (this.editor.tool === 'lock') {
-                            const numStr = prompt('请输入锁需要的钥匙数量:', '0');
-                            if (numStr !== null) {
-                                const keys = parseInt(numStr);
-                                if (!isNaN(keys) && keys >= 0) {
-                                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 3, keys: keys };
-                                    else this.vWalls[wall.y][wall.x] = { type: 3, keys: keys };
-                                } else {
-                                    this.showToast('请输入一个有效的非负整数。', 3000, 'error');
-                                }
-                            }
-                        }
-                    }
-
                     if (!this.isPosInStartRoom(cellX, cellY)) {
-                        const existingItemIndex = this.items.findIndex(i => i.x === cellX && i.y === cellY);
-                        const isOccupied = this.isCellOccupiedInEditor(cellX, cellY);
-
                         switch (this.editor.tool) {
                             case 'end':
-                                if (!isOccupied || (this.endPos && this.endPos.x === cellX && this.endPos.y === cellY)) {
-                                    this.endPos = { x: cellX, y: cellY };
-                                }
+                                this.endPos = { x: cellX, y: cellY };
                                 break;
                             case 'ghost':
                                 const existingGhostIndex = this.ghosts.findIndex(g => g.x === cellX && g.y === cellY);
                                 if (existingGhostIndex > -1) {
                                     this.ghosts.splice(existingGhostIndex, 1);
-                                } else if (!isOccupied) {
+                                } else {
                                     this.ghosts.push({ x: cellX, y: cellY });
-                                }
-                                break;
-                            case 'key':
-                                if (existingItemIndex > -1 && this.items[existingItemIndex].type === 'key') {
-                                    this.items.splice(existingItemIndex, 1);
-                                } else if (!isOccupied) {
-                                    this.items.push({ x: cellX, y: cellY, type: 'key' });
                                 }
                                 break;
                         }
@@ -1991,9 +1458,9 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
             toggleWall(wall) {
                 const {x, y, type} = wall;
                 if (type === 'h' && y >= 0 && y <= this.height && x >= 0 && x < this.width) {
-                    this.hWalls[y][x].type = this.hWalls[y][x].type === 1 ? 0 : 1;
+                    this.hWalls[y][x] = !this.hWalls[y][x];
                 } else if (type === 'v' && x >= 0 && x <= this.width && y >= 0 && y < this.height) {
-                    this.vWalls[y][x].type = this.vWalls[y][x].type === 1 ? 0 : 1;
+                    this.vWalls[y][x] = !this.vWalls[y][x];
                 }
                 this.drawEditor();
             }
@@ -2016,10 +1483,10 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                         const ny = y + dy;
                         
                         if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height) {
-                            if (dx === 1 && (this.vWalls[y][x + 1].type === 1 || this.vWalls[y][x + 1].type === 3)) continue;
-                            if (dx === -1 && (this.vWalls[y][x].type === 1 || this.vWalls[y][x].type === 3)) continue;
-                            if (dy === 1 && (this.hWalls[y + 1][x].type === 1 || this.hWalls[y + 1][x].type === 3)) continue;
-                            if (dy === -1 && (this.hWalls[y][x].type === 1 || this.hWalls[y][x].type === 3)) continue;
+                            if (dx === 1 && this.vWalls[y][x + 1]) continue;
+                            if (dx === -1 && this.vWalls[y][x]) continue;
+                            if (dy === 1 && this.hWalls[y + 1][x]) continue;
+                            if (dy === -1 && this.hWalls[y][x]) continue;
                             
                             if (distances[ny][nx] === Infinity) {
                                 distances[ny][nx] = dist + 1;
@@ -2050,10 +1517,10 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                         const key = `${nx},${ny}`;
 
                         if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height && !visited.has(key)) {
-                            if (dx === 1 && this.vWalls[y][x + 1].type > 0) continue;
-                            if (dx === -1 && this.vWalls[y][x].type > 0) continue;
-                            if (dy === 1 && this.hWalls[y + 1][x].type > 0) continue;
-                            if (dy === -1 && this.hWalls[y][x].type > 0) continue;
+                            if (dx === 1 && this.vWalls[y][x + 1]) continue;
+                            if (dx === -1 && this.vWalls[y][x]) continue;
+                            if (dy === 1 && this.hWalls[y + 1][x]) continue;
+                            if (dy === -1 && this.hWalls[y][x]) continue;
                             
                             visited.add(key);
                             const newPath = [...path, {x: nx, y: ny}];
@@ -2063,142 +1530,26 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 }
                 return null;
             }
-
-            findPlayerPath(start, end) {
-                const queue = [[{x: start.x, y: start.y}]];
-                const visited = new Set([`${start.x},${start.y}`]);
-
-                while (queue.length > 0) {
-                    const path = queue.shift();
-                    const { x, y } = path[path.length - 1];
-
-                    if (x === end.x && y === end.y) {
-                        return path;
-                    }
-
-                    const neighbors = [ {dx:0, dy:-1}, {dx:1, dy:0}, {dx:0, dy:1}, {dx:-1, dy:0} ];
-                    for (const {dx, dy} of neighbors) {
-                        const nx = x + dx;
-                        const ny = y + dy;
-                        const key = `${nx},${ny}`;
-
-                        if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height && !visited.has(key)) {
-                            if (!this.seenCells[ny][nx] && !this.debugVision) continue;
-                            if (dx === 1 && (this.vWalls[y][x + 1].type === 1 || this.vWalls[y][x + 1].type === 3)) continue;
-                            if (dx === -1 && (this.vWalls[y][x].type === 1 || this.vWalls[y][x].type === 3)) continue;
-                            if (dy === 1 && (this.hWalls[y + 1][x].type === 1 || this.hWalls[y + 1][x].type === 3)) continue;
-                            if (dy === -1 && (this.hWalls[y][x].type === 1 || this.hWalls[y][x].type === 3)) continue;
-                            
-                            visited.add(key);
-                            const newPath = [...path, {x: nx, y: ny}];
-                            queue.push(newPath);
-                        }
-                    }
-                }
-                return null;
-            }           
             
             generateShareCode(isEditor = false) {
                 try {
-                    let mapSource;
+                    let dataToEncode;
                     if (isEditor) {
-                        mapSource = {
-                            w: this.width, h: this.height,
-                            hw: this.hWalls, vw: this.vWalls,
-                            e: this.endPos,
-                            g: this.ghosts,
-                            i: this.items
+                        dataToEncode = {
+                            width: this.width, height: this.height,
+                            hWalls: this.hWalls, vWalls: this.vWalls,
+                            endPos: this.endPos,
+                            initialGhosts: this.ghosts.map(g => ({x: g.x, y: g.y}))
                         };
                     } else {
                         if (!this.mapData) return null;
-                        mapSource = {
-                            w: this.mapData.width, h: this.mapData.height,
-                            hw: this.mapData.hWalls, vw: this.mapData.vWalls,
-                            e: this.mapData.endPos,
-                            g: this.mapData.initialGhosts,
-                            i: this.mapData.items
-                        };
+                        dataToEncode = this.mapData;
                     }
-
-                    // 1. 将地图对象序列化为 JSON 字符串
-                    const jsonString = JSON.stringify(mapSource);
-
-                    // 2. 使用 pako (zlib) 压缩 JSON 字符串
-                    //    pako.deflate 返回的是一个 Uint8Array (二进制数组)
-                    const compressedData = pako.deflate(jsonString);
-
-                    // 3. 将二进制数据转换为 Base64 字符串
-                    //    btoa() 需要一个字符串，所以我们先将每个字节转换为字符
-                    const binaryString = String.fromCharCode.apply(null, compressedData);
-                    const shareCode = btoa(binaryString);
-                    
-                    return shareCode;
-
+                    const jsonString = JSON.stringify(dataToEncode);
+                    return btoa(jsonString);
                 } catch (e) {
-                    console.error("Error generating compressed share code:", e);
-                    this.showToast('生成分享码失败。', 3000, 'error');
+                    console.error("Error generating share code:", e);
                     return null;
-                }
-            }
-
-            /**
-             * [新] 从高度压缩的分享码加载地图
-             * 流程: Base64解码 -> Inflate解压 -> JSON解析 -> 对象
-             */
-            loadFromShareCode(code, isEditor = false) {
-                if (!code) {
-                    this.showToast('请输入分享码。', 3000, 'error');
-                    return;
-                }
-                try {
-                    // 1. Base64 解码为二进制字符串
-                    const binaryString = atob(code);
-                    const len = binaryString.length;
-                    const bytes = new Uint8Array(len);
-                    for (let i = 0; i < len; i++) {
-                        bytes[i] = binaryString.charCodeAt(i);
-                    }
-
-                    // 2. 使用 pako (zlib) 解压缩二进制数据为 JSON 字符串
-                    const jsonString = pako.inflate(bytes, { to: 'string' });
-
-                    // 3. 将 JSON 字符串解析回地图对象
-                    const data = JSON.parse(jsonString);
-
-                    // 验证数据基本结构
-                    if (!data.w || !data.h || !data.hw || !data.vw) {
-                        throw new Error("Invalid map data structure");
-                    }
-
-                    const mapData = {
-                        width: data.w,
-                        height: data.h,
-                        hWalls: data.hw,
-                        vWalls: data.vw,
-                        endPos: data.e || null,
-                        initialGhosts: data.g || [],
-                        items: data.i || []
-                    };
-
-                    if (isEditor) {
-                        this.width = mapData.width;
-                        this.height = mapData.height;
-                        this.editorMapSizeInput.value = this.width;
-                        this.cellSize = canvas.width / this.width;
-                        this.hWalls = mapData.hWalls;
-                        this.vWalls = mapData.vWalls;
-                        this.endPos = mapData.endPos;
-                        this.ghosts = mapData.initialGhosts; // 在编辑器里也用 initialGhosts
-                        this.items = mapData.items;
-                        this.drawEditor();
-                    } else {
-                        this.startGame(mapData);
-                    }
-                    this.showToast('地图加载成功！', 2000, 'success');
-
-                } catch (e) {
-                    console.error("Error loading from compressed share code:", e);
-                    this.showToast('加载分享码失败，格式不正确或已损坏。', 3000, 'error');
                 }
             }
 
@@ -2215,17 +1566,45 @@ document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                 }
             }
 
-            
+            loadFromShareCode(code, isEditor = false) {
+                if (!code) {
+                    this.showToast('请输入分享码。', 3000, 'error');
+                    return;
+                }
+                try {
+                    const jsonString = atob(code);
+                    const mapData = JSON.parse(jsonString);
+                    
+                    if (!mapData.width || !mapData.height || !mapData.hWalls || !mapData.vWalls) {
+                        throw new Error("Invalid map data");
+                    }
+                    
+                    if (mapData.initialGhosts && !mapData.initialGhosts.every(g => 'id' in g)) {
+                        mapData.initialGhosts.forEach((g, i) => g.id = i);
+                    }
+
+                    if (isEditor) {
+                        this.width = mapData.width;
+                        this.height = mapData.height;
+                        this.editorMapSizeInput.value = this.width;
+                        this.cellSize = canvas.width / this.width;
+                        this.hWalls = mapData.hWalls;
+                        this.vWalls = mapData.vWalls;
+                        this.endPos = mapData.endPos;
+                        this.ghosts = mapData.initialGhosts || [];
+                        this.drawEditor();
+                    } else {
+                        this.startGame(mapData);
+                    }
+                } catch (e) {
+                    console.error("Error loading from share code:", e);
+                    this.showToast('加载分享码失败，格式不正确。', 3000, 'error');
+                }
+            }
         }
 
         const game = new GhostMazeGame();
     });
     </script>
-        <div id="dpad-controls" style="display: none;">
-            <div id="dpad-up" class="dpad-btn">▲</div>
-            <div id="dpad-left" class="dpad-btn">◀</div>
-            <div id="dpad-right" class="dpad-btn">▶</div>
-            <div id="dpad-down" class="dpad-btn">▼</div>
-        </div>
-    </body>
+</body>
 </html>
