@@ -481,28 +481,39 @@
                         <h3>状态</h3>
                         <!-- 探索模式状态栏 -->
                         <div id="status-bar-exploration" class="status-bar">
-                            <div id="player-health-display" class="label">生命: 5</div>
-                            <div id="player-keys-display" class="label">钥匙: 0</div>
-                            <div id="player-steps-display" class="label">步数: 0</div>
-                            <div id="ghost-proximity-display" class="label">周围鬼数: 0</div>
+                            <div id="player-health-display" class="label">生命:
+                                5</div>
+                            <div id="player-keys-display" class="label">钥匙:
+                                0</div>
+                            <div id="player-steps-display" class="label">步数:
+                                0</div>
+                            <div id="ghost-proximity-display"
+                                class="label">周围鬼数: 0</div>
                         </div>
                         <!-- 死亡循环模式状态栏 -->
-                        <div id="status-bar-death-loop" class="status-bar" style="display: none;">
-                            <div id="loop-count-display" class="label">循环次数: 0</div>
-                            <div id="player-keys-display-death-loop" class="label">钥匙: 0</div>
-                            <div id="player-stamina-display" class="label">剩余体力: 100</div>
+                        <div id="status-bar-death-loop" class="status-bar"
+                            style="display: none;">
+                            <div id="loop-count-display" class="label">循环次数:
+                                0</div>
+                            <div id="player-keys-display-death-loop"
+                                class="label">钥匙: 0</div>
+                            <div id="player-stamina-display" class="label">剩余体力:
+                                100</div>
                         </div>
                     </div>
                     <div class="control-group">
                         <h3>地图选项</h3>
                         <label class="label">模式选择</label>
                         <div class="mode-selector">
-                            <button id="mode-exploration-btn" class="mode-btn active">探索模式</button>
-                            <button id="mode-death-loop-btn" class="mode-btn">死亡循环</button>
+                            <button id="mode-exploration-btn"
+                                class="mode-btn active">探索模式</button>
+                            <button id="mode-death-loop-btn"
+                                class="mode-btn">死亡循环</button>
                         </div>
                         <div class="inline-control-group">
                             <label for="map-size-input">地图大小 (8-20):</label>
-                            <input type="number" id="map-size-input" value="10" min="8" max="20">
+                            <input type="number" id="map-size-input" value="10"
+                                min="8" max="20">
                         </div>
                         <button id="generate-map-btn">随机生成新地图</button>
                     </div>
@@ -515,14 +526,16 @@
                     </div>
                     <div class="control-group">
                         <h3>控制</h3>
-                        <button id="reset-map-btn" class="secondary">重置地图</button>
+                        <button id="reset-map-btn"
+                            class="secondary">重置地图</button>
                         <div class="toggle-controls-wrapper">
                             <div class="toggle-switch">
                                 <span class="label">调试视野</span>
                                 <input type="checkbox" id="debug-vision-toggle">
                                 <label for="debug-vision-toggle">Toggle</label>
                             </div>
-                            <div id="dpad-toggle-container" class="toggle-switch">
+                            <div id="dpad-toggle-container"
+                                class="toggle-switch">
                                 <span class="label">方向按键</span>
                                 <input type="checkbox" id="dpad-toggle" checked>
                                 <label for="dpad-toggle">Toggle</label>
@@ -535,7 +548,8 @@
                         <div class="share-buttons-container">
                             <button id="undo-btn" class="secondary">撤回</button>
                             <button id="save-btn" class="secondary">存档</button>
-                            <button id="rewind-btn" class="secondary">回溯</button>
+                            <button id="rewind-btn"
+                                class="secondary">回溯</button>
                         </div>
                     </div>
                     <!-- === 新增结束 === -->
@@ -550,33 +564,43 @@
                     <div class="control-group">
                         <h3>编辑器工具</h3>
                         <div class="editor-toolbar">
-                            <button id="tool-wall" class="tool-btn active">墙壁</button>
+                            <button id="tool-wall"
+                                class="tool-btn active">墙壁</button>
                             <button id="tool-door" class="tool-btn">门</button>
                             <button id="tool-lock" class="tool-btn">锁</button>
                             <button id="tool-key" class="tool-btn">钥匙</button>
                             <button id="tool-end" class="tool-btn">终点</button>
                             <button id="tool-ghost" class="tool-btn">鬼</button>
-                            <button id="tool-eraser" class="tool-btn">橡皮擦</button>
+                            <button id="tool-eraser"
+                                class="tool-btn">橡皮擦</button>
                         </div>
                     </div>
                     <div class="control-group">
                         <h3>地图选项</h3>
                         <label class="label">游戏模式</label>
                         <div class="mode-selector">
-                            <button id="editor-mode-exploration-btn" class="mode-btn active">探索模式</button>
-                            <button id="editor-mode-death-loop-btn" class="mode-btn">死亡循环</button>
+                            <button id="editor-mode-exploration-btn"
+                                class="mode-btn active">探索模式</button>
+                            <button id="editor-mode-death-loop-btn"
+                                class="mode-btn">死亡循环</button>
                         </div>
                         <div class="inline-control-group">
-                            <label for="editor-map-size-input">地图大小 (8-20):</label>
-                            <input type="number" id="editor-map-size-input" value="10" min="8" max="20">
+                            <label for="editor-map-size-input">地图大小
+                                (8-20):</label>
+                            <input type="number" id="editor-map-size-input"
+                                value="10" min="8" max="20">
                         </div>
-                        <div id="initial-health-container" class="inline-control-group">
+                        <div id="initial-health-container"
+                            class="inline-control-group">
                             <label for="editor-initial-health">初始生命:</label>
-                            <input type="number" id="editor-initial-health" value="5" min="1">
+                            <input type="number" id="editor-initial-health"
+                                value="5" min="1">
                         </div>
-                        <div id="initial-stamina-container" class="inline-control-group" style="display: none;">
+                        <div id="initial-stamina-container"
+                            class="inline-control-group" style="display: none;">
                             <label for="editor-initial-stamina">初始体力:</label>
-                            <input type="number" id="editor-initial-stamina" value="100" min="1">
+                            <input type="number" id="editor-initial-stamina"
+                                value="100" min="1">
                         </div>
                     </div>
                     <div class="control-group">
@@ -587,8 +611,10 @@
                     <div class="control-group">
                         <h3>分享</h3>
                         <div class="share-buttons-container">
-                            <button id="editor-copy-share-code-btn">复制分享码</button>
-                            <button id="editor-load-share-code-btn">粘贴并加载</button>
+                            <button
+                                id="editor-copy-share-code-btn">复制分享码</button>
+                            <button
+                                id="editor-load-share-code-btn">粘贴并加载</button>
                         </div>
                     </div>
                 </div>
@@ -1016,16 +1042,30 @@
             //  CUSTOM NOTIFICATIONS & ANIMATION
             // ==================================================
             showToast(message, duration = 3000, type = 'info') {
+                // 1. 清除任何正在进行的“隐藏”计时器
                 clearTimeout(this.toastTimeout);
-                this.toastElement.textContent = message;
-                this.toastElement.className = 'toast';
-                if (type !== 'info') {
-                    this.toastElement.classList.add(type);
-                }
-                this.toastElement.classList.add('show');
-                this.toastTimeout = setTimeout(() => {
-                    this.toastElement.classList.remove('show');
-                }, duration);
+
+                // 2. 立即隐藏当前的 toast，为重新播放动画做准备
+                this.toastElement.classList.remove('show');
+
+                // 3. 使用一个非常短的延时 (setTimeout)
+                // 这给浏览器足够的时间来处理 class 的移除操作
+                // 然后再更新内容并重新显示，从而强制动画重新播放
+                setTimeout(() => {
+                    this.toastElement.textContent = message;
+                    // 重置 class，移除旧的 success/error 等状态
+                    this.toastElement.className = 'toast'; 
+                    if (type !== 'info') {
+                        this.toastElement.classList.add(type);
+                    }
+                    // 重新添加 'show' 类，触发进入动画
+                    this.toastElement.classList.add('show');
+
+                    // 4. 设置新的计时器，在指定时间后隐藏这个新的 toast
+                    this.toastTimeout = setTimeout(() => {
+                        this.toastElement.classList.remove('show');
+                    }, duration);
+                }, 100); // 100毫秒的延时足以产生一个清晰的“刷新”效果
             }
 
             showConfirm(message, onConfirm) {
@@ -1437,6 +1477,7 @@
                     const item = this.items[itemIndex];
                     if (item.type === 'key') {
                         this.player.keys++;
+                        this.showToast(`钥匙+1 (现在持有${this.player.keys}个)`, 2000, 'success');
                     }
                     this.items.splice(itemIndex, 1);
                     this.updateUIDisplays();
@@ -1739,6 +1780,7 @@
                 const trailLifetime = 500;
                 const initialAlpha = 0.3;
 
+                // --- 绘制底层元素 ---
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
                         ctx.fillStyle = this.colors.ground;
@@ -1787,6 +1829,7 @@
                     }
                 }
 
+                // --- 绘制中间层元素 (墙体和地面实体) ---
                 ctx.beginPath();
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
@@ -1799,25 +1842,29 @@
                     }
                 }
                 ctx.stroke();
-                this.drawLockNumbers(true);
 
+                if (this.endPos && (this.seenCells[this.endPos.y][this.endPos.x] || this.debugVision)) {
+                    this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
+                }
+
+                // --- 绘制活动单位 (鬼和玩家) ---
+                this.ghosts.forEach(ghost => {
+                    if (this.seenCells[ghost.y][ghost.x] || this.debugVision) {
+                        this.drawCircle(ghost.x, ghost.y, this.colors.ghost);
+                    }
+                });
+                this.drawCircle(this.player.x, this.player.y, this.colors.player);
+                
+                // --- 绘制顶层元素 (覆盖在单位之上) ---
+                // 绘制物品 (钥匙等)
                 this.items.forEach(item => {
                     if (this.seenCells[item.y][item.x] || this.debugVision) {
                         this.drawItem(item);
                     }
                 });
 
-                if (this.endPos && (this.seenCells[this.endPos.y][this.endPos.x] || this.debugVision)) {
-                    this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
-                }
-
-                this.drawCircle(this.player.x, this.player.y, this.colors.player);
-                
-                this.ghosts.forEach(ghost => {
-                    if (this.seenCells[ghost.y][ghost.x] || this.debugVision) {
-                        this.drawCircle(ghost.x, ghost.y, this.colors.ghost);
-                    }
-                });
+                // 最后绘制锁上的数字，确保它在最顶层
+                this.drawLockNumbers(true);
             }
 
             drawWallOrDoor(x1, y1, x2, y2, wallObject, isHighlight = false) {
@@ -1849,20 +1896,27 @@
 
             drawLockNumbers(inGame = false) {
                 const cs = this.cellSize;
-                for (let y = 0; y <= this.height; y++) {
-                    for (let x = 0; x <= this.width; x++) {
-                        if (inGame) {
-                            const isVisible = (y < this.height && x < this.width && this.seenCells[y][x]) ||
-                                            (y > 0 && x < this.width && this.seenCells[y-1][x]) ||
-                                            (y < this.height && x > 0 && this.seenCells[y][x-1]);
-                            if (!isVisible && !this.debugVision) continue;
-                        }
-
-                        if (y < this.height && x < this.width) {
-                            if (this.hWalls[y][x].type === 3) {
+                
+                // 遍历所有内部的水平墙
+                for (let y = 1; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        if (this.hWalls[y][x].type === 3) {
+                            // 检查是否应该显示：不在游戏模式中，或开启调试视野，或墙两侧任一单元格可见
+                            const isVisible = !inGame || this.debugVision || this.seenCells[y - 1][x] || this.seenCells[y][x];
+                            if (isVisible) {
                                 this.drawNumberOnWall(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x].keys);
                             }
-                            if (this.vWalls[y][x].type === 3) {
+                        }
+                    }
+                }
+
+                // 遍历所有内部的垂直墙
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 1; x < this.width; x++) {
+                        if (this.vWalls[y][x].type === 3) {
+                            // 检查是否应该显示：不在游戏模式中，或开启调试视野，或墙两侧任一单元格可见
+                            const isVisible = !inGame || this.debugVision || this.seenCells[y][x - 1] || this.seenCells[y][x];
+                            if (isVisible) {
                                 this.drawNumberOnWall(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x].keys);
                             }
                         }
@@ -1871,15 +1925,25 @@
             }
 
             drawNumberOnWall(x1, y1, x2, y2, number) {
-                const centerX = (x1 + x2) / 2;
-                const centerY = (y1 + y2) / 2;
-                const fontSize = this.cellSize * 0.4;
+const centerX = (x1 + x2) / 2;
+const centerY = (y1 + y2) / 2;
+const fontSize = this.cellSize * 0.4;
+const text = number.toString();
                 ctx.font = `bold ${fontSize}px sans-serif`;
-                ctx.fillStyle = this.colors.key;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(number.toString(), centerX, centerY);
-            }
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // 设置描边样式
+            ctx.strokeStyle = 'black'; // 描边颜色为黑色
+            ctx.lineWidth = 3;         // 描边宽度
+
+            // 1. 先绘制文字的描边
+            ctx.strokeText(text, centerX, centerY);
+
+            // 2. 再在同一位置绘制文字的填充颜色
+            ctx.fillStyle = this.colors.key; // 填充颜色为黄色
+            ctx.fillText(text, centerX, centerY);
+        }
 
             drawCircle(x, y, color, alpha = 1.0) {
                 if (alpha <= 0) return;
