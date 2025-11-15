@@ -569,6 +569,7 @@
                             <button id="tool-key" class="tool-btn">钥匙</button>
                             <button id="tool-end" class="tool-btn">终点</button>
                             <button id="tool-ghost" class="tool-btn">鬼</button>
+                            <button id="tool-oneway" class="tool-btn">单向门</button>
                             <button id="tool-eraser"
                                 class="tool-btn">橡皮擦</button>
                         </div>
@@ -1414,6 +1415,12 @@
 
                 if (wall) {
                     if (wall.type === 1) return;
+                    if (wall.type === 4) { // 单向门逻辑
+                        // 如果玩家的移动方向与门允许的方向不一致，则阻止移动
+                        if (dx !== wall.direction.dx || dy !== wall.direction.dy) {
+                            return;
+                        }
+                    }
                     if (wall.type === 3 && this.player.keys < wall.keys) return;
                     if (wall.type === 3 && this.player.keys >= wall.keys) {
                         wall.type = 0;
@@ -1862,7 +1869,7 @@
                 });
 
                 // 最后绘制锁上的数字，确保它在最顶层
-                this.drawLockNumbers(true);
+                this.drawWallOverlays(true);
             }
 
             drawWallOrDoor(x1, y1, x2, y2, wallObject, isHighlight = false) {
@@ -1877,7 +1884,7 @@
                     // 为不同类型的墙设置不同的线宽
                     if (type === 1 || type === 2) { // 普通墙或门
                         ctx.lineWidth = Math.max(2, cs / 10);
-                    } else if (type === 3) { // 锁
+                    } else if (type === 3 || type === 4) { // 锁或单向门
                         // 锁的边框比普通墙稍粗
                         ctx.lineWidth = Math.max(3, cs / 12); 
                     }
@@ -1886,7 +1893,7 @@
                 if (type === 1) { // 普通墙，绘制一条线
                     ctx.moveTo(x1, y1);
                     ctx.lineTo(x2, y2);
-                } else if (type === 3) { // 锁，绘制一个空心矩形
+                } else if (type === 3 || type === 4) { // 锁或单向门，绘制一个空心矩形
                     const isHorizontal = y1 === y2;
                     const lockWidth = cs * 0.2; // 矩形的“厚度”
 
@@ -1910,17 +1917,76 @@
                 }
             }
 
-            drawLockNumbers(inGame = false) {
+            drawArrow(x1, y1, x2, y2, direction, color) {
+                const centerX = (x1 + x2) / 2;
+                const centerY = (y1 + y2) / 2;
+                const cs = this.cellSize;
+                // 稍微增大字体以获得更好的视觉效果
+                const fontSize = cs * 0.6; 
+
+                ctx.save(); // 保存当前画布状态
+                ctx.translate(centerX, centerY); // 将原点移动到墙的中心
+
+                // 根据方向旋转画布
+                if (direction.dx === 1) { // Right
+                    ctx.rotate(0);
+                } else if (direction.dx === -1) { // Left
+                    ctx.rotate(Math.PI); // 旋转180度
+                } else if (direction.dy === 1) { // Down
+                    ctx.rotate(Math.PI / 2); // 旋转90度
+                } else if (direction.dy === -1) { // Up
+                    ctx.rotate(-Math.PI / 2); // 旋转-90度
+                }
+
+                ctx.scale(0.8, 1.0);
+
+                // 设置字体和对齐方式
+                ctx.font = `bold ${fontSize}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // 先绘制黑色描边
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3; // 与锁的数字保持一致的描边宽度
+                ctx.strokeText('>', 0, 0);
+
+                // 再绘制填充颜色
+                ctx.fillStyle = color;
+                ctx.fillText('>', 0, 0);
+
+                ctx.restore(); // 恢复画布状态，使旋转不影响其他绘图
+            }
+
+            drawWallOverlays(inGame = false) {
                 const cs = this.cellSize;
                 
+                // 绘制锁的数字 (这个内部函数保持不变)
+                const drawNumber = (x1, y1, x2, y2, number) => {
+                    const centerX = (x1 + x2) / 2;
+                    const centerY = (y1 + y2) / 2;
+                    const fontSize = this.cellSize * 0.4;
+                    const text = number.toString();
+                    ctx.font = `bold ${fontSize}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 3;
+                    ctx.strokeText(text, centerX, centerY);
+                    ctx.fillStyle = this.colors.key;
+                    ctx.fillText(text, centerX, centerY);
+                };
+
                 // 遍历所有内部的水平墙
                 for (let y = 1; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
-                        if (this.hWalls[y][x].type === 3) {
-                            // 检查是否应该显示：不在游戏模式中，或开启调试视野，或墙两侧任一单元格可见
-                            const isVisible = !inGame || this.debugVision || this.seenCells[y - 1][x] || this.seenCells[y][x];
-                            if (isVisible) {
-                                this.drawNumberOnWall(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x].keys);
+                        const wall = this.hWalls[y][x];
+                        const isVisible = !inGame || this.debugVision || this.seenCells[y - 1][x] || this.seenCells[y][x];
+                        if (isVisible) {
+                            if (wall.type === 3) {
+                                drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, wall.keys);
+                            } else if (wall.type === 4 && wall.direction) {
+                                // 核心改动：调用新的类方法绘制箭头
+                                this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, wall.direction, this.colors.key);
                             }
                         }
                     }
@@ -1929,37 +1995,19 @@
                 // 遍历所有内部的垂直墙
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 1; x < this.width; x++) {
-                        if (this.vWalls[y][x].type === 3) {
-                            // 检查是否应该显示：不在游戏模式中，或开启调试视野，或墙两侧任一单元格可见
-                            const isVisible = !inGame || this.debugVision || this.seenCells[y][x - 1] || this.seenCells[y][x];
-                            if (isVisible) {
-                                this.drawNumberOnWall(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x].keys);
+                        const wall = this.vWalls[y][x];
+                        const isVisible = !inGame || this.debugVision || this.seenCells[y][x - 1] || this.seenCells[y][x];
+                        if (isVisible) {
+                            if (wall.type === 3) {
+                                drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, wall.keys);
+                            } else if (wall.type === 4 && wall.direction) {
+                                // 核心改动：调用新的类方法绘制箭头
+                                this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, wall.direction, this.colors.key);
                             }
                         }
                     }
                 }
             }
-
-            drawNumberOnWall(x1, y1, x2, y2, number) {
-const centerX = (x1 + x2) / 2;
-const centerY = (y1 + y2) / 2;
-const fontSize = this.cellSize * 0.4;
-const text = number.toString();
-                ctx.font = `bold ${fontSize}px sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
-            // 设置描边样式
-            ctx.strokeStyle = 'black'; // 描边颜色为黑色
-            ctx.lineWidth = 3;         // 描边宽度
-
-            // 1. 先绘制文字的描边
-            ctx.strokeText(text, centerX, centerY);
-
-            // 2. 再在同一位置绘制文字的填充颜色
-            ctx.fillStyle = this.colors.key; // 填充颜色为黄色
-            ctx.fillText(text, centerX, centerY);
-        }
 
             drawCircle(x, y, color, alpha = 1.0) {
                 if (alpha <= 0) return;
@@ -2158,18 +2206,30 @@ const text = number.toString();
                     }
                 }
                 ctx.stroke();
-                this.drawLockNumbers();
+                this.drawWallOverlays();
                 
                 if (this.editor.hoveredWall && !this.editor.isDragging) {
                     ctx.beginPath();
-                    const {x, y, type} = this.editor.hoveredWall;
-                    const wallType = this.editor.tool === 'door' ? 2 : (this.editor.tool === 'lock' ? 3 : 1);
+                    const {x, y, type, direction} = this.editor.hoveredWall;
+                    const wallType = this.editor.tool === 'door' ? 2 : (this.editor.tool === 'lock' ? 3 : (this.editor.tool === 'oneway' ? 4 : 1));
+                    const wallObject = { type: wallType, keys: '?', direction: direction };
+
                     if (type === 'h') {
-                        this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, {type: wallType, keys: '?'}, true);
+                        this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, wallObject, true);
                     } else {
-                        this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, {type: wallType, keys: '?'}, true);
+                        this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, wallObject, true);
                     }
                     ctx.stroke();
+
+                    // 绘制单向门预览箭头（无描边）
+                    if (wallObject.type === 4 && wallObject.direction) {
+                        // 核心改动：调用新的类方法绘制预览箭头，颜色为白色
+                        if (type === 'h') {
+                            this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, direction, 'white');
+                        } else {
+                            this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, direction, 'white');
+                        }
+                    }
                 }
 
                 this.items.forEach(item => this.drawItem(item));
@@ -2298,6 +2358,7 @@ const text = number.toString();
             handleCanvasMouseDown(e) {
                 if (!this.editor.active) return;
                 
+                // 核心改动：将这两个状态设置移到函数顶部，对所有工具生效
                 this.editor.isDragging = true;
                 this.editor.didDrag = false;
 
@@ -2314,6 +2375,19 @@ const text = number.toString();
                     }
                 } else if (this.editor.tool === 'eraser') {
                     this.eraseAtPos(pos);
+                } else if (this.editor.tool === 'oneway') {
+                    const wall = this.getWallAtPos(pos.x, pos.y);
+                    if (wall && this.isWallEditable(wall)) {
+                        const direction = this.getMouseSideOfWall(pos.x, pos.y, wall);
+                        const newWall = { type: 4, direction: direction };
+                        if (wall.type === 'h') {
+                            this.hWalls[wall.y][wall.x] = newWall;
+                        } else {
+                            this.vWalls[wall.y][wall.x] = newWall;
+                        }
+                        this.editor.lastDragPos = wall; // 记下正在编辑的墙
+                        this.drawEditor();
+                    }
                 }
             }
 
@@ -2321,14 +2395,23 @@ const text = number.toString();
                 if (!this.editor.active) return;
 
                 if (!this.editor.isDragging) {
-                    if (this.editor.tool === 'wall' || this.editor.tool === 'door' || this.editor.tool === 'lock') {
+                    if (this.editor.tool === 'wall' || this.editor.tool === 'door' || this.editor.tool === 'lock' || this.editor.tool === 'oneway') {
                         const pos = this.getMousePos(e);
                         const wall = this.getWallAtPos(pos.x, pos.y);
                         if (wall && this.isWallEditable(wall)) {
+                            let needsRedraw = false;
                             if (!this.editor.hoveredWall || this.editor.hoveredWall.x !== wall.x || this.editor.hoveredWall.y !== wall.y || this.editor.hoveredWall.type !== wall.type) {
                                 this.editor.hoveredWall = wall;
-                                this.drawEditor();
+                                needsRedraw = true;
                             }
+                            if (this.editor.tool === 'oneway') {
+                                const direction = this.getMouseSideOfWall(pos.x, pos.y, wall);
+                                if (!this.editor.hoveredWall.direction || this.editor.hoveredWall.direction.dx !== direction.dx || this.editor.hoveredWall.direction.dy !== direction.dy) {
+                                    this.editor.hoveredWall.direction = direction;
+                                    needsRedraw = true;
+                                }
+                            }
+                            if (needsRedraw) this.drawEditor();
                         } else if (this.editor.hoveredWall) {
                             this.editor.hoveredWall = null;
                             this.drawEditor();
@@ -2340,8 +2423,8 @@ const text = number.toString();
                 this.editor.didDrag = true;
                 this.editor.hoveredWall = null;
 
+                const pos = this.getMousePos(e);
                 if (this.editor.tool === 'wall' && this.editor.dragAxis) {
-                    const pos = this.getMousePos(e);
                     let wall;
                     if (this.editor.dragAxis === 'h') {
                         const x = Math.floor(pos.x / this.cellSize);
@@ -2360,14 +2443,29 @@ const text = number.toString();
                         this.editor.lastDragPos = wall;
                     }
                 } else if (this.editor.tool === 'eraser') {
-                    this.eraseAtPos(this.getMousePos(e));
+                    this.eraseAtPos(pos);
+                } else if (this.editor.tool === 'oneway' && this.editor.lastDragPos) {
+                    const wallData = this.editor.lastDragPos;
+                    const newDirection = this.getMouseSideOfWall(pos.x, pos.y, wallData);
+                    
+                    let currentWall;
+                    if (wallData.type === 'h') {
+                        currentWall = this.hWalls[wallData.y][wallData.x];
+                    } else {
+                        currentWall = this.vWalls[wallData.y][wallData.x];
+                    }
+
+                    if (currentWall && currentWall.type === 4 && (currentWall.direction.dx !== newDirection.dx || currentWall.direction.dy !== newDirection.dy)) {
+                        currentWall.direction = newDirection;
+                        this.drawEditor();
+                    }
                 }
             }
             
             handleCanvasMouseUp(e) {
                 if (!this.editor.active) return;
 
-                if (this.editor.isDragging && !this.editor.didDrag) {
+                if (this.editor.isDragging && !this.editor.didDrag) { // 这是一个单击事件
                     const pos = this.getMousePos(e);
                     const cellX = Math.floor(pos.x / this.cellSize);
                     const cellY = Math.floor(pos.y / this.cellSize);
@@ -2477,6 +2575,23 @@ const text = number.toString();
             //  UTILITIES (Pathfinding, Share Code)
             // ==================================================
             
+            getMouseSideOfWall(mouseX, mouseY, wall) {
+                const cs = this.cellSize;
+                if (wall.type === 'h') { // 水平墙
+                    if (mouseY > wall.y * cs) {
+                        return { dx: 0, dy: 1 }; // 向下
+                    } else {
+                        return { dx: 0, dy: -1 }; // 向上
+                    }
+                } else { // 垂直墙
+                    if (mouseX > wall.x * cs) {
+                        return { dx: 1, dy: 0 }; // 向右
+                    } else {
+                        return { dx: -1, dy: 0 }; // 向左
+                    }
+                }
+            }
+
             calculateDistances(startNode) {
                 const distances = Array(this.height).fill(null).map(() => Array(this.width).fill(Infinity));
                 const queue = [{ x: startNode.x, y: startNode.y, dist: 0 }];
@@ -2491,10 +2606,13 @@ const text = number.toString();
                         const ny = y + dy;
                         
                         if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height) {
-                            if (dx === 1 && (this.vWalls[y][x + 1].type === 1 || this.vWalls[y][x + 1].type === 3)) continue;
-                            if (dx === -1 && (this.vWalls[y][x].type === 1 || this.vWalls[y][x].type === 3)) continue;
-                            if (dy === 1 && (this.hWalls[y + 1][x].type === 1 || this.hWalls[y + 1][x].type === 3)) continue;
-                            if (dy === -1 && (this.hWalls[y][x].type === 1 || this.hWalls[y][x].type === 3)) continue;
+                            let wall;
+                            if (dx === 1) wall = this.vWalls[y][x + 1];
+                            if (dx === -1) wall = this.vWalls[y][x];
+                            if (dy === 1) wall = this.hWalls[y + 1][x];
+                            if (dy === -1) wall = this.hWalls[y][x];
+
+                            if (wall && (wall.type === 1 || wall.type === 3 || wall.type === 4)) continue;
                             
                             if (distances[ny][nx] === Infinity) {
                                 distances[ny][nx] = dist + 1;
@@ -2559,10 +2677,25 @@ const text = number.toString();
 
                         if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height && !visited.has(key)) {
                             if (!this.seenCells[ny][nx] && !this.debugVision) continue;
-                            if (dx === 1 && (this.vWalls[y][x + 1].type === 1 || this.vWalls[y][x + 1].type === 3)) continue;
-                            if (dx === -1 && (this.vWalls[y][x].type === 1 || this.vWalls[y][x].type === 3)) continue;
-                            if (dy === 1 && (this.hWalls[y + 1][x].type === 1 || this.hWalls[y + 1][x].type === 3)) continue;
-                            if (dy === -1 && (this.hWalls[y][x].type === 1 || this.hWalls[y][x].type === 3)) continue;
+                            
+                            let wall;
+                            let isBlocked = false;
+                            if (dx === 1) wall = this.vWalls[y][x + 1];
+                            else if (dx === -1) wall = this.vWalls[y][x];
+                            else if (dy === 1) wall = this.hWalls[y + 1][x];
+                            else if (dy === -1) wall = this.hWalls[y][x];
+
+                            if (wall) {
+                                if (wall.type === 1 || (wall.type === 3 && this.player.keys < wall.keys)) {
+                                    isBlocked = true;
+                                } else if (wall.type === 4) {
+                                    // 检查单向门方向。如果移动方向与门的方向不符，则阻塞
+                                    if (dx !== wall.direction.dx || dy !== wall.direction.dy) {
+                                        isBlocked = true;
+                                    }
+                                }
+                            }
+                            if (isBlocked) continue;
                             
                             visited.add(key);
                             const newPath = [...path, {x: nx, y: ny}];
