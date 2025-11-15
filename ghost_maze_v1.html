@@ -529,6 +529,16 @@
                             </div>
                         </div>
                     </div>
+                    <!-- === 新增历史记录控制 === -->
+                    <div class="control-group">
+                        <h3>历史记录</h3>
+                        <div class="share-buttons-container">
+                            <button id="undo-btn" class="secondary">撤回</button>
+                            <button id="save-btn" class="secondary">存档</button>
+                            <button id="rewind-btn" class="secondary">回溯</button>
+                        </div>
+                    </div>
+                    <!-- === 新增结束 === -->
                     <div class="control-group">
                         <h3>编辑器</h3>
                         <button id="edit-map-btn">编辑地图</button>
@@ -709,6 +719,12 @@
                     hoveredWall: null
                 };
 
+                // === 新增: 历史记录系统状态 ===
+                this.history = [];       // 存储所有状态快照
+                this.checkpoints = [];   // 存储存档点的步数索引
+                this.currentStep = -1;   // 指向当前状态在 history 数组中的索引
+                // === 新增结束 ===
+
                 this.dpad = {
                     element: document.getElementById('dpad-controls'),
                     grip: document.getElementById('dpad-grip'),
@@ -812,6 +828,10 @@
                 });
 
                 this.initializeDpadTouchControls();
+
+                document.getElementById('undo-btn').addEventListener('click', () => this.handleUndo());
+                document.getElementById('save-btn').addEventListener('click', () => this.handleSave());
+                document.getElementById('rewind-btn').addEventListener('click', () => this.handleRewind());
             }
 
             initializeDpadTouchControls() {
@@ -1062,6 +1082,10 @@
                 this.stopAnimationLoop();
                 this.mapData = JSON.parse(JSON.stringify(mapData));
                 this.state = 'playing';
+
+                this.history = [];
+                this.checkpoints = [];
+                this.currentStep = -1;
                 
                 this.width = mapData.width;
                 this.height = mapData.height;
@@ -1092,6 +1116,8 @@
                 this.updateUIDisplays();
                 this.hideAllOverlays();
                 this.startAnimationLoop();
+
+                this.recordHistory();
             }
 
             generateNewRandomMap() {
@@ -1401,6 +1427,8 @@
                 // --- 回合结束 ---
                 this.updateProximityWarning();
                 if (!this.animationFrameId) this.draw();
+
+                this.recordHistory();
             }
 
             checkItemPickup() {
@@ -1611,6 +1639,7 @@
                     this.updateVisibility();
                     this.updateProximityWarning();
                     this.startAnimationLoop();
+                    this.recordHistory(true); 
                 } else { // death-loop
                     this.loopCount++;
                     this.state = 'playing';
@@ -1637,6 +1666,7 @@
 
                     // 立即开始游戏循环，它会在下一帧自动重绘整个游戏画面
                     this.startAnimationLoop();
+                    this.recordHistory(true);
                 }
             }
 
@@ -2565,6 +2595,116 @@
                     console.error("Error loading from compressed share code:", e);
                     this.showToast('加载分享码失败，格式不正确或已损坏。', 3000, 'error');
                 }
+            }
+
+            // ==================================================
+            //  HISTORY & UNDO SYSTEM (NEW)
+            // ==================================================
+
+            createSnapshot(isRevivalPoint = false) {
+                // 创建一个包含所有可变游戏状态的快照
+                return {
+                    player: JSON.parse(JSON.stringify(this.player)),
+                    ghosts: JSON.parse(JSON.stringify(this.ghosts)),
+                    items: JSON.parse(JSON.stringify(this.items)),
+                    hWalls: JSON.parse(JSON.stringify(this.hWalls)),
+                    vWalls: JSON.parse(JSON.stringify(this.vWalls)),
+                    isRevivalPoint: isRevivalPoint
+                };
+            }
+
+            loadFromSnapshot(snapshot) {
+                // 从快照恢复游戏状态，【必须】使用深拷贝来防止历史记录被后续操作污染
+                this.player = JSON.parse(JSON.stringify(snapshot.player));
+                this.ghosts = JSON.parse(JSON.stringify(snapshot.ghosts));
+                this.items = JSON.parse(JSON.stringify(snapshot.items));
+                this.hWalls = JSON.parse(JSON.stringify(snapshot.hWalls));
+                this.vWalls = JSON.parse(JSON.stringify(snapshot.vWalls));
+                
+                // 恢复后立即刷新显示
+                this.updateUIDisplays();
+                this.draw();
+            }
+
+            recordHistory(isRevivalPoint = false) {
+                // 如果当前指针不在历史记录的末尾 (意味着玩家撤销后走了新路)
+                // 则需要截断旧的“未来”历史
+                if (this.currentStep < this.history.length - 1) {
+                    this.history = this.history.slice(0, this.currentStep + 1);
+                    // 同时也要删除掉被截断的未来中的存档点
+                    this.checkpoints = this.checkpoints.filter(cp => cp <= this.currentStep);
+                }
+                
+                const snapshot = this.createSnapshot(isRevivalPoint);
+                this.history.push(snapshot);
+                this.currentStep++;
+                
+                this.updateHistoryButtons();
+            }
+
+            updateHistoryButtons() {
+                const undoBtn = document.getElementById('undo-btn');
+                const saveBtn = document.getElementById('save-btn');
+                const rewindBtn = document.getElementById('rewind-btn');
+
+                // 撤回按钮的可用逻辑
+                const canUndo = this.currentStep > 0 && !this.history[this.currentStep].isRevivalPoint;
+                undoBtn.disabled = !canUndo;
+
+                // 存档按钮的可用逻辑
+                const lastCheckpoint = this.checkpoints.length > 0 ? this.checkpoints[this.checkpoints.length - 1] : -1;
+                const canSave = this.currentStep > lastCheckpoint;
+                saveBtn.disabled = !canSave;
+
+                // 回溯按钮的可用逻辑：检查是否存在一个存档点严格小于当前步数
+                const canRewind = this.checkpoints.some(cp => cp < this.currentStep);
+                rewindBtn.disabled = !canRewind;
+            }
+
+            handleUndo() {
+                if (this.currentStep <= 0) return;
+                if (this.history[this.currentStep].isRevivalPoint) {
+                    this.showToast('无法撤回到上一次生命', 2000, 'error');
+                    return;
+                }
+                
+                this.currentStep--;
+                this.loadFromSnapshot(this.history[this.currentStep]);
+                this.updateHistoryButtons();
+            }
+
+            handleSave() {
+                const lastCheckpoint = this.checkpoints.length > 0 ? this.checkpoints[this.checkpoints.length - 1] : -1;
+                if (this.currentStep <= lastCheckpoint) {
+                    this.showToast('请先移动后再存档', 2000, 'error');
+                    return;
+                }
+
+                this.checkpoints.push(this.currentStep);
+                this.showToast(`已在第 ${this.currentStep} 步创建存档`, 2000, 'success');
+                this.updateHistoryButtons();
+            }
+
+            handleRewind() {
+                // 步骤 1: 从所有存档点中，筛选出那些步数严格小于当前步数的存档点。
+                const availableCheckpoints = this.checkpoints.filter(cp => cp < this.currentStep);
+
+                // 步骤 2: 检查是否存在任何更早的存档点。
+                if (availableCheckpoints.length === 0) {
+                    // 如果一个都没有，说明已经无法再回溯了。
+                    this.showToast('没有更早的存档点可供回溯', 2000, 'error');
+                    return;
+                }
+
+                // 步骤 3: 在所有可用的存档点中，找到数值最大的那一个。
+                // 这就是离当前位置最近的、更早的存档点。
+                const targetStep = Math.max(...availableCheckpoints);
+
+                // 步骤 4: 执行回溯。
+                this.currentStep = targetStep;
+                this.loadFromSnapshot(this.history[this.currentStep]);
+                this.updateHistoryButtons();
+                this.showToast(`已回溯至存档点 (第 ${targetStep} 步)`, 2000, 'success');
             }
 
             copyShareCode(isEditor = false) {
