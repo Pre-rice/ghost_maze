@@ -842,11 +842,43 @@
                 
                 window.addEventListener('keydown', (e) => this.handleKeyPress(e));
                 
+                // --- 桌面端鼠标事件 ---
                 canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
                 canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
                 canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
                 canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
                 canvas.addEventListener('mouseleave', (e) => this.handleCanvasMouseLeave(e));
+
+                // --- 核心改动：为移动端添加触摸事件支持 ---
+                const handleTouchStart = (e) => {
+                    if (this.editor.active) {
+                        e.preventDefault(); // 阻止浏览器默认行为，如滚动
+                        const touch = e.touches[0];
+                        this.handleCanvasMouseDown(touch);
+                    }
+                };
+                const handleTouchMove = (e) => {
+                    if (this.editor.active) {
+                        e.preventDefault();
+                        const touch = e.touches[0];
+                        this.handleCanvasMouseMove(touch);
+                    }
+                };
+                const handleTouchEnd = (e) => {
+                    if (this.editor.active) {
+                        e.preventDefault();
+                        // touchend事件的touchs列表是空的, 需要用changedTouches
+                        const touch = e.changedTouches[0];
+                        this.handleCanvasMouseUp(touch);
+                    }
+                };
+
+                canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+                canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+                canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+                canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false }); // 当触摸中断时也视为结束
+
+
                 this.bindDpadControls();
                 document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     this.updateDpadVisibility();
@@ -1917,7 +1949,7 @@
                 }
             }
 
-            drawArrow(x1, y1, x2, y2, direction, color) {
+            drawArrow(x1, y1, x2, y2, direction, color, withStroke) {
                 const centerX = (x1 + x2) / 2;
                 const centerY = (y1 + y2) / 2;
                 const cs = this.cellSize;
@@ -1945,10 +1977,11 @@
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
 
-                // 先绘制黑色描边
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 3; // 与锁的数字保持一致的描边宽度
-                ctx.strokeText('>', 0, 0);
+                if (withStroke) {
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 3;
+                    ctx.strokeText('>', 0, 0);
+                }
 
                 // 再绘制填充颜色
                 ctx.fillStyle = color;
@@ -1986,7 +2019,7 @@
                                 drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, wall.keys);
                             } else if (wall.type === 4 && wall.direction) {
                                 // 核心改动：调用新的类方法绘制箭头
-                                this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, wall.direction, this.colors.key);
+                                this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, wall.direction, this.colors.key, true);
                             }
                         }
                     }
@@ -2002,7 +2035,7 @@
                                 drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, wall.keys);
                             } else if (wall.type === 4 && wall.direction) {
                                 // 核心改动：调用新的类方法绘制箭头
-                                this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, wall.direction, this.colors.key);
+                                this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, wall.direction, this.colors.key, true);
                             }
                         }
                     }
@@ -2225,9 +2258,9 @@
                     if (wallObject.type === 4 && wallObject.direction) {
                         // 核心改动：调用新的类方法绘制预览箭头，颜色为白色
                         if (type === 'h') {
-                            this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, direction, 'white');
+                            this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, direction, 'white', false);
                         } else {
-                            this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, direction, 'white');
+                            this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, direction, 'white', false);
                         }
                     }
                 }
