@@ -501,6 +501,32 @@
                                 100</div>
                         </div>
                     </div>
+
+                    <div class="control-group">
+                        <h3>控制</h3>
+                        <div class="share-buttons-container">
+                            <button id="undo-btn" class="secondary">撤回</button>
+                            <button id="save-btn" class="secondary">存档</button>
+                            <button id="rewind-btn"
+                                class="secondary">回溯</button>
+                        </div>
+                        <div class="toggle-controls-wrapper">
+                            <div class="toggle-switch">
+                                <span class="label">调试视野</span>
+                                <input type="checkbox" id="debug-vision-toggle">
+                                <label for="debug-vision-toggle">Toggle</label>
+                            </div>
+                            <div id="dpad-toggle-container"
+                                class="toggle-switch">
+                                <span class="label">方向按键</span>
+                                <input type="checkbox" id="dpad-toggle" checked>
+                                <label for="dpad-toggle">Toggle</label>
+                            </div>
+                        </div>
+                        <button id="generate-map-btn">随机生成新地图</button>
+                        <button id="reset-map-btn">重置地图</button>
+                    </div>
+
                     <div class="control-group">
                         <h3>地图选项</h3>
                         <label class="label">模式选择</label>
@@ -515,8 +541,8 @@
                             <input type="number" id="map-size-input" value="10"
                                 min="8" max="20">
                         </div>
-                        <button id="generate-map-btn">随机生成新地图</button>
                     </div>
+
                     <div class="control-group">
                         <h3>分享</h3>
                         <div class="share-buttons-container">
@@ -524,35 +550,7 @@
                             <button id="load-share-code-btn">粘贴并加载</button>
                         </div>
                     </div>
-                    <div class="control-group">
-                        <h3>控制</h3>
-                        <button id="reset-map-btn"
-                            class="secondary">重置地图</button>
-                        <div class="toggle-controls-wrapper">
-                            <div class="toggle-switch">
-                                <span class="label">调试视野</span>
-                                <input type="checkbox" id="debug-vision-toggle">
-                                <label for="debug-vision-toggle">Toggle</label>
-                            </div>
-                            <div id="dpad-toggle-container"
-                                class="toggle-switch">
-                                <span class="label">方向按键</span>
-                                <input type="checkbox" id="dpad-toggle" checked>
-                                <label for="dpad-toggle">Toggle</label>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- === 新增历史记录控制 === -->
-                    <div class="control-group">
-                        <h3>历史记录</h3>
-                        <div class="share-buttons-container">
-                            <button id="undo-btn" class="secondary">撤回</button>
-                            <button id="save-btn" class="secondary">存档</button>
-                            <button id="rewind-btn"
-                                class="secondary">回溯</button>
-                        </div>
-                    </div>
-                    <!-- === 新增结束 === -->
+                    
                     <div class="control-group">
                         <h3>编辑器</h3>
                         <button id="edit-map-btn">编辑地图</button>
@@ -1869,18 +1867,36 @@
 
             drawWallOrDoor(x1, y1, x2, y2, wallObject, isHighlight = false) {
                 const type = wallObject.type;
+                const cs = this.cellSize;
+
                 if (isHighlight) {
                     ctx.strokeStyle = this.colors.hoverHighlight;
-                    ctx.lineWidth = Math.max(3, this.cellSize / 8);
+                    ctx.lineWidth = Math.max(3, cs / 8);
                 } else {
                     ctx.strokeStyle = this.colors.wall;
-                    ctx.lineWidth = (type === 3) ? Math.max(4, this.cellSize / 8) : Math.max(2, this.cellSize / 10);
+                    // 为不同类型的墙设置不同的线宽
+                    if (type === 1 || type === 2) { // 普通墙或门
+                        ctx.lineWidth = Math.max(2, cs / 10);
+                    } else if (type === 3) { // 锁
+                        // 锁的边框比普通墙稍粗
+                        ctx.lineWidth = Math.max(3, cs / 12); 
+                    }
                 }
                 
-                if (type === 1 || type === 3) { // Wall or Lock
+                if (type === 1) { // 普通墙，绘制一条线
                     ctx.moveTo(x1, y1);
                     ctx.lineTo(x2, y2);
-                } else if (type === 2) { // Door
+                } else if (type === 3) { // 锁，绘制一个空心矩形
+                    const isHorizontal = y1 === y2;
+                    const lockWidth = cs * 0.2; // 矩形的“厚度”
+
+                    if (isHorizontal) {
+                        // 将矩形添加到当前路径，使其围绕墙的中心线
+                        ctx.rect(x1, y1 - lockWidth / 2, cs, lockWidth);
+                    } else { // 垂直墙
+                        ctx.rect(x1 - lockWidth / 2, y1, lockWidth, cs);
+                    }
+                } else if (type === 2) { // 门
                     const isHorizontal = y1 === y2;
                     const length = isHorizontal ? x2 - x1 : y2 - y1;
                     const gap = length / 3;
