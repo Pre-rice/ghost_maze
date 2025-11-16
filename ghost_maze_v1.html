@@ -550,7 +550,7 @@
                             <button id="load-share-code-btn">粘贴并加载</button>
                         </div>
                     </div>
-                    
+
                     <div class="control-group">
                         <h3>编辑器</h3>
                         <button id="edit-map-btn">编辑地图</button>
@@ -566,8 +566,13 @@
                                 class="tool-btn active">墙壁</button>
                             <button id="tool-glass" class="tool-btn">玻璃</button>
                             <button id="tool-door" class="tool-btn">门</button>
-                            <button id="tool-oneway" class="tool-btn">单向门</button>
+                            <button id="tool-oneway"
+                                class="tool-btn">单向门</button>
                             <button id="tool-lock" class="tool-btn">数字门</button>
+                            <button id="tool-letter"
+                                class="tool-btn">字母门</button>
+                            <button id="tool-button"
+                                class="tool-btn">按钮</button>
                             <button id="tool-ghost" class="tool-btn">鬼</button>
                             <button id="tool-key" class="tool-btn">钥匙</button>
                             <button id="tool-end" class="tool-btn">终点</button>
@@ -677,7 +682,8 @@
         DOOR: 2,
         LOCKED: 3,
         ONE_WAY: 4,
-        GLASS: 5
+        GLASS: 5,
+        LETTER_DOOR: 6
     };
 
     const GAME_STATES = {
@@ -694,6 +700,8 @@
         DOOR: 'door',
         ONE_WAY: 'oneway',
         LOCK: 'lock',
+        LETTER_DOOR: 'letter',
+        BUTTON: 'button',
         GHOST: 'ghost',
         KEY: 'key',
         END: 'end',
@@ -767,6 +775,7 @@
                 this.ghosts = [];
                 this.ghostCount = 3;
                 this.items = [];
+                this.buttons = [];
 
                 // 地图结构数据
                 this.hWalls = [];
@@ -786,7 +795,8 @@
                     didDrag: false,
                     dragAxis: null,
                     lastDragPos: null,
-                    hoveredWall: null
+                    hoveredWall: null,
+                    hoveredButtonHotspot: null
                 };
 
                 // 历史记录系统状态
@@ -1227,10 +1237,23 @@
                 this._renderStaticLayer(); // 渲染静态背景层
                 
                 // 加载地图结构
-                this.hWalls = mapData.hWalls;
-                this.vWalls = mapData.vWalls;
+                this.hWalls = JSON.parse(JSON.stringify(mapData.hWalls)); // 使用深拷贝
+                this.vWalls = JSON.parse(JSON.stringify(mapData.vWalls)); // 使用深拷贝
                 this.endPos = mapData.endPos;
                 this.items = mapData.items || [];
+                this.buttons = mapData.buttons || []; // 加载按钮
+
+                // 初始化所有字母门的当前状态
+                this.hWalls.forEach(row => row.forEach(wall => {
+                    if (wall.type === WALL_TYPES.LETTER_DOOR) {
+                        wall.currentState = wall.initialState || 'closed';
+                    }
+                }));
+                this.vWalls.forEach(row => row.forEach(wall => {
+                    if (wall.type === WALL_TYPES.LETTER_DOOR) {
+                        wall.currentState = wall.initialState || 'closed';
+                    }
+                }));
                 
                 // 初始化玩家状态
                 this.player = { x: 1, y: this.height - 2, trail: [], keys: 0 ,steps: 0 };
@@ -1541,6 +1564,18 @@
             movePlayer(dx, dy) {
                 if (this.state !== GAME_STATES.PLAYING) return;
 
+                // 首先检查是否按下了按钮
+                const button = this.buttons.find(b => 
+                    b.x === this.player.x && 
+                    b.y === this.player.y && 
+                    b.direction.dx === dx && 
+                    b.direction.dy === dy
+                );
+                if (button) {
+                    this.pressButton(button.letter);
+                    return; // 按下按钮不移动，直接返回
+                }
+
                 const playerPrevPos = { x: this.player.x, y: this.player.y };
                 const newX = this.player.x + dx;
                 const newY = this.player.y + dy;
@@ -1559,6 +1594,7 @@
                     if (wall.type === WALL_TYPES.SOLID || wall.type === WALL_TYPES.GLASS) return;
                     if (wall.type === WALL_TYPES.ONE_WAY && (dx !== wall.direction.dx || dy !== wall.direction.dy)) return;
                     if (wall.type === WALL_TYPES.LOCKED && this.player.keys < wall.keys) return;
+                    if (wall.type === WALL_TYPES.LETTER_DOOR && wall.currentState === 'closed') return; 
                     if (wall.type === WALL_TYPES.LOCKED && this.player.keys >= wall.keys) {
                         wall.type = WALL_TYPES.EMPTY;
                     }
@@ -1609,6 +1645,28 @@
                 this.updateProximityWarning();
                 if (!this.animationFrameId) this.draw();
                 this.recordHistory();
+            }
+
+            /**
+             * 按下按钮，切换所有对应字母门的开关状态
+             * @param {string} letter - 按下的按钮的字母
+             */
+            pressButton(letter) {
+                let toggled = false;
+                const toggleState = (wall) => {
+                    if (wall.type === WALL_TYPES.LETTER_DOOR && wall.letter === letter) {
+                        wall.currentState = (wall.currentState === 'closed') ? 'open' : 'closed';
+                        toggled = true;
+                    }
+                };
+
+                this.hWalls.forEach(row => row.forEach(toggleState));
+                this.vWalls.forEach(row => row.forEach(toggleState));
+
+                if (toggled) {
+                    this.showToast(`切换了字母门 '${letter}'`, 1500);
+                    this.draw(); // 状态改变，立即重绘
+                }
             }
 
             /**
@@ -1706,14 +1764,20 @@
                     const endY = Math.max(ghost.y, playerPos.y);
                     for (let y = startY; y < endY; y++) {
                         const wall = this.hWalls[y + 1][ghost.x];
-                        if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) return false;
+                        if ( (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) &&
+                             !(wall.type === WALL_TYPES.LETTER_DOOR && wall.currentState === 'open') ) {
+                            return false;
+                        }
                     }
                 } else { // 水平方向
                     const startX = Math.min(ghost.x, playerPos.x);
                     const endX = Math.max(ghost.x, playerPos.x);
                     for (let x = startX; x < endX; x++) {
                         const wall = this.vWalls[ghost.y][x + 1];
-                        if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) return false;
+                        if ( (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) &&
+                             !(wall.type === WALL_TYPES.LETTER_DOOR && wall.currentState === 'open') ) {
+                            return false;
+                        }
                     } 
                 }
                 return true;
@@ -1873,7 +1937,21 @@
                     // 从原始地图数据中重置物品和鬼
                     this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
                     this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts));
+                    this.hWalls = JSON.parse(JSON.stringify(this.mapData.hWalls)); 
+                    this.vWalls = JSON.parse(JSON.stringify(this.mapData.vWalls));
                     this.ghosts.forEach(g => g.trail = []); // 初始化拖尾数组
+
+                    // 重置所有字母门的当前状态
+                    this.hWalls.forEach(row => row.forEach(wall => {
+                        if (wall.type === WALL_TYPES.LETTER_DOOR) {
+                            wall.currentState = wall.initialState || 'closed';
+                        }
+                    }));
+                    this.vWalls.forEach(row => row.forEach(wall => {
+                        if (wall.type === WALL_TYPES.LETTER_DOOR) {
+                            wall.currentState = wall.initialState || 'closed';
+                        }
+                    }));
 
                     this.updateVisibility();
                     this.updateUIDisplays();
@@ -2066,7 +2144,14 @@
                     }
                 });
 
-                // 渲染层级 8: 墙体上的覆盖物 (如数字门的数字)
+                // 渲染层级 8: 按钮
+                this.buttons.forEach(button => {
+                    if (this.seenCells[button.y][button.x] || this.debugVision) {
+                        this.drawButton(button);
+                    }
+                });
+
+                // 渲染层级 9: 墙体上的覆盖物 (如数字门的数字)
                 this.drawWallOverlays(true);
             }
 
@@ -2116,7 +2201,25 @@
                             ctx.lineTo(p.x + offset, p.y - offset);
                         }
                     }
-                } else if (type === WALL_TYPES.LOCKED || type === WALL_TYPES.ONE_WAY) {
+                } else if (type === WALL_TYPES.LOCKED || type === WALL_TYPES.ONE_WAY || type === WALL_TYPES.LETTER_DOOR) {
+                    // 根据当前是游戏还是编辑器，来决定字母门是否渲染为开启状态
+                    let isLetterDoorOpen = false;
+                    if (type === WALL_TYPES.LETTER_DOOR) {
+                        // 将所有非编辑器状态（playing, dead, won）都视为游戏内状态
+                        if (this.state === GAME_STATES.EDITOR) {
+                            // 在编辑器中，使用初始状态
+                            isLetterDoorOpen = wallObject.initialState === 'open';
+                        } else {
+                            // 在所有其他游戏相关状态中，使用当前状态
+                            isLetterDoorOpen = wallObject.currentState === 'open';
+                        }
+                    }
+
+                    // 如果判定为开启，则不绘制门框
+                    if (isLetterDoorOpen) {
+                        return;
+                    }
+
                     const isHorizontal = y1 === y2;
                     const lockWidth = cs * 0.2;
                     if (isHorizontal) {
@@ -2210,6 +2313,8 @@
                         if (isVisible) {
                             if (wall.type === WALL_TYPES.LOCKED) {
                                 drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, wall.keys);
+                            } else if (wall.type === WALL_TYPES.LETTER_DOOR) {
+                                drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, wall.letter);
                             } else if (wall.type === WALL_TYPES.ONE_WAY && wall.direction) {
                                 this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, wall.direction, this.colors.key, true);
                             }
@@ -2225,6 +2330,8 @@
                         if (isVisible) {
                             if (wall.type === WALL_TYPES.LOCKED) {
                                 drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, wall.keys);
+                            } else if (wall.type === WALL_TYPES.LETTER_DOOR) {
+                                drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, wall.letter);
                             } else if (wall.type === WALL_TYPES.ONE_WAY && wall.direction) {
                                 this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, wall.direction, this.colors.key, true);
                             }
@@ -2269,6 +2376,103 @@
                     ctx.lineTo(centerX - size, centerY);
                     ctx.closePath();
                     ctx.fill();
+                }
+            }
+
+            /**
+             * 绘制一个按钮
+             * @param {object} button - 按钮对象
+             * @param {boolean} isHighlight - 是否为高亮预览模式
+             */
+            drawButton(button, isHighlight = false) {
+                const cs = this.cellSize;
+                const centerX = button.x * cs + cs / 2;
+                const centerY = button.y * cs + cs / 2;
+                
+                const buttonLength = cs * 0.5;
+                const buttonWidth = cs * 0.2;
+
+                let p1, p2, p3, p4;
+                let letterCenterX, letterCenterY;
+
+                // ... (坐标计算的 switch 语句保持不变) ...
+                switch (true) {
+                    case button.direction.dy === -1: // 依附在上方墙体
+                        p1 = { x: centerX - buttonLength / 2, y: button.y * cs };
+                        p2 = { x: centerX + buttonLength / 2, y: button.y * cs };
+                        p3 = { x: centerX + buttonLength / 2, y: button.y * cs + buttonWidth };
+                        p4 = { x: centerX - buttonLength / 2, y: button.y * cs + buttonWidth };
+                        letterCenterX = centerX; letterCenterY = p1.y + buttonWidth / 2;
+                        break;
+                    case button.direction.dy === 1: // 依附在下方墙体
+                        p1 = { x: centerX - buttonLength / 2, y: (button.y + 1) * cs - buttonWidth };
+                        p2 = { x: centerX + buttonLength / 2, y: (button.y + 1) * cs - buttonWidth };
+                        p3 = { x: centerX + buttonLength / 2, y: (button.y + 1) * cs };
+                        p4 = { x: centerX - buttonLength / 2, y: (button.y + 1) * cs };
+                        letterCenterX = centerX; letterCenterY = p1.y + buttonWidth / 2;
+                        break;
+                    case button.direction.dx === -1: // 依附在左方墙体
+                        p1 = { x: button.x * cs, y: centerY - buttonLength / 2 };
+                        p2 = { x: button.x * cs + buttonWidth, y: centerY - buttonLength / 2 };
+                        p3 = { x: button.x * cs + buttonWidth, y: centerY + buttonLength / 2 };
+                        p4 = { x: button.x * cs, y: centerY + buttonLength / 2 };
+                        letterCenterX = p1.x + buttonWidth / 2; letterCenterY = centerY;
+                        break;
+                    case button.direction.dx === 1: // 依附在右方墙体
+                        p1 = { x: (button.x + 1) * cs - buttonWidth, y: centerY - buttonLength / 2 };
+                        p2 = { x: (button.x + 1) * cs, y: centerY - buttonLength / 2 };
+                        p3 = { x: (button.x + 1) * cs, y: centerY + buttonLength / 2 };
+                        p4 = { x: (button.x + 1) * cs - buttonWidth, y: centerY + buttonLength / 2 };
+                        letterCenterX = p1.x + buttonWidth / 2; letterCenterY = centerY;
+                        break;
+                }
+
+                // 1. 移除填充色绘制
+
+                // 2. 绘制边框
+                ctx.strokeStyle = isHighlight ? this.colors.hoverHighlight : this.colors.wall;
+                ctx.lineWidth = isHighlight ? Math.max(3, cs / 8) : Math.max(2, cs / 10);
+                ctx.beginPath();
+                // 确保每个方向都绘制三条线段
+                switch (true) {
+                    case button.direction.dy === -1: // 顶墙 -> 绘制 左,下,右 三边
+                        ctx.moveTo(p1.x, p1.y); // 从 top-left 开始
+                        ctx.lineTo(p4.x, p4.y); // 画 左边
+                        ctx.lineTo(p3.x, p3.y); // 画 底边
+                        ctx.lineTo(p2.x, p2.y); // 画 右边
+                        break;
+                    case button.direction.dy === 1: // 底墙 -> 绘制 左,上,右 三边
+                        ctx.moveTo(p4.x, p4.y); // 从 bottom-left 开始
+                        ctx.lineTo(p1.x, p1.y); // 画 左边
+                        ctx.lineTo(p2.x, p2.y); // 画 顶边
+                        ctx.lineTo(p3.x, p3.y); // 画 右边
+                        break;
+                    case button.direction.dx === -1: // 左墙 -> 绘制 上,右,下 三边
+                        ctx.moveTo(p1.x, p1.y); // 从 top-left 开始
+                        ctx.lineTo(p2.x, p2.y); // 画 顶边
+                        ctx.lineTo(p3.x, p3.y); // 画 右边
+                        ctx.lineTo(p4.x, p4.y); // 画 底边
+                        break;
+                    case button.direction.dx === 1: // 右墙 -> 绘制 上,左,下 三边
+                        ctx.moveTo(p2.x, p2.y); // 从 top-right 开始
+                        ctx.lineTo(p1.x, p1.y); // 画 顶边
+                        ctx.lineTo(p4.x, p4.y); // 画 左边
+                        ctx.lineTo(p3.x, p3.y); // 画 底边
+                        break;
+                }
+                ctx.stroke();
+
+                // 3. 绘制字母 (仅在非高亮模式下，且按钮有字母时)
+                if (!isHighlight && button.letter) {
+                    const fontSize = this.cellSize * 0.4; // 与字母门统一大小
+                    ctx.font = `bold ${fontSize}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 3;
+                    ctx.strokeText(button.letter, letterCenterX, letterCenterY);
+                    ctx.fillStyle = this.colors.key;
+                    ctx.fillText(button.letter, letterCenterX, letterCenterY);
                 }
             }
 
@@ -2394,7 +2598,8 @@
                     hWalls: this.hWalls, vWalls: this.vWalls,
                     endPos: this.endPos,
                     initialGhosts: this.ghosts.map((g, i) => ({x: g.x, y: g.y, id: i})),
-                    items: this.items
+                    items: this.items,
+                    buttons: this.buttons
                 };
                 
                 this.startGame(editedMapData);
@@ -2468,6 +2673,7 @@
                         case EDITOR_TOOLS.GLASS: wallType = WALL_TYPES.GLASS; break;
                         case EDITOR_TOOLS.LOCK: wallType = WALL_TYPES.LOCKED; break;
                         case EDITOR_TOOLS.ONE_WAY: wallType = WALL_TYPES.ONE_WAY; break;
+                        case EDITOR_TOOLS.LETTER_DOOR: wallType = WALL_TYPES.LETTER_DOOR; break; 
                         default: wallType = WALL_TYPES.SOLID;
                     }
                     const wallObject = { type: wallType, keys: '?', direction: direction };
@@ -2488,11 +2694,22 @@
                     }
                 }
 
-                // 绘制所有实体
+               // 绘制所有实体
                 this.items.forEach(item => this.drawItem(item));
                 if (this.endPos) this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
                 this.ghosts.forEach(g => this.drawCircle(g.x, g.y, this.colors.ghost));
+                this.buttons.forEach(b => this.drawButton(b));
                 this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
+
+                // 将按钮热点高亮移动到最后绘制，确保它在顶层
+                if (this.editor.hoveredButtonHotspot) {
+                    const virtualButton = {
+                        x: this.editor.hoveredButtonHotspot.x,
+                        y: this.editor.hoveredButtonHotspot.y,
+                        direction: this.editor.hoveredButtonHotspot.direction
+                    };
+                    this.drawButton(virtualButton, true);
+                }
             }
             
             /**
@@ -2677,18 +2894,28 @@
             handleCanvasMouseMove(e) {
                 if (!this.editor.active) return;
 
-                // 处理悬停预览
-                const isWallTool = [EDITOR_TOOLS.WALL, EDITOR_TOOLS.DOOR, EDITOR_TOOLS.LOCK, EDITOR_TOOLS.ONE_WAY, EDITOR_TOOLS.GLASS].includes(this.editor.tool);
+                const isWallTool = [EDITOR_TOOLS.WALL, EDITOR_TOOLS.DOOR, EDITOR_TOOLS.LOCK, EDITOR_TOOLS.ONE_WAY, EDITOR_TOOLS.GLASS, EDITOR_TOOLS.LETTER_DOOR].includes(this.editor.tool);
+
                 if (!this.editor.isDragging) {
+                    const pos = this.getMousePos(e);
+                    let needsRedraw = false;
+
+                    // 先处理墙体工具
                     if (isWallTool) {
-                        const pos = this.getMousePos(e);
                         const wall = this.getWallAtPos(pos.x, pos.y);
+                        // 清除按钮高亮
+                        if (this.editor.hoveredButtonHotspot) {
+                            this.editor.hoveredButtonHotspot = null;
+                            needsRedraw = true;
+                        }
+                        
                         if (wall && this.isWallEditable(wall)) {
-                            let needsRedraw = false;
+                            // 检查悬停的墙体是否发生变化
                             if (!this.editor.hoveredWall || this.editor.hoveredWall.x !== wall.x || this.editor.hoveredWall.y !== wall.y || this.editor.hoveredWall.type !== wall.type) {
                                 this.editor.hoveredWall = wall;
                                 needsRedraw = true;
                             }
+                            // 特别处理单向门的方向预览
                             if (this.editor.tool === EDITOR_TOOLS.ONE_WAY) {
                                 const direction = this.getMouseSideOfWall(pos.x, pos.y, wall);
                                 if (!this.editor.hoveredWall.direction || this.editor.hoveredWall.direction.dx !== direction.dx || this.editor.hoveredWall.direction.dy !== direction.dy) {
@@ -2696,11 +2923,30 @@
                                     needsRedraw = true;
                                 }
                             }
-                            if (needsRedraw) this.drawEditor();
                         } else if (this.editor.hoveredWall) {
                             this.editor.hoveredWall = null;
-                            this.drawEditor();
+                            needsRedraw = true;
                         }
+                    // 再处理按钮工具
+                    } else if (this.editor.tool === EDITOR_TOOLS.BUTTON) {
+                        const hotspot = this.getButtonHotspotAtPos(pos.x, pos.y);
+                        // 清除墙体高亮
+                        if (this.editor.hoveredWall) {
+                            this.editor.hoveredWall = null;
+                            needsRedraw = true;
+                        }
+                        if (hotspot?.x !== this.editor.hoveredButtonHotspot?.x || hotspot?.y !== this.editor.hoveredButtonHotspot?.y || hotspot?.direction.dx !== this.editor.hoveredButtonHotspot?.direction.dx) {
+                             this.editor.hoveredButtonHotspot = hotspot;
+                             needsRedraw = true;
+                        }
+                    // 其他工具则清除所有高亮
+                    } else {
+                        if (this.editor.hoveredWall) { this.editor.hoveredWall = null; needsRedraw = true; }
+                        if (this.editor.hoveredButtonHotspot) { this.editor.hoveredButtonHotspot = null; needsRedraw = true; }
+                    }
+
+                    if (needsRedraw) {
+                        this.drawEditor();
                     }
                     return;
                 }
@@ -2775,6 +3021,45 @@
                                     this.showToast('请输入一个有效的非负整数。', 3000, 'error');
                                 }
                             }
+                        } else if (this.editor.tool === EDITOR_TOOLS.LETTER_DOOR) { 
+                            const wallRef = wall.type === 'h' ? this.hWalls[wall.y][wall.x] : this.vWalls[wall.y][wall.x];
+                            if (wallRef.type === WALL_TYPES.LETTER_DOOR) {
+                                // 如果已是字母门，切换初始状态
+                                wallRef.initialState = (wallRef.initialState === 'open') ? 'closed' : 'open';
+                            } else {
+                                // 创建新字母门
+
+                                const letter = prompt('请输入一个字母:', 'A');
+                                if (letter && /^[a-zA-Z]$/.test(letter)) {
+                                    const newWall = { type: WALL_TYPES.LETTER_DOOR, letter: letter.toUpperCase(), initialState: 'closed' };
+                                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = newWall;
+                                    else
+ this.vWalls[wall.y][wall.x] = newWall;
+                                } else
+ if (letter !== null) {
+                                    this.showToast('请输入单个英文字母。', 3000, 'error');
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 处理按钮工具的点击
+                    if (this.editor.tool === EDITOR_TOOLS.BUTTON) {
+                        const hotspot = this.getButtonHotspotAtPos(pos.x, pos.y);
+                        if (hotspot) {
+                            const existingButtonIndex = this.buttons.findIndex(b => b.x === hotspot.x && b.y === hotspot.y && b.direction.dx === hotspot.direction.dx && b.direction.dy === hotspot.direction.dy);
+                            if (existingButtonIndex > -1) {
+                                // 如果按钮已存在，则删除
+                                this.buttons.splice(existingButtonIndex, 1);
+                            } else {
+                                // 创建新按钮
+                                const letter = prompt('请输入一个字母:', 'A');
+                                if (letter && /^[a-zA-Z]$/.test(letter)) {
+                                    this.buttons.push({ ...hotspot, letter: letter.toUpperCase() });
+                                } else if (letter !== null) {
+                                    this.showToast('请输入单个英文字母。', 3000, 'error');
+                                }
+                            }
                         }
                     }
 
@@ -2841,6 +3126,69 @@
                 if (nearHorizontal && !nearVertical) return { type: 'h', x: x, y: Math.round(gridY) };
                 if (nearVertical && !nearHorizontal) return { type: 'v', x: Math.round(gridX), y: y };
                 return null;
+            }
+            
+            /**
+             * [编辑器] 根据鼠标坐标获取其所在的按钮热点区域
+             * @returns {object|null} 热点信息或null
+             */
+            getButtonHotspotAtPos(mouseX, mouseY) {
+                const cs = this.cellSize;
+                const cellX = Math.floor(mouseX / cs);
+                const cellY = Math.floor(mouseY / cs);
+
+                // 鼠标在单元格内的相对坐标
+                const localX = mouseX - cellX * cs;
+                const localY = mouseY - cellY * cs;
+
+                let direction = null;
+                // 使用对角线划分四个三角形区域
+                if (localY < localX && localY < -localX + cs) {
+                    direction = { dx: 0, dy: -1 }; // Top
+                } else if (localY > localX && localY > -localX + cs) {
+                    direction = { dx: 0, dy: 1 }; // Bottom
+                } else if (localY > localX && localY < -localX + cs) {
+                    direction = { dx: -1, dy: 0 }; // Left
+                } else if (localY < localX && localY > -localX + cs) {
+                    direction = { dx: 1, dy: 0 }; // Right
+                }
+
+                if (!direction) return null;
+
+                // 检查热点旁边是否有墙
+                let wallExists = false;
+                if (direction.dy === -1 && this.hWalls[cellY][cellX].type > 0) wallExists = true;
+                if (direction.dy === 1 && this.hWalls[cellY + 1][cellX].type > 0) wallExists = true;
+                if (direction.dx === -1 && this.vWalls[cellY][cellX].type > 0) wallExists = true;
+                if (direction.dx === 1 && this.vWalls[cellY][cellX + 1].type > 0) wallExists = true;
+                
+                if (wallExists) {
+                    // 检查这堵墙是否是起始房间的边界墙
+                    const roomYStart = this.height - 3;
+                    const isTopBoundary = direction.dy === -1 && cellY === roomYStart && cellX >= 0 && cellX < 3;
+                    const isRightBoundary = direction.dx === 1 && cellX === 2 && cellY >= roomYStart && cellY < this.height;
+
+                    // 如果是起始房间的边界墙，则不允许放置按钮
+                    if (isTopBoundary || isRightBoundary) {
+                        return null;
+                    }
+
+                    return { x: cellX, y: cellY, direction: direction };
+                }
+                return null;
+            }
+
+            /**
+             * 切换指定墙体的类型（开/关）
+             */
+            toggleWall(wall, targetType = WALL_TYPES.SOLID) {
+                const {x, y, type} = wall;
+                if (type === 'h' && y >= 0 && y <= this.height && x >= 0 && x < this.width) {
+                    this.hWalls[y][x].type = this.hWalls[y][x].type === targetType ? WALL_TYPES.EMPTY : targetType;
+                } else if (type === 'v' && x >= 0 && x <= this.width && y >= 0 && y < this.height) {
+                    this.vWalls[y][x].type = this.vWalls[y][x].type === targetType ? WALL_TYPES.EMPTY : targetType;
+                }
+                this.drawEditor();
             }
             
             /**
@@ -2926,10 +3274,15 @@
                         const key = `${nx},${ny}`;
 
                         if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height && !visited.has(key)) {
-                            if (dx === 1 && this.vWalls[y][x + 1].type > 0) continue;
-                            if (dx === -1 && this.vWalls[y][x].type > 0) continue;
-                            if (dy === 1 && this.hWalls[y + 1][x].type > 0) continue;
-                            if (dy === -1 && this.hWalls[y][x].type > 0) continue;
+                            let wall;
+                            if (dx === 1) wall = this.vWalls[y][x + 1];
+                            else if (dx === -1) wall = this.vWalls[y][x];
+                            else if (dy === 1) wall = this.hWalls[y + 1][x];
+                            else if (dy === -1) wall = this.hWalls[y][x];
+
+                            if (wall && wall.type > 0 && !(wall.type === WALL_TYPES.LETTER_DOOR && wall.currentState === 'open')) {
+                                continue;
+                            }
                             
                             visited.add(key);
                             const newPath = [...path, {x: nx, y: ny}];
@@ -3020,6 +3373,7 @@
                             width: this.width, height: this.height,
                             hWalls: this.hWalls, vWalls: this.vWalls,
                             endPos: this.endPos, initialGhosts: this.ghosts, items: this.items,
+                            buttons: this.buttons,
                             gameMode: this.gameMode,
                             initialHealth: parseInt(document.getElementById('editor-initial-health').value) || 5,
                             initialStamina: parseInt(document.getElementById('editor-initial-stamina').value) || 100
@@ -3039,6 +3393,7 @@
                         w: sourceData.width, h: sourceData.height,
                         hw: sourceData.hWalls, vw: sourceData.vWalls,
                         e: sourceData.endPos, g: sourceData.initialGhosts, i: sourceData.items,
+                        b: sourceData.buttons,
                         gm: sourceData.gameMode, ih: sourceData.initialHealth, is: sourceData.initialStamina
                     };
 
@@ -3087,7 +3442,8 @@
                         hWalls: data.hw, vWalls: data.vw,
                         endPos: data.e || null,
                         initialGhosts: data.g || [],
-                        items: data.i || []
+                        items: data.i || [],
+                        buttons: data.b || [] 
                     };
 
                     const loadedMode = data.gm || 'exploration';
@@ -3139,6 +3495,7 @@
                     player: JSON.parse(JSON.stringify(this.player)),
                     ghosts: JSON.parse(JSON.stringify(this.ghosts)),
                     items: JSON.parse(JSON.stringify(this.items)),
+                    // 墙体状态需要深拷贝，特别是字母门的currentState
                     hWalls: JSON.parse(JSON.stringify(this.hWalls)),
                     vWalls: JSON.parse(JSON.stringify(this.vWalls)),
                     isRevivalPoint: isRevivalPoint
