@@ -668,13 +668,50 @@
         <script
             src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
         <script>
+    // ==================================================
+    //  常量定义
+    // ==================================================
+    const WALL_TYPES = {
+        EMPTY: 0,
+        SOLID: 1,
+        DOOR: 2,
+        LOCKED: 3,
+        ONE_WAY: 4,
+        GLASS: 5
+    };
+
+    const GAME_STATES = {
+        MENU: 'menu',
+        PLAYING: 'playing',
+        DEAD: 'dead',
+        WON: 'won',
+        EDITOR: 'editor'
+    };
+
+    const EDITOR_TOOLS = {
+        WALL: 'wall',
+        GLASS: 'glass',
+        DOOR: 'door',
+        ONE_WAY: 'oneway',
+        LOCK: 'lock',
+        GHOST: 'ghost',
+        KEY: 'key',
+        END: 'end',
+        ERASER: 'eraser'
+    };
+
+    // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
     document.addEventListener('DOMContentLoaded', () => {
+        // 获取Canvas元素及其2D渲染上下文
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
 
+        /**
+         * 游戏主类，封装了所有游戏逻辑、状态和UI交互
+         */
         class GhostMazeGame {
             constructor() {
-                // DOM Elements
+                // 缓存常用的DOM元素引用，提高性能
                 this.healthDisplay = document.getElementById('player-health-display');
                 this.keysDisplay = document.getElementById('player-keys-display');
                 this.stepsDisplay = document.getElementById('player-steps-display');
@@ -686,11 +723,18 @@
                 this.confirmMessage = document.getElementById('confirm-message');
                 this.confirmYesBtn = document.getElementById('confirm-yes-btn');
                 this.confirmNoBtn = document.getElementById('confirm-no-btn');
+                
+                // 用于管理定时器和动画帧的ID
                 this.toastTimeout = null;
                 this.animationFrameId = null;
                 this.autoMoveInterval = null;
                 this.dpadInterval = null;
+
+                // 为静态背景层创建离屏Canvas，用于性能优化
+                this.staticLayerCanvas = document.createElement('canvas');
+                this.staticLayerCtx = this.staticLayerCanvas.getContext('2d');
                 
+                // 从CSS变量中获取颜色值，便于在Canvas绘图中统一风格
                 const computedStyle = getComputedStyle(document.documentElement);
                 this.colors = {
                     ground: computedStyle.getPropertyValue('--ground-color').trim(),
@@ -705,9 +749,9 @@
                     hoverHighlight: computedStyle.getPropertyValue('--hover-highlight-color').trim()
                 };
                 
-                // Game State
-                this.state = 'menu';
-                this.gameMode = 'exploration'; // 'exploration' or 'death-loop'
+                // 核心游戏状态
+                this.state = GAME_STATES.MENU;
+                this.gameMode = 'exploration';
                 this.initialHealth = 5;
                 this.initialStamina = 100;
                 this.loopCount = 0;
@@ -716,28 +760,28 @@
                 this.cellSize = canvas.width / this.width;
                 this.mapData = null;
 
-                // Player
+                // 玩家状态
                 this.player = { x: 1, y: 1, hp: 5, stamina: 100, trail: [], keys: 0 , steps: 0};
 
-                // Ghosts & Items
+                // 鬼和物品
                 this.ghosts = [];
                 this.ghostCount = 3;
                 this.items = [];
 
-                // Map data structures
+                // 地图结构数据
                 this.hWalls = [];
                 this.vWalls = [];
                 this.startPos = { x: 1, y: 1 };
                 this.endPos = { x: 0, y: 0 };
                 
-                // Visibility
+                // 视野系统
                 this.seenCells = [];
                 this.debugVision = false;
 
-                // Editor State
+                // 编辑器状态
                 this.editor = {
                     active: false,
-                    tool: 'wall',
+                    tool: EDITOR_TOOLS.WALL,
                     isDragging: false,
                     didDrag: false,
                     dragAxis: null,
@@ -745,12 +789,12 @@
                     hoveredWall: null
                 };
 
-                // === 新增: 历史记录系统状态 ===
-                this.history = [];       // 存储所有状态快照
-                this.checkpoints = [];   // 存储存档点的步数索引
-                this.currentStep = -1;   // 指向当前状态在 history 数组中的索引
-                // === 新增结束 ===
+                // 历史记录系统状态
+                this.history = [];
+                this.checkpoints = [];
+                this.currentStep = -1;
 
+                // 移动端虚拟方向键(D-pad)状态
                 this.dpad = {
                     element: document.getElementById('dpad-controls'),
                     grip: document.getElementById('dpad-grip'),
@@ -764,10 +808,14 @@
                     currentScale: 1
                 };
 
+                // 绑定所有UI事件并显示初始欢迎信息
                 this.bindUI();
                 this.showInitialMessage();
             }
             
+            /**
+             * 在游戏开始前，在Canvas上显示欢迎信息
+             */
             showInitialMessage() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = 'black';
@@ -777,63 +825,47 @@
             }
 
             // ==================================================
-            //  UI BINDING & CONTROLS
+            //  UI绑定与控制
             // ==================================================
+
+            /**
+             * 绑定所有HTML元素的事件监听器
+             */
             bindUI() {
+                // 游戏控制按钮
                 document.getElementById('generate-map-btn').addEventListener('click', () => this.generateNewRandomMap());
-                
-                // --- 分享功能绑定 (已最终修正) ---
-                // 主界面：“复制分享码”按钮 -> copyShareCode()
-                document.getElementById('copy-share-code-btn').addEventListener('click', () => this.copyShareCode());
-                // 主界面：“粘贴并加载”按钮 -> loadFromShareCode()
-                document.getElementById('load-share-code-btn').addEventListener('click', async () => {
-                    try {
-                        const code = await navigator.clipboard.readText();
-                        if (code) { this.loadFromShareCode(code); } 
-                        else { this.showToast('剪贴板为空。', 3000, 'error'); }
-                    } catch (err) {
-                        console.error('无法读取剪贴板内容: ', err);
-                        this.showToast('无法读取剪贴板。请检查浏览器权限。', 3000, 'error');
-                    }
-                });
-
-                // 编辑器：“复制分享码”按钮 -> copyShareCode(true)
-                document.getElementById('editor-copy-share-code-btn').addEventListener('click', () => this.copyShareCode(true));
-                // 编辑器：“粘贴并加载”按钮 -> loadFromShareCode(true)
-                document.getElementById('editor-load-share-code-btn').addEventListener('click', async () => {
-                    try {
-                        const code = await navigator.clipboard.readText();
-                        if (code) { this.loadFromShareCode(code, true); } 
-                        else { this.showToast('剪贴板为空。', 3000, 'error'); }
-                    } catch (err) {
-                        console.error('无法读取剪贴板内容: ', err);
-                        this.showToast('无法读取剪贴板。请检查浏览器权限。', 3000, 'error');
-                    }
-                });
-                // --- 分享功能绑定结束 ---
-
                 document.getElementById('reset-map-btn').addEventListener('click', () => this.resetCurrentMap());
+                document.getElementById('edit-map-btn').addEventListener('click', () => this.enterEditorMode());
+
+                // 分享码功能按钮 (主界面和编辑器)
+                document.getElementById('copy-share-code-btn').addEventListener('click', () => this.copyShareCode());
+                document.getElementById('editor-copy-share-code-btn').addEventListener('click', () => this.copyShareCode(true));
+                document.getElementById('load-share-code-btn').addEventListener('click', () => this._loadCodeFromClipboard(false));
+                document.getElementById('editor-load-share-code-btn').addEventListener('click', () => this._loadCodeFromClipboard(true));
+
+                // 调试视野开关
                 document.getElementById('debug-vision-toggle').addEventListener('change', (e) => {
                     this.debugVision = e.target.checked;
                     this.draw();
-                    if (this.state === 'playing') {
+                    if (this.state === GAME_STATES.PLAYING) {
                         this.updateProximityWarning();
                     }
                 });
-                document.getElementById('edit-map-btn').addEventListener('click', () => this.enterEditorMode());
 
-                // Mode Selection Buttons
+                // 游戏模式选择按钮
                 document.getElementById('mode-exploration-btn').addEventListener('click', () => this.setGameMode('exploration'));
                 document.getElementById('mode-death-loop-btn').addEventListener('click', () => this.setGameMode('death-loop'));
                 document.getElementById('editor-mode-exploration-btn').addEventListener('click', () => this.setGameMode('exploration', true));
                 document.getElementById('editor-mode-death-loop-btn').addEventListener('click', () => this.setGameMode('death-loop', true));
 
+                // 游戏结束/胜利浮窗中的按钮
                 document.getElementById('revive-btn').addEventListener('click', () => this.revivePlayer());
                 document.getElementById('game-over-replay-btn').addEventListener('click', () => this.resetCurrentMap());
                 document.getElementById('game-over-new-map-btn').addEventListener('click', () => this.generateNewRandomMap());
                 document.getElementById('win-replay-btn').addEventListener('click', () => this.resetCurrentMap());
                 document.getElementById('win-new-map-btn').addEventListener('click', () => this.generateNewRandomMap());
 
+                // 编辑器工具栏按钮
                 document.querySelectorAll('.tool-btn').forEach(btn => {
                     btn.addEventListener('click', (e) => this.setEditorTool(e.target.id.split('-')[1]));
                 });
@@ -841,19 +873,20 @@
                 document.getElementById('play-edited-map-btn').addEventListener('click', () => this.playEditedMap());
                 document.getElementById('clear-map-btn').addEventListener('click', () => this.clearEditorMap());
                 
+                // 全局键盘事件
                 window.addEventListener('keydown', (e) => this.handleKeyPress(e));
                 
-                // --- 桌面端鼠标事件 ---
+                // Canvas上的鼠标事件 (主要用于编辑器和玩家点击移动)
                 canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
                 canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
                 canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
                 canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
                 canvas.addEventListener('mouseleave', (e) => this.handleCanvasMouseLeave(e));
 
-                // --- 核心改动：为移动端添加触摸事件支持 ---
+                // Canvas上的触摸事件 (移动端编辑器支持)
                 const handleTouchStart = (e) => {
                     if (this.editor.active) {
-                        e.preventDefault(); // 阻止浏览器默认行为，如滚动
+                        e.preventDefault();
                         const touch = e.touches[0];
                         this.handleCanvasMouseDown(touch);
                     }
@@ -868,34 +901,35 @@
                 const handleTouchEnd = (e) => {
                     if (this.editor.active) {
                         e.preventDefault();
-                        // touchend事件的touchs列表是空的, 需要用changedTouches
                         const touch = e.changedTouches[0];
                         this.handleCanvasMouseUp(touch);
                     }
                 };
-
                 canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
                 canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
                 canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-                canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false }); // 当触摸中断时也视为结束
+                canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
-
+                // 虚拟方向键(D-pad)相关绑定
                 this.bindDpadControls();
                 document.getElementById('dpad-toggle').addEventListener('change', (e) => {
                     this.updateDpadVisibility();
                 });
-
                 this.initializeDpadTouchControls();
 
+                // 历史记录系统按钮
                 document.getElementById('undo-btn').addEventListener('click', () => this.handleUndo());
                 document.getElementById('save-btn').addEventListener('click', () => this.handleSave());
                 document.getElementById('rewind-btn').addEventListener('click', () => this.handleRewind());
             }
 
+            /**
+             * 初始化虚拟方向键的拖动和缩放功能
+             */
             initializeDpadTouchControls() {
                 const dpad = this.dpad;
 
-                // 1. 从 localStorage 加载并应用状态
+                // 从localStorage加载并应用上次保存的位置和大小
                 const savedLeft = localStorage.getItem('dpadLeft');
                 const savedTop = localStorage.getItem('dpadTop');
                 const savedScale = localStorage.getItem('dpadScale');
@@ -904,7 +938,6 @@
                     dpad.currentScale = parseFloat(savedScale);
                     dpad.element.style.transform = `scale(${dpad.currentScale})`;
                 }
-
                 if (savedLeft && savedTop) {
                     dpad.element.style.left = savedLeft;
                     dpad.element.style.top = savedTop;
@@ -912,7 +945,7 @@
                     dpad.element.style.bottom = 'auto';
                 }
 
-                // 辅助函数：确保元素使用JS定位
+                // 辅助函数，确保D-pad使用JS计算的绝对定位
                 const ensureJsPositioning = () => {
                     if (dpad.element.style.left === '' || dpad.element.style.top === '') {
                         const rect = dpad.element.getBoundingClientRect();
@@ -923,8 +956,7 @@
                     }
                 };
 
-                // 2. 绑定触摸事件
-                // 2a. 在中心的把手上绑定【单指拖动】
+                // 绑定单指拖动事件到中心把手
                 dpad.grip.addEventListener('touchstart', (e) => {
                     const touches = e.touches;
                     if (touches.length === 1) {
@@ -938,7 +970,7 @@
                     }
                 }, { passive: false });
 
-                // 2b. 在整个方向键容器上绑定【双指缩放】
+                // 绑定双指缩放事件到整个D-pad容器
                 dpad.element.addEventListener('touchstart', (e) => {
                     const touches = e.touches;
                     if (touches.length === 2) {
@@ -951,28 +983,29 @@
                     }
                 }, { passive: false });
 
-
+                // 监听全局触摸移动事件
                 document.addEventListener('touchmove', (e) => {
                     if (!dpad.isDragging && !dpad.isResizing) return;
                     e.preventDefault();
                     const touches = e.touches;
 
-                    if (dpad.isDragging && touches.length === 1) {
+                    if (dpad.isDragging && touches.length === 1) { // 处理拖动
                         const dx = touches[0].clientX - dpad.startX;
                         const dy = touches[0].clientY - dpad.startY;
                         dpad.element.style.left = `${dpad.initialLeft + dx}px`;
                         dpad.element.style.top = `${dpad.initialTop + dy}px`;
-                    } else if (dpad.isResizing && touches.length === 2) {
+                    } else if (dpad.isResizing && touches.length === 2) { // 处理缩放
                         const dx = touches[0].clientX - touches[1].clientX;
                         const dy = touches[0].clientY - touches[1].clientY;
                         const currentDist = Math.sqrt(dx * dx + dy * dy);
                         const scaleChange = currentDist / dpad.initialDist;
                         let newScale = dpad.currentScale * scaleChange;
-                        newScale = Math.max(0.5, Math.min(2.5, newScale));
+                        newScale = Math.max(0.5, Math.min(2.5, newScale)); // 限制缩放范围
                         dpad.element.style.transform = `scale(${newScale})`;
                     }
                 }, { passive: false });
 
+                // 监听全局触摸结束事件，保存状态
                 document.addEventListener('touchend', (e) => {
                     if (dpad.isResizing) {
                         const transformStyle = dpad.element.style.transform;
@@ -982,45 +1015,50 @@
                         }
                         localStorage.setItem('dpadScale', dpad.currentScale);
                     }
-                    
                     if (dpad.isDragging) {
                         localStorage.setItem('dpadLeft', dpad.element.style.left);
                         localStorage.setItem('dpadTop', dpad.element.style.top);
                     }
-
                     dpad.isDragging = false;
                     dpad.isResizing = false;
                 });
             }
 
+            /**
+             * 设置游戏模式并更新相关的UI显示
+             * @param {string} newMode - 新的游戏模式 ('exploration' 或 'death-loop')
+             * @param {boolean} fromEditor - 调用是否来自编辑器界面
+             */
             setGameMode(newMode, fromEditor = false) {
                 if (this.gameMode === newMode && !fromEditor) return;
                 this.gameMode = newMode;
 
                 const isExploration = newMode === 'exploration';
 
-                // Toggle active class for main buttons
+                // 更新主界面和编辑器界面中模式按钮的激活状态
                 document.getElementById('mode-exploration-btn').classList.toggle('active', isExploration);
                 document.getElementById('mode-death-loop-btn').classList.toggle('active', !isExploration);
-
-                // Toggle active class for editor buttons
                 document.getElementById('editor-mode-exploration-btn').classList.toggle('active', isExploration);
                 document.getElementById('editor-mode-death-loop-btn').classList.toggle('active', !isExploration);
 
-                // Toggle visibility of status bars
+                // 根据模式切换显示对应的状态栏
                 document.getElementById('status-bar-exploration').style.display = isExploration ? 'flex' : 'none';
                 document.getElementById('status-bar-death-loop').style.display = isExploration ? 'none' : 'flex';
 
-                // Toggle visibility of editor initial value inputs
+                // 根据模式切换编辑器中显示初始生命/体力输入框
                 document.getElementById('initial-health-container').style.display = isExploration ? 'flex' : 'none';
                 document.getElementById('initial-stamina-container').style.display = isExploration ? 'none' : 'flex';
 
-                if (this.state !== 'menu' && this.state !== 'editor') {
+                // 如果在游戏中切换模式，则重置当前地图
+                if (this.state !== GAME_STATES.MENU && this.state !== GAME_STATES.EDITOR) {
                     this.resetCurrentMap();
                 }
                 this.updateUIDisplays();
             }
 
+            /**
+             * 根据开关状态和游戏模式更新虚拟方向键的可见性
+             */
             updateDpadVisibility() {
                 const dpadToggle = document.getElementById('dpad-toggle');
                 const dpadControls = document.getElementById('dpad-controls');
@@ -1033,26 +1071,32 @@
                 }
             }
 
+            /**
+             * 绑定虚拟方向键按钮的触摸和点击事件
+             */
             bindDpadControls() {
                 const upBtn = document.getElementById('dpad-up');
                 const downBtn = document.getElementById('dpad-down');
                 const leftBtn = document.getElementById('dpad-left');
                 const rightBtn = document.getElementById('dpad-right');
 
+                // 按下按钮时的处理函数，支持长按连续移动
                 const handleDpadPress = (dx, dy) => {
-                    if (this.state !== 'playing') return;
+                    if (this.state !== GAME_STATES.PLAYING) return;
                     clearInterval(this.autoMoveInterval);
                     clearInterval(this.dpadInterval);
-                    this.movePlayer(dx, dy);
-                    this.dpadInterval = setInterval(() => {
+                    this.movePlayer(dx, dy); // 立即移动一次
+                    this.dpadInterval = setInterval(() => { // 设置定时器实现长按效果
                         this.movePlayer(dx, dy);
                     }, 200);
                 };
 
+                // 释放按钮时的处理函数
                 const handleDpadRelease = () => {
                     clearInterval(this.dpadInterval);
                 };
 
+                // 辅助函数，为按钮添加事件监听
                 const addListeners = (element, dx, dy) => {
                     element.addEventListener('touchstart', (e) => {
                         e.preventDefault();
@@ -1066,40 +1110,45 @@
                 addListeners(leftBtn, -1, 0);
                 addListeners(rightBtn, 1, 0);
 
+                // 监听全局的释放事件
                 document.addEventListener('touchend', handleDpadRelease);
                 document.addEventListener('mouseup', handleDpadRelease);
             }
 
             // ==================================================
-            //  CUSTOM NOTIFICATIONS & ANIMATION
+            //  自定义通知与动画
             // ==================================================
-            showToast(message, duration = 3000, type = 'info') {
-                // 1. 清除任何正在进行的“隐藏”计时器
-                clearTimeout(this.toastTimeout);
 
-                // 2. 立即隐藏当前的 toast，为重新播放动画做准备
+            /**
+             * 显示一个短暂的顶部通知 (Toast)
+             * @param {string} message - 要显示的消息
+             * @param {number} duration - 显示时长 (毫秒)
+             * @param {string} type - 通知类型 ('info', 'success', 'error')
+             */
+            showToast(message, duration = 3000, type = 'info') {
+                clearTimeout(this.toastTimeout);
                 this.toastElement.classList.remove('show');
 
-                // 3. 使用一个非常短的延时 (setTimeout)
-                // 这给浏览器足够的时间来处理 class 的移除操作
-                // 然后再更新内容并重新显示，从而强制动画重新播放
+                // 使用短暂延时来确保浏览器能重置CSS动画
                 setTimeout(() => {
                     this.toastElement.textContent = message;
-                    // 重置 class，移除旧的 success/error 等状态
                     this.toastElement.className = 'toast'; 
                     if (type !== 'info') {
                         this.toastElement.classList.add(type);
                     }
-                    // 重新添加 'show' 类，触发进入动画
                     this.toastElement.classList.add('show');
 
-                    // 4. 设置新的计时器，在指定时间后隐藏这个新的 toast
                     this.toastTimeout = setTimeout(() => {
                         this.toastElement.classList.remove('show');
                     }, duration);
-                }, 100); // 100毫秒的延时足以产生一个清晰的“刷新”效果
+                }, 100);
             }
 
+            /**
+             * 显示一个确认对话框
+             * @param {string} message - 确认信息
+             * @param {function} onConfirm - 用户点击确认后执行的回调函数
+             */
             showConfirm(message, onConfirm) {
                 this.confirmMessage.textContent = message;
                 this.confirmOverlay.style.display = 'flex';
@@ -1117,20 +1166,24 @@
                 this.confirmNoBtn.onclick = hide;
             }
 
+            /**
+             * 启动基于 requestAnimationFrame 的动画循环，用于渲染拖尾等效果
+             */
             startAnimationLoop() {
                 if (this.animationFrameId) return;
-                const trailLifetime = 500;
+                const trailLifetime = 500; // 拖尾效果的持续时间
 
                 const loop = () => {
                     const now = Date.now();
                     
+                    // 过滤掉已经过期的拖尾点
                     this.player.trail = this.player.trail.filter(p => now - p.timestamp < trailLifetime);
                     this.ghosts.forEach(g => {
                         g.trail = g.trail.filter(p => now - p.timestamp < trailLifetime);
                     });
 
-                    if (this.state === 'playing') {
-                        this.draw();
+                    if (this.state === GAME_STATES.PLAYING) {
+                        this.draw(); // 重绘画面
                         this.animationFrameId = requestAnimationFrame(loop);
                     } else {
                         this.stopAnimationLoop();
@@ -1139,6 +1192,9 @@
                 this.animationFrameId = requestAnimationFrame(loop);
             }
 
+            /**
+             * 停止动画循环
+             */
             stopAnimationLoop() {
                 if (this.animationFrameId) {
                     cancelAnimationFrame(this.animationFrameId);
@@ -1147,27 +1203,36 @@
             }
 
             // ==================================================
-            //  GAME INITIALIZATION & STATE MANAGEMENT
+            //  游戏初始化与状态管理
             // ==================================================
             
+            /**
+             * 根据提供的地图数据开始或重置游戏
+             * @param {object} mapData - 包含地图所有信息的对象
+             */
             startGame(mapData) {
                 this.stopAnimationLoop();
-                this.mapData = JSON.parse(JSON.stringify(mapData));
-                this.state = 'playing';
+                this.mapData = JSON.parse(JSON.stringify(mapData)); // 深拷贝地图数据以备重置
+                this.state = GAME_STATES.PLAYING;
 
+                // 重置历史记录系统
                 this.history = [];
                 this.checkpoints = [];
                 this.currentStep = -1;
                 
+                // 应用地图尺寸
                 this.width = mapData.width;
                 this.height = mapData.height;
                 this.cellSize = canvas.width / this.width;
+                this._renderStaticLayer(); // 渲染静态背景层
                 
+                // 加载地图结构
                 this.hWalls = mapData.hWalls;
                 this.vWalls = mapData.vWalls;
                 this.endPos = mapData.endPos;
                 this.items = mapData.items || [];
                 
+                // 初始化玩家状态
                 this.player = { x: 1, y: this.height - 2, trail: [], keys: 0 ,steps: 0 };
                 if (this.gameMode === 'exploration') {
                     this.player.hp = this.initialHealth;
@@ -1176,35 +1241,44 @@
                     this.loopCount = 0;
                 }
                 
+                // 初始化鬼的状态
                 this.ghosts = JSON.parse(JSON.stringify(mapData.initialGhosts));
                 this.ghosts.forEach(g => g.trail = []);
                 
-                // Only reset seenCells if it's a truly new map start, not a death loop revival
+                // 仅在全新开始或探索模式下重置视野
                 if (this.gameMode === 'exploration' || this.loopCount === 0) {
                     this.seenCells = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
                 }
                 this.updateVisibility();
                 
+                // 更新UI，隐藏浮窗，并开始游戏循环
                 this.updateUIDisplays();
                 this.hideAllOverlays();
                 this.startAnimationLoop();
 
+                // 记录游戏的初始状态
                 this.recordHistory();
             }
 
+            /**
+             * 生成一张新的随机地图并开始游戏
+             */
             generateNewRandomMap() {
                 const size = parseInt(this.mapSizeInput.value);
                 if (size < 8 || size > 20) {
                     this.showToast('地图大小必须在 8 到 20 之间。', 3000, 'error');
                     return;
                 }
-                // Per user request, random maps always use default values
+                // 随机地图总是使用默认的生命和体力值
                 this.initialHealth = 5;
                 this.initialStamina = 100;
                 const mapData = this.generateMaze(size, size);
                 this.startGame(mapData);
             }
             
+            /**
+             * 重置当前地图，回到初始状态
+             */
             resetCurrentMap() {
                 if (!this.mapData) {
                     this.showToast("没有可重置的地图。请先生成一个新地图。", 3000, 'error');
@@ -1214,21 +1288,30 @@
             }
 
             // ==================================================
-            //  MAP GENERATION
+            //  地图生成
             // ==================================================
 
+            /**
+             * 使用随机深度优先搜索算法生成迷宫
+             * @param {number} width - 地图宽度
+             * @param {number} height - 地图高度
+             * @returns {object} 生成的地图数据
+             */
             generateMaze(width, height) {
                 this.width = width;
                 this.height = height;
                 this.cellSize = canvas.width / this.width;
 
-                const wall = () => ({ type: 1, keys: 0 });
-                const empty = () => ({ type: 0, keys: 0 });
-                const door = () => ({ type: 2, keys: 0 });
+                // 定义墙体、空地和门的基础对象
+                const wall = () => ({ type: WALL_TYPES.SOLID, keys: 0 });
+                const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
+                const door = () => ({ type: WALL_TYPES.DOOR, keys: 0 });
 
+                // 1. 初始化，所有地方都是墙
                 this.hWalls = Array(height + 1).fill(null).map(() => Array(width).fill(null).map(wall));
                 this.vWalls = Array(height).fill(null).map(() => Array(width + 1).fill(null).map(wall));
 
+                // 2. 创建一个3x3的固定起始房间
                 const roomY = height - 3;
                 for (let y = roomY; y < roomY + 3; y++) {
                     for (let x = 0; x < 3; x++) {
@@ -1236,13 +1319,13 @@
                         if (y < roomY + 2) this.hWalls[y + 1][x] = empty();
                     }
                 }
-                this.vWalls[roomY + 1][3] = door();
-                this.hWalls[roomY][1] = door();
-                
+                this.vWalls[roomY + 1][3] = door(); // 房间出口
+                this.hWalls[roomY][1] = door(); // 房间出口
                 this.startPos = { x: 1, y: height - 2 };
 
+                // 3. 使用深度优先搜索(DFS)算法生成迷宫路径
                 const visited = Array(height).fill(null).map(() => Array(width).fill(false));
-                for (let y = roomY; y < roomY + 3; y++) {
+                for (let y = roomY; y < roomY + 3; y++) { // 标记起始房间为已访问
                     for (let x = 0; x < 3; x++) {
                         visited[y][x] = true;
                     }
@@ -1250,7 +1333,7 @@
                 
                 const stack = [];
                 let startGenX, startGenY;
-                do {
+                do { // 随机选择一个不在起始房间内的点开始生成
                     startGenX = Math.floor(Math.random() * width);
                     startGenY = Math.floor(Math.random() * height);
                 } while (visited[startGenY][startGenX]);
@@ -1273,6 +1356,7 @@
                     if (neighbors.length > 0) {
                         stack.push(current);
                         const { x: nx, y: ny, dir } = neighbors[Math.floor(Math.random() * neighbors.length)];
+                        // 打破当前单元格和邻居之间的墙
                         if (dir.x === 1) this.vWalls[current.y][current.x + 1] = empty();
                         else if (dir.x === -1) this.vWalls[current.y][current.x] = empty();
                         else if (dir.y === 1) this.hWalls[current.y + 1][current.x] = empty();
@@ -1282,6 +1366,7 @@
                     }
                 }
                 
+                // 4. 随机移除一些墙，增加迷宫的连通性
                 const wallsToRemove = Math.floor(width * height * 0.08);
                 let removedCount = 0;
                 let attempts = 0;
@@ -1292,14 +1377,14 @@
 
                     if (Math.random() > 0.5) {
                         if (rx < width - 1 && !(ry >= roomY && ry < roomY + 3 && rx + 1 === 3)) {
-                            if (this.vWalls[ry][rx + 1].type === 1) {
+                            if (this.vWalls[ry][rx + 1].type === WALL_TYPES.SOLID) {
                                 this.vWalls[ry][rx + 1] = empty();
                                 removedCount++;
                             }
                         }
                     } else {
                         if (ry < height - 1 && !(rx >= 0 && rx < 3 && ry + 1 === roomY)) {
-                             if (this.hWalls[ry + 1][rx].type === 1) {
+                             if (this.hWalls[ry + 1][rx].type === WALL_TYPES.SOLID) {
                                 this.hWalls[ry + 1][rx] = empty();
                                 removedCount++;
                             }
@@ -1307,8 +1392,10 @@
                     }
                 }
 
+                // 5. 找到离起点最远的死胡同作为终点
                 this.endPos = this.findFarthestEndCell();
 
+                // 6. 随机放置一些门
                 const doorProbability = 0.02;
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
@@ -1318,13 +1405,16 @@
                     }
                 }
 
+                // 7. 在终点处放置一个需要3把钥匙的数字门
                 const {x: ex, y: ey} = this.endPos;
-                if (this.hWalls[ey][ex].type === 0) this.hWalls[ey][ex] = { type: 3, keys: 3 };
-                else if (this.hWalls[ey + 1][ex].type === 0) this.hWalls[ey + 1][ex] = { type: 3, keys: 3 };
-                else if (this.vWalls[ey][ex].type === 0) this.vWalls[ey][ex] = { type: 3, keys: 3 };
-                else if (this.vWalls[ey][ex + 1].type === 0) this.vWalls[ey][ex + 1] = { type: 3, keys: 3 };
+                const lockedDoor = { type: WALL_TYPES.LOCKED, keys: 3 };
+                if (this.hWalls[ey][ex].type === WALL_TYPES.EMPTY) this.hWalls[ey][ex] = lockedDoor;
+                else if (this.hWalls[ey + 1][ex].type === WALL_TYPES.EMPTY) this.hWalls[ey + 1][ex] = lockedDoor;
+                else if (this.vWalls[ey][ex].type === WALL_TYPES.EMPTY) this.vWalls[ey][ex] = lockedDoor;
+                else if (this.vWalls[ey][ex + 1].type === WALL_TYPES.EMPTY) this.vWalls[ey][ex + 1] = lockedDoor;
 
-                const occupied = new Set();
+                // 8. 随机放置鬼和钥匙
+                const occupied = new Set(); // 记录已被占用的格子
                 occupied.add(`${this.endPos.x},${this.endPos.y}`);
                 for (let y = height - 3; y < height; y++) {
                     for (let x = 0; x < 3; x++) {
@@ -1345,8 +1435,8 @@
 
                 this.items = [];
                 const keysToPlace = 4;
-                const validCells = [];
-                const preferredCells = [];
+                const validCells = []; // 所有可放置物品的格子
+                const preferredCells = []; // 优先放置物品的格子 (死胡同)
                 for (let y = 0; y < height; y++) {
                     for (let x = 0; x < width; x++) {
                         if (!occupied.has(`${x},${y}`)) {
@@ -1365,7 +1455,7 @@
 
                 for (let i = 0; i < keysToPlace; i++) {
                     let pos = null;
-                    if (preferredCells.length > 0) {
+                    if (preferredCells.length > 0) { // 优先从死胡同中选择
                         const index = Math.floor(Math.random() * preferredCells.length);
                         pos = preferredCells.splice(index, 1)[0];
                     } else if (validCells.length > 0) {
@@ -1379,6 +1469,7 @@
                     }
                 }
 
+                // 9. 返回完整的地图数据
                 return {
                     width, height,
                     hWalls: this.hWalls, vWalls: this.vWalls,
@@ -1386,6 +1477,10 @@
                 };
             }
             
+            /**
+             * 找到地图边界上离起点最远的死胡同作为终点
+             * @returns {object} 终点坐标 {x, y}
+             */
             findFarthestEndCell() {
                 const distances = this.calculateDistances(this.startPos);
                 let maxDist = -1;
@@ -1393,6 +1488,7 @@
 
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
+                        // 只考虑地图边缘的格子
                         if (x === 0 || x === this.width - 1 || y === 0 || y === this.height - 1) {
                             let wallCount = 0;
                             if (this.hWalls[y][x].type > 0) wallCount++;
@@ -1400,6 +1496,7 @@
                             if (this.vWalls[y][x].type > 0) wallCount++;
                             if (this.vWalls[y][x + 1].type > 0) wallCount++;
                             
+                            // 必须是死胡同 (三面是墙)
                             if (wallCount >= 3) {
                                 if (distances[y][x] > maxDist) {
                                     maxDist = distances[y][x];
@@ -1409,14 +1506,19 @@
                         }
                     }
                 }
-                return farthestCell || { x: this.width - 1, y: 0 };
+                return farthestCell || { x: this.width - 1, y: 0 }; // 如果没找到，提供一个默认值
             }
 
             // ==================================================
-            //  PLAYER LOGIC
+            //  玩家逻辑
             // ==================================================
+
+            /**
+             * 处理键盘按键事件
+             * @param {KeyboardEvent} e - 键盘事件对象
+             */
             handleKeyPress(e) {
-                if (this.state !== 'playing') return;
+                if (this.state !== GAME_STATES.PLAYING) return;
                 this.stopAutoMove();
 
                 let dx = 0, dy = 0;
@@ -1431,15 +1533,22 @@
                 this.movePlayer(dx, dy);
             }
 
+            /**
+             * 移动玩家并处理移动引发的所有游戏逻辑
+             * @param {number} dx - X方向的移动 (-1, 0, 1)
+             * @param {number} dy - Y方向的移动 (-1, 0, 1)
+             */
             movePlayer(dx, dy) {
-                if (this.state !== 'playing') return;
+                if (this.state !== GAME_STATES.PLAYING) return;
 
                 const playerPrevPos = { x: this.player.x, y: this.player.y };
                 const newX = this.player.x + dx;
                 const newY = this.player.y + dy;
 
+                // 1. 检查是否越界
                 if (newX < 0 || newX >= this.width || newY < 0 || newY >= this.height) return;
 
+                // 2. 检查是否有墙阻挡
                 let wall;
                 if (dx === 1) wall = this.vWalls[this.player.y][this.player.x + 1];
                 if (dx === -1) wall = this.vWalls[this.player.y][this.player.x];
@@ -1447,68 +1556,64 @@
                 if (dy === -1) wall = this.hWalls[this.player.y][this.player.x];
 
                 if (wall) {
-                    if (wall.type === 1 || wall.type === 5) return;
-                    if (wall.type === 4) { // 单向门逻辑
-                        // 如果玩家的移动方向与门允许的方向不一致，则阻止移动
-                        if (dx !== wall.direction.dx || dy !== wall.direction.dy) {
-                            return;
-                        }
-                    }
-                    if (wall.type === 3 && this.player.keys < wall.keys) return;
-                    if (wall.type === 3 && this.player.keys >= wall.keys) {
-                        wall.type = 0;
+                    if (wall.type === WALL_TYPES.SOLID || wall.type === WALL_TYPES.GLASS) return;
+                    if (wall.type === WALL_TYPES.ONE_WAY && (dx !== wall.direction.dx || dy !== wall.direction.dy)) return;
+                    if (wall.type === WALL_TYPES.LOCKED && this.player.keys < wall.keys) return;
+                    if (wall.type === WALL_TYPES.LOCKED && this.player.keys >= wall.keys) {
+                        wall.type = WALL_TYPES.EMPTY;
                     }
                 }
 
+                // 3. 更新玩家状态
                 this.player.trail.unshift({ x: this.player.x, y: this.player.y, timestamp: Date.now() });
-
-                // --- 玩家移动 ---
                 this.player.x = newX;
                 this.player.y = newY;
                 this.player.steps++;
-                
                 if (this.gameMode === 'death-loop') {
                     this.player.stamina--;
                 }
                 
+                // 4. 更新UI和视野
                 this.updateUIDisplays();               
                 this.updateVisibility();
                 this.checkItemPickup();
 
-                // 胜利判定优先于所有死亡判定
+                // 5. 检查胜利条件
                 if (this.endPos && this.player.x === this.endPos.x && this.player.y === this.endPos.y) {
                     this.handleWin();
                     return;
                 }
 
-                // 死亡判定 1: 体力耗尽
+                // 6. 检查死亡条件 (体力耗尽)
                 if (this.gameMode === 'death-loop' && this.player.stamina <= 0) {
                     this.handlePlayerDeath('stamina_depleted');
                     return;
                 }
 
-                // 死亡判定 2: 检查玩家移动后是否撞上（静止的）鬼
+                // 7. 检查是否与鬼碰撞
                 if (this.checkCollisionWithGhosts()) {
                     this.handlePlayerDeath('ghost');
                     return;
                 }
 
-                // --- 鬼魂移动 ---
+                // 8. 移动鬼
                 this.moveGhosts(playerPrevPos);
 
-                // 死亡判定 3: 检查鬼魂移动后是否撞上玩家
+                // 9. 再次检查鬼移动后是否与玩家碰撞
                 if (this.checkCollisionWithGhosts()) {
                     this.handlePlayerDeath('ghost');
                     return;
                 }
                 
-                // --- 回合结束 ---
+                // 10. 更新警告并记录历史
                 this.updateProximityWarning();
                 if (!this.animationFrameId) this.draw();
-
                 this.recordHistory();
             }
 
+            /**
+             * 检查玩家当前位置是否有物品并拾取
+             */
             checkItemPickup() {
                 const itemIndex = this.items.findIndex(item => item.x === this.player.x && item.y === this.player.y);
                 if (itemIndex > -1) {
@@ -1517,17 +1622,23 @@
                         this.player.keys++;
                         this.showToast(`钥匙+1 (现在持有${this.player.keys}个)`, 2000, 'success');
                     }
-                    this.items.splice(itemIndex, 1);
+                    this.items.splice(itemIndex, 1); // 从地图上移除物品
                     this.updateUIDisplays();
                 }
             }
             
+            /**
+             * 将玩家位置重置到出生点
+             */
             resetPlayerPos() {
                 this.player.x = this.startPos.x;
                 this.player.y = this.height - 2;
                 this.player.trail = [];
             }
             
+            /**
+             * 更新所有UI显示，如生命、钥匙、步数等
+             */
             updateUIDisplays() {
                 if (this.gameMode === 'exploration') {
                     this.healthDisplay.textContent = `生命: ${this.player.hp}`;
@@ -1541,8 +1652,11 @@
                 this.updateProximityWarning();
             }
 
+            /**
+             * 更新周围鬼数量的警告显示和背景效果
+             */
             updateProximityWarning() {
-                if (this.gameMode === 'death-loop') {
+                if (this.gameMode === 'death-loop') { // 死亡循环模式无此功能
                     document.body.classList.remove('danger-bg');
                     this.ghostProximityDisplay.classList.remove('warning');
                     return;
@@ -1564,6 +1678,7 @@
 
                 this.ghostProximityDisplay.textContent = `周围鬼数: ${totalNearbyGhosts}`;
 
+                // 如果附近有看不见的鬼，则触发警告效果
                 if (invisibleNearbyGhosts > 0) {
                     document.body.classList.add('danger-bg');
                     this.ghostProximityDisplay.classList.add('warning');
@@ -1574,30 +1689,40 @@
             }
 
             // ==================================================
-            //  GHOST LOGIC
+            //  鬼逻辑
             // ==================================================
             
+            /**
+             * 检查鬼是否能沿直线看到玩家（无障碍）
+             * @param {object} ghost - 鬼对象
+             * @param {object} playerPos - 玩家坐标 {x, y}
+             * @returns {boolean} 是否能看到
+             */
             canGhostSeePlayer(ghost, playerPos) {
                 if (!playerPos || ghost.x !== playerPos.x && ghost.y !== playerPos.y) return false;
                 
-                if (ghost.x === playerPos.x) {
+                if (ghost.x === playerPos.x) { // 垂直方向
                     const startY = Math.min(ghost.y, playerPos.y);
                     const endY = Math.max(ghost.y, playerPos.y);
                     for (let y = startY; y < endY; y++) {
                         const wall = this.hWalls[y + 1][ghost.x];
-                        if (wall.type > 0 && wall.type !== 5) return false;
+                        if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) return false;
                     }
-                } else {
+                } else { // 水平方向
                     const startX = Math.min(ghost.x, playerPos.x);
                     const endX = Math.max(ghost.x, playerPos.x);
                     for (let x = startX; x < endX; x++) {
                         const wall = this.vWalls[ghost.y][x + 1];
-                        if (wall.type > 0 && wall.type !== 5) return false;
+                        if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) return false;
                     } 
                 }
                 return true;
             }
 
+            /**
+             * 移动所有鬼的逻辑
+             * @param {object} playerPrevPos - 玩家移动前的位置
+             */
             moveGhosts(playerPrevPos) {
                 let moveIntents = [];
 
@@ -1607,9 +1732,9 @@
                     const seesAfter = this.canGhostSeePlayer(ghost, this.player);
 
                     let target = null;
-                    if (!sawBefore && seesAfter) target = this.player;
-                    if (sawBefore && !seesAfter) target = playerPrevPos;
-                    if (sawBefore && seesAfter) target = this.player;
+                    if (!sawBefore && seesAfter) target = this.player; // 玩家进入视野
+                    if (sawBefore && !seesAfter) target = playerPrevPos; // 玩家离开视野
+                    if (sawBefore && seesAfter) target = this.player; // 玩家在视野内移动
                     
                     if (target) {
                         const path = this.findShortestPath(ghost, target);
@@ -1621,8 +1746,7 @@
 
                 if (moveIntents.length === 0) return;
 
-                // 阶段二：循环解析和执行，直到无法再取得进展
-                // 增加一个循环次数上限，防止意外的死循环
+                // 阶段二：解决移动冲突并执行移动
                 let maxIterations = this.ghosts.length + 1; 
                 let madeProgress = true;
 
@@ -1630,13 +1754,11 @@
                     madeProgress = false;
                     maxIterations--;
 
-                    // 获取所有当前被占据的格子
                     const occupiedCells = new Set(this.ghosts.map(g => `${g.x},${g.y}`));
-                    
                     let possibleMoves = [];
                     let remainingIntents = [];
 
-                    // 筛选出本轮所有理论上可行的移动（目标格子当前是空的）
+                    // 筛选出目标格子当前为空的移动
                     for (const intent of moveIntents) {
                         const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
                         if (!occupiedCells.has(targetKey)) {
@@ -1646,7 +1768,7 @@
                         }
                     }
 
-                    // 解决“争抢同一个格子”的冲突
+                    // 解决多个鬼抢同一个格子的冲突
                     const finalMovesThisPass = [];
                     const claimedTargets = new Set();
                     for (const intent of possibleMoves) {
@@ -1655,55 +1777,68 @@
                             finalMovesThisPass.push(intent);
                             claimedTargets.add(targetKey);
                         } else {
-                            // 这个移动因为冲突而失败，留到下一轮
                             remainingIntents.push(intent);
                         }
                     }
 
-                    // 如果有可以成功移动的鬼，则执行移动
+                    // 执行本轮确定的移动
                     if (finalMovesThisPass.length > 0) {
                         for (const { ghost, nextStep } of finalMovesThisPass) {
                             ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
                             ghost.x = nextStep.x;
                             ghost.y = nextStep.y;
                         }
-                        madeProgress = true; // 标记本轮取得了进展
+                        madeProgress = true;
                     }
                     
-                    // 更新意图列表，准备下一轮解析
-                    moveIntents = remainingIntents;
+                    moveIntents = remainingIntents; // 继续处理未解决的移动意图
                 }
             }
             
+            /**
+             * 检查指定坐标是否被其他鬼占据
+             * @param {number} x - X坐标
+             * @param {number} y - Y坐标
+             * @param {number} selfId - 要排除的鬼的ID
+             * @returns {boolean} 是否被占据
+             */
             isCellOccupiedByGhost(x, y, selfId = -1) {
                 return this.ghosts.some(g => g.id !== selfId && g.x === x && g.y === y);
             }
 
             // ==================================================
-            //  GAME ENDING & OVERLAYS
+            //  游戏结束与浮窗
             // ==================================================
             
+            /**
+             * 检查玩家是否与任何一个鬼在同一个格子上
+             * @returns {boolean} 是否发生碰撞
+             */
             checkCollisionWithGhosts() {
                 return this.ghosts.some(g => g.x === this.player.x && g.y === this.player.y);
             }
 
+            /**
+             * 处理玩家死亡事件
+             * @param {string} reason - 死亡原因 ('ghost', 'stamina_depleted')
+             */
             handlePlayerDeath(reason = 'ghost') {
                 this.stopAutoMove();
                 this.stopAnimationLoop();
-                this.state = 'dead';
+                this.state = GAME_STATES.DEAD;
                 
                 if (this.gameMode === 'exploration') {
                     this.player.hp--;
                     this.updateUIDisplays();
                     this.draw();
-                    if (this.player.hp > 0) {
+                    if (this.player.hp > 0) { // 还有生命值，可以复活
                         document.getElementById('death-message').textContent = `你死了 (剩余血量 ${this.player.hp})`;
                         document.getElementById('revive-btn').textContent = '复活';
                         document.getElementById('death-overlay').style.display = 'flex';
-                    } else {
+                    } else { // 生命值耗尽，游戏结束
                         document.getElementById('game-over-overlay').style.display = 'flex';
                     }
-                } else { // death-loop
+                } else { // 死亡循环模式
                     this.draw();
                     const message = reason === 'stamina_depleted' ? '体力耗尽，你死了' : '你死了';
                     document.getElementById('death-message').textContent = message;
@@ -1712,49 +1847,48 @@
                 }
             }
             
+            /**
+             * 处理玩家复活逻辑
+             */
             revivePlayer() {
                 if (this.gameMode === 'exploration') {
                     this.resetPlayerPos();
-                    this.state = 'playing';
+                    this.state = GAME_STATES.PLAYING;
                     this.hideAllOverlays();
                     this.updateVisibility();
                     this.updateProximityWarning();
                     this.startAnimationLoop();
-                    this.recordHistory(true); 
-                } else { // death-loop
+                    this.recordHistory(true); // 记录一个复活点
+                } else { // 死亡循环模式
                     this.loopCount++;
-                    this.state = 'playing';
+                    this.state = GAME_STATES.PLAYING;
                     this.hideAllOverlays();
 
-                    // 重置玩家和地图状态，但保留视野
-                    this.resetPlayerPos(); // 此函数会正确重置 player.trail
+                    // 重置玩家和地图状态，但保留已探索的视野
+                    this.resetPlayerPos();
                     this.player.keys = 0;
                     this.player.steps = 0;
                     this.player.stamina = this.initialStamina;
                     
-                    // 从主地图数据重置物品和鬼魂
+                    // 从原始地图数据中重置物品和鬼
                     this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
                     this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts));
-                    
-                    // *** 关键修复：为新加载的鬼魂初始化 trail 数组，防止 draw() 函数崩溃 ***
-                    this.ghosts.forEach(g => g.trail = []);
+                    this.ghosts.forEach(g => g.trail = []); // 初始化拖尾数组
 
-                    // 根据玩家复活后的新位置，更新视野数据
                     this.updateVisibility();
-                    
-                    // 更新UI上的状态显示
                     this.updateUIDisplays();
-
-                    // 立即开始游戏循环，它会在下一帧自动重绘整个游戏画面
                     this.startAnimationLoop();
-                    this.recordHistory(true);
+                    this.recordHistory(true); // 记录一个复活点
                 }
             }
 
+            /**
+             * 处理游戏胜利逻辑
+             */
             handleWin() {
                 this.stopAutoMove();
                 this.stopAnimationLoop();
-                this.state = 'won';
+                this.state = GAME_STATES.WON;
 
                 const winStats = document.getElementById('win-stats');
                 if (this.gameMode === 'exploration') {
@@ -1766,6 +1900,9 @@
                 document.getElementById('win-overlay').style.display = 'flex';
             }
             
+            /**
+             * 隐藏所有游戏状态浮窗
+             */
             hideAllOverlays() {
                 document.getElementById('death-overlay').style.display = 'none';
                 document.getElementById('game-over-overlay').style.display = 'none';
@@ -1773,9 +1910,14 @@
             }
 
             // ==================================================
-            //  VISIBILITY
+            //  视野系统
             // ==================================================
+
+            /**
+             * 根据玩家当前位置更新可见的单元格
+             */
             updateVisibility() {
+                // 起始房间永久可见
                 const roomY = this.height - 3;
                 for (let y = roomY; y < roomY + 3; y++) {
                     for (let x = 0; x < 3; x++) {
@@ -1784,49 +1926,72 @@
                 }
 
                 const { x, y } = this.player;
-                this.seenCells[y][x] = true;
+                this.seenCells[y][x] = true; // 玩家当前格子可见
 
+                // 沿四个方向进行“射线投射”，直到遇到非玻璃墙
                 for (let i = x + 1; i < this.width; i++) {
                     const wall = this.vWalls[y][i];
-                    if (wall.type > 0 && wall.type !== 5) break; // 玻璃不阻挡视野
+                    if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[y][i] = true;
                 }
                 for (let i = x - 1; i >= 0; i--) {
                     const wall = this.vWalls[y][i + 1];
-                    if (wall.type > 0 && wall.type !== 5) break; // 玻璃不阻挡视野
+                    if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[y][i] = true;
                 }
                 for (let i = y + 1; i < this.height; i++) {
                     const wall = this.hWalls[i][x];
-                    if (wall.type > 0 && wall.type !== 5) break; // 玻璃不阻挡视野
+                    if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[i][x] = true;
                 }
                 for (let i = y - 1; i >= 0; i--) {
                     const wall = this.hWalls[i + 1][x];
-                    if (wall.type > 0 && wall.type !== 5) break; // 玻璃不阻挡视野
-                    this.seenCells[i][x] = true;
-                }
-                for (let i = x - 1; i >= 0; i--) {
-                    if (this.vWalls[y][i + 1].type > 0) break;
-                    this.seenCells[y][i] = true;
-                }
-                for (let i = y + 1; i < this.height; i++) {
-                    if (this.hWalls[i][x].type > 0) break;
-                    this.seenCells[i][x] = true;
-                }
-                for (let i = y - 1; i >= 0; i--) {
-                    if (this.hWalls[i + 1][x].type > 0) break;
+                    if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[i][x] = true;
                 }
             }
 
             // ==================================================
-            //  DRAWING
+            //  渲染
             // ==================================================
+
+            /**
+             * [私有] 渲染静态背景层（地面、网格线）到离屏Canvas
+             */
+            _renderStaticLayer() {
+                this.staticLayerCanvas.width = canvas.width;
+                this.staticLayerCanvas.height = canvas.height;
+                const ctx = this.staticLayerCtx;
+                const cs = this.cellSize;
+
+                // 绘制地面
+                ctx.fillStyle = this.colors.ground;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 绘制网格线
+                ctx.strokeStyle = this.colors.gridLine;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let i = 0; i <= this.width; i++) {
+                    const x = Math.round(i * cs) + 0.5;
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, this.height * cs);
+                }
+                for (let i = 0; i <= this.height; i++) {
+                    const y = Math.round(i * cs) + 0.5;
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(this.width * cs, y);
+                }
+                ctx.stroke();
+            }
+
+            /**
+             * 主渲染函数，负责在Canvas上绘制整个游戏画面
+             */
             draw() {
-                if (this.state === 'menu') return;
+                if (this.state === GAME_STATES.MENU) return;
                 if (this.editor.active) {
-                    this.drawEditor();
+                    this.drawEditor(); // 如果在编辑器模式，则调用编辑器渲染函数
                     return;
                 }
 
@@ -1836,14 +2001,10 @@
                 const trailLifetime = 500;
                 const initialAlpha = 0.3;
 
-                // --- 绘制底层元素 ---
-                for (let y = 0; y < this.height; y++) {
-                    for (let x = 0; x < this.width; x++) {
-                        ctx.fillStyle = this.colors.ground;
-                        ctx.fillRect(x * cs, y * cs, cs, cs);
-                    }
-                }
+                // 渲染层级 1: 静态背景 (从离屏Canvas绘制)
+                ctx.drawImage(this.staticLayerCanvas, 0, 0);
                 
+                // 渲染层级 2: 拖尾效果
                 this.player.trail.forEach(p => {
                     if (this.seenCells[p.y][p.x] || this.debugVision) {
                         const age = now - p.timestamp;
@@ -1861,21 +2022,7 @@
                     });
                 });
 
-                ctx.strokeStyle = this.colors.gridLine;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                for (let i = 0; i <= this.width; i++) {
-                    const x = Math.round(i * cs) + 0.5;
-                    ctx.moveTo(x, 0);
-                    ctx.lineTo(x, this.height * cs);
-                }
-                for (let i = 0; i <= this.height; i++) {
-                    const y = Math.round(i * cs) + 0.5;
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(this.width * cs, y);
-                }
-                ctx.stroke();
-
+                // 渲染层级 3: 未探索区域的战争迷雾
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
                         if (!this.seenCells[y][x] && !this.debugVision) {
@@ -1885,7 +2032,7 @@
                     }
                 }
 
-                // --- 绘制中间层元素 (墙体和地面实体) ---
+                // 渲染层级 4: 墙体
                 ctx.beginPath();
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
@@ -1899,11 +2046,12 @@
                 }
                 ctx.stroke();
 
+                // 渲染层级 5: 终点
                 if (this.endPos && (this.seenCells[this.endPos.y][this.endPos.x] || this.debugVision)) {
                     this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
                 }
 
-                // --- 绘制活动单位 (鬼和玩家) ---
+                // 渲染层级 6: 鬼和玩家
                 this.ghosts.forEach(ghost => {
                     if (this.seenCells[ghost.y][ghost.x] || this.debugVision) {
                         this.drawCircle(ghost.x, ghost.y, this.colors.ghost);
@@ -1911,18 +2059,26 @@
                 });
                 this.drawCircle(this.player.x, this.player.y, this.colors.player);
                 
-                // --- 绘制顶层元素 (覆盖在单位之上) ---
-                // 绘制物品 (钥匙等)
+                // 渲染层级 7: 物品
                 this.items.forEach(item => {
                     if (this.seenCells[item.y][item.x] || this.debugVision) {
                         this.drawItem(item);
                     }
                 });
 
-                // 最后绘制数字门上的数字，确保它在最顶层
+                // 渲染层级 8: 墙体上的覆盖物 (如数字门的数字)
                 this.drawWallOverlays(true);
             }
 
+            /**
+             * 绘制单面墙或门
+             * @param {number} x1 - 起点X
+             * @param {number} y1 - 起点Y
+             * @param {number} x2 - 终点X
+             * @param {number} y2 - 终点Y
+             * @param {object} wallObject - 墙体数据对象
+             * @param {boolean} isHighlight - 是否高亮显示
+             */
             drawWallOrDoor(x1, y1, x2, y2, wallObject, isHighlight = false) {
                 const type = wallObject.type;
                 const cs = this.cellSize;
@@ -1932,50 +2088,43 @@
                     ctx.lineWidth = Math.max(3, cs / 8);
                 } else {
                     ctx.strokeStyle = this.colors.wall;
-                    // 为不同类型的墙设置不同的线宽
-                    if (type === 1 || type === 2 || type === 5) { // 普通墙、门或玻璃
+                    if ([WALL_TYPES.SOLID, WALL_TYPES.DOOR, WALL_TYPES.GLASS].includes(type)) {
                         ctx.lineWidth = Math.max(2, cs / 10);
-                    } else if (type === 3 || type === 4) { // 数字门或单向门
+                    } else if ([WALL_TYPES.LOCKED, WALL_TYPES.ONE_WAY].includes(type)) {
                         ctx.lineWidth = Math.max(3, cs / 12); 
                     }
                 }
                 
-                if (type === 1) { // 普通墙
+                if (type === WALL_TYPES.SOLID) {
                     ctx.moveTo(x1, y1);
                     ctx.lineTo(x2, y2);
-                } else if (type === 5) { // 玻璃
+                } else if (type === WALL_TYPES.GLASS) {
                     const isHorizontal = y1 === y2;
-                    const lineLength = cs * 0.2; // 每条斜线的长度
+                    const lineLength = cs * 0.2;
                     const offset = lineLength / 2;
-
-                    // 在墙体中心线上取三个点
                     const points = [
                         { x: x1 * 5/6 + x2 * 1/6, y: y1 * 5/6 + y2 * 1/6 },
                         { x: (x1 + x2) / 2, y: (y1 + y2) / 2 },
                         { x: x1 * 1/6 + x2 * 5/6, y: y1 * 1/6 + y2 * 5/6 }
                     ];
-
                     for (const p of points) {
                         if (isHorizontal) {
-                            // 水平墙上的斜线
                             ctx.moveTo(p.x - offset, p.y + offset);
                             ctx.lineTo(p.x + offset, p.y - offset);
                         } else {
-                            // 垂直墙上的斜线
                             ctx.moveTo(p.x - offset, p.y + offset);
                             ctx.lineTo(p.x + offset, p.y - offset);
                         }
                     }
-                } else if (type === 3 || type === 4) { // 数字门或单向门
+                } else if (type === WALL_TYPES.LOCKED || type === WALL_TYPES.ONE_WAY) {
                     const isHorizontal = y1 === y2;
                     const lockWidth = cs * 0.2;
-
                     if (isHorizontal) {
                         ctx.rect(x1, y1 - lockWidth / 2, cs, lockWidth);
                     } else {
                         ctx.rect(x1 - lockWidth / 2, y1, lockWidth, cs);
                     }
-                } else if (type === 2) { // 门
+                } else if (type === WALL_TYPES.DOOR) {
                     const isHorizontal = y1 === y2;
                     const length = isHorizontal ? x2 - x1 : y2 - y1;
                     const gap = length / 3;
@@ -1989,30 +2138,33 @@
                 }
             }
 
+            /**
+             * 在墙体中心绘制一个表示方向的箭头
+             * @param {number} x1 - 墙体起点X
+             * @param {number} y1 - 墙体起点Y
+             * @param {number} x2 - 墙体终点X
+             * @param {number} y2 - 墙体终点Y
+             * @param {object} direction - 方向对象 {dx, dy}
+             * @param {string} color - 箭头颜色
+             * @param {boolean} withStroke - 是否带描边
+             */
             drawArrow(x1, y1, x2, y2, direction, color, withStroke) {
                 const centerX = (x1 + x2) / 2;
                 const centerY = (y1 + y2) / 2;
                 const cs = this.cellSize;
-                // 稍微增大字体以获得更好的视觉效果
                 const fontSize = cs * 0.6; 
 
-                ctx.save(); // 保存当前画布状态
-                ctx.translate(centerX, centerY); // 将原点移动到墙的中心
+                ctx.save(); // 保存画布状态
+                ctx.translate(centerX, centerY); // 移动原点到墙中心
 
                 // 根据方向旋转画布
-                if (direction.dx === 1) { // Right
-                    ctx.rotate(0);
-                } else if (direction.dx === -1) { // Left
-                    ctx.rotate(Math.PI); // 旋转180度
-                } else if (direction.dy === 1) { // Down
-                    ctx.rotate(Math.PI / 2); // 旋转90度
-                } else if (direction.dy === -1) { // Up
-                    ctx.rotate(-Math.PI / 2); // 旋转-90度
-                }
+                if (direction.dx === 1) { ctx.rotate(0); } 
+                else if (direction.dx === -1) { ctx.rotate(Math.PI); } 
+                else if (direction.dy === 1) { ctx.rotate(Math.PI / 2); } 
+                else if (direction.dy === -1) { ctx.rotate(-Math.PI / 2); }
 
-                ctx.scale(0.8, 1.0);
+                ctx.scale(0.8, 1.0); // 稍微压扁箭头
 
-                // 设置字体和对齐方式
                 ctx.font = `bold ${fontSize}px sans-serif`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -2022,18 +2174,19 @@
                     ctx.lineWidth = 3;
                     ctx.strokeText('>', 0, 0);
                 }
-
-                // 再绘制填充颜色
                 ctx.fillStyle = color;
                 ctx.fillText('>', 0, 0);
 
-                ctx.restore(); // 恢复画布状态，使旋转不影响其他绘图
+                ctx.restore(); // 恢复画布状态
             }
 
+            /**
+             * 绘制所有墙体上的覆盖物，如数字门的数字和单向门的箭头
+             * @param {boolean} inGame - 是否在游戏模式下调用
+             */
             drawWallOverlays(inGame = false) {
                 const cs = this.cellSize;
                 
-                // 绘制数字门的数字 (这个内部函数保持不变)
                 const drawNumber = (x1, y1, x2, y2, number) => {
                     const centerX = (x1 + x2) / 2;
                     const centerY = (y1 + y2) / 2;
@@ -2049,32 +2202,30 @@
                     ctx.fillText(text, centerX, centerY);
                 };
 
-                // 遍历所有内部的水平墙
+                // 遍历水平墙
                 for (let y = 1; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
                         const wall = this.hWalls[y][x];
                         const isVisible = !inGame || this.debugVision || this.seenCells[y - 1][x] || this.seenCells[y][x];
                         if (isVisible) {
-                            if (wall.type === 3) {
+                            if (wall.type === WALL_TYPES.LOCKED) {
                                 drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, wall.keys);
-                            } else if (wall.type === 4 && wall.direction) {
-                                // 核心改动：调用新的类方法绘制箭头
+                            } else if (wall.type === WALL_TYPES.ONE_WAY && wall.direction) {
                                 this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, wall.direction, this.colors.key, true);
                             }
                         }
                     }
                 }
 
-                // 遍历所有内部的垂直墙
+                // 遍历垂直墙
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 1; x < this.width; x++) {
                         const wall = this.vWalls[y][x];
                         const isVisible = !inGame || this.debugVision || this.seenCells[y][x - 1] || this.seenCells[y][x];
                         if (isVisible) {
-                            if (wall.type === 3) {
+                            if (wall.type === WALL_TYPES.LOCKED) {
                                 drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, wall.keys);
-                            } else if (wall.type === 4 && wall.direction) {
-                                // 核心改动：调用新的类方法绘制箭头
+                            } else if (wall.type === WALL_TYPES.ONE_WAY && wall.direction) {
                                 this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, wall.direction, this.colors.key, true);
                             }
                         }
@@ -2082,6 +2233,13 @@
                 }
             }
 
+            /**
+             * 在指定格子绘制一个圆形，用于玩家、鬼和终点
+             * @param {number} x - 格子X坐标
+             * @param {number} y - 格子Y坐标
+             * @param {string} color - 颜色
+             * @param {number} alpha - 透明度
+             */
             drawCircle(x, y, color, alpha = 1.0) {
                 if (alpha <= 0) return;
                 const cs = this.cellSize;
@@ -2093,6 +2251,10 @@
                 ctx.globalAlpha = 1.0;
             }
 
+            /**
+             * 绘制物品，如钥匙
+             * @param {object} item - 物品对象
+             */
             drawItem(item) {
                 if (item.type === 'key') {
                     const cs = this.cellSize;
@@ -2101,22 +2263,25 @@
                     const size = cs * 0.3;
                     ctx.fillStyle = this.colors.key;
                     ctx.beginPath();
-                    ctx.moveTo(centerX, centerY - size); // Top
-                    ctx.lineTo(centerX + size, centerY); // Right
-                    ctx.lineTo(centerX, centerY + size); // Bottom
-                    ctx.lineTo(centerX - size, centerY); // Left
+                    ctx.moveTo(centerX, centerY - size);
+                    ctx.lineTo(centerX + size, centerY);
+                    ctx.lineTo(centerX, centerY + size);
+                    ctx.lineTo(centerX - size, centerY);
                     ctx.closePath();
                     ctx.fill();
                 }
             }
 
             // ==================================================
-            //  EDITOR LOGIC
+            //  编辑器逻辑
             // ==================================================
             
+            /**
+             * 进入地图编辑器模式
+             */
             enterEditorMode() {
                 this.stopAnimationLoop();
-                if (!this.mapData) {
+                if (!this.mapData) { // 如果没有现有地图，则创建一个空白地图
                     this.width = 10;
                     this.height = 10;
                     this.createBlankEditorMap();
@@ -2130,13 +2295,15 @@
                     };
                 }
 
-                this.state = 'editor';
+                this.state = GAME_STATES.EDITOR;
                 this.editor.active = true;
-                this.setEditorTool('wall');
+                this.setEditorTool(EDITOR_TOOLS.WALL);
                 
+                // 切换UI面板
                 document.getElementById('game-controls').style.display = 'none';
                 document.getElementById('editor-controls').style.display = 'block';
                 
+                // 从mapData加载数据到编辑器
                 this.width = this.mapData.width;
                 this.height = this.mapData.height;
                 this.editorMapSizeInput.value = this.width;
@@ -2147,20 +2314,26 @@
                 this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts || []));
                 this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
                 
+                this._renderStaticLayer(); // 为编辑器渲染静态背景
                 this.drawEditor();
                 this.updateDpadVisibility();
             }
             
+            /**
+             * 创建一个带外墙和起始房间的空白地图
+             */
             createBlankEditorMap() {
                 this.cellSize = canvas.width / this.width;
                 
-                const wall = () => ({ type: 1, keys: 0 });
-                const empty = () => ({ type: 0, keys: 0 });
-                const door = () => ({ type: 2, keys: 0 });
+                const wall = () => ({ type: WALL_TYPES.SOLID, keys: 0 });
+                const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
+                const door = () => ({ type: WALL_TYPES.DOOR, keys: 0 });
 
+                // 初始化空地
                 this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty));
                 this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty));
                 
+                // 创建外墙
                 for (let x = 0; x < this.width; x++) {
                     this.hWalls[0][x] = wall();
                     this.hWalls[this.height][x] = wall();
@@ -2170,6 +2343,7 @@
                     this.vWalls[y][this.width] = wall();
                 }
                 
+                // 创建固定的起始房间
                 const roomY = this.height - 3;
                 for (let x = 0; x < 3; x++) this.hWalls[roomY + 3][x] = wall();
                 for (let y = roomY; y < roomY + 3; y++) this.vWalls[y][0] = wall();
@@ -2178,12 +2352,16 @@
                 this.hWalls[roomY][1] = door();
                 this.vWalls[roomY+1][3] = door();
                 
+                // 重置实体
                 this.startPos = { x: 1, y: this.height - 2 };
                 this.endPos = null;
                 this.ghosts = [];
                 this.items = [];
             }
 
+            /**
+             * 在编辑器中调整地图大小并清空地图
+             */
             resizeAndClearEditor() {
                 const size = parseInt(this.editorMapSizeInput.value);
                 if (size < 8 || size > 20) {
@@ -2193,23 +2371,24 @@
                 }
                 this.width = size;
                 this.height = size;
+                this._renderStaticLayer(); // 尺寸变化，重新渲染静态层
                 this.createBlankEditorMap();
                 this.drawEditor();
             }
             
+            /**
+             * 退出编辑器，并使用当前编辑的地图开始游戏
+             */
             playEditedMap() {
-                // if (!this.endPos) {
-                //     this.showToast('请在地图上放置一个终点。', 3000, 'error');
-                //     return;
-                // }
-                
                 this.editor.active = false;
                 document.getElementById('game-controls').style.display = 'block';
                 document.getElementById('editor-controls').style.display = 'none';
                 
+                // 从编辑器UI获取初始生命/体力值
                 this.initialHealth = parseInt(document.getElementById('editor-initial-health').value) || 5;
                 this.initialStamina = parseInt(document.getElementById('editor-initial-stamina').value) || 100;
 
+                // 组装地图数据
                 const editedMapData = {
                     width: this.width, height: this.height,
                     hWalls: this.hWalls, vWalls: this.vWalls,
@@ -2222,6 +2401,9 @@
                 this.updateDpadVisibility(); 
             }
             
+            /**
+             * 清空编辑器中的所有内容
+             */
             clearEditorMap() {
                 this.showConfirm('你确定要清空所有墙壁、实体和物品吗？', () => {
                     this.createBlankEditorMap();
@@ -2229,6 +2411,10 @@
                 });
             }
             
+            /**
+             * 设置当前使用的编辑器工具
+             * @param {string} tool - 工具名称
+             */
             setEditorTool(tool) {
                 this.editor.tool = tool;
                 document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -2238,31 +2424,21 @@
                 this.drawEditor();
             }
             
+            /**
+             * 渲染编辑器界面
+             */
             drawEditor() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 const cs = this.cellSize;
 
-                ctx.fillStyle = this.colors.ground;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // 绘制静态背景和网格
+                ctx.drawImage(this.staticLayerCanvas, 0, 0);
                 
+                // 绘制起始房间高亮
                 ctx.fillStyle = this.colors.startRoomHighlight;
                 ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs);
-
-                ctx.strokeStyle = this.colors.gridLine;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                for (let i = 0; i <= this.width; i++) {
-                    const x = Math.round(i * cs) + 0.5;
-                    ctx.moveTo(x, 0);
-                    ctx.lineTo(x, this.height * cs);
-                }
-                for (let i = 0; i <= this.height; i++) {
-                    const y = Math.round(i * cs) + 0.5;
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(this.width * cs, y);
-                }
-                ctx.stroke();
                 
+                // 绘制所有墙体
                 ctx.beginPath();
                 for (let y = 0; y <= this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
@@ -2281,10 +2457,19 @@
                 ctx.stroke();
                 this.drawWallOverlays();
                 
+                // 绘制鼠标悬停时的墙体预览
                 if (this.editor.hoveredWall && !this.editor.isDragging) {
                     ctx.beginPath();
                     const {x, y, type, direction} = this.editor.hoveredWall;
-                    const wallType = this.editor.tool === 'door' ? 2 : (this.editor.tool === 'glass' ? 5 : (this.editor.tool === 'lock' ? 3 : (this.editor.tool === 'oneway' ? 4 : 1)));
+                    
+                    let wallType;
+                    switch(this.editor.tool) {
+                        case EDITOR_TOOLS.DOOR: wallType = WALL_TYPES.DOOR; break;
+                        case EDITOR_TOOLS.GLASS: wallType = WALL_TYPES.GLASS; break;
+                        case EDITOR_TOOLS.LOCK: wallType = WALL_TYPES.LOCKED; break;
+                        case EDITOR_TOOLS.ONE_WAY: wallType = WALL_TYPES.ONE_WAY; break;
+                        default: wallType = WALL_TYPES.SOLID;
+                    }
                     const wallObject = { type: wallType, keys: '?', direction: direction };
 
                     if (type === 'h') {
@@ -2294,9 +2479,7 @@
                     }
                     ctx.stroke();
 
-                    // 绘制单向门预览箭头（无描边）
-                    if (wallObject.type === 4 && wallObject.direction) {
-                        // 核心改动：调用新的类方法绘制预览箭头，颜色为白色
+                    if (wallObject.type === WALL_TYPES.ONE_WAY && wallObject.direction) {
                         if (type === 'h') {
                             this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, direction, 'white', false);
                         } else {
@@ -2305,13 +2488,18 @@
                     }
                 }
 
+                // 绘制所有实体
                 this.items.forEach(item => this.drawItem(item));
                 if (this.endPos) this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
                 this.ghosts.forEach(g => this.drawCircle(g.x, g.y, this.colors.ghost));
                 this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
             }
             
-            // Editor Mouse Handlers
+            /**
+             * 获取鼠标在Canvas上的坐标
+             * @param {MouseEvent|TouchEvent} e - 事件对象
+             * @returns {object} 坐标 {x, y}
+             */
             getMousePos(e) {
                 const rect = canvas.getBoundingClientRect();
                 const scaleX = canvas.width / rect.width;
@@ -2322,11 +2510,17 @@
                 };
             }
             
+            /**
+             * 检查指定格子是否在固定的起始房间内
+             */
             isPosInStartRoom(cellX, cellY) {
                 const roomY = this.height - 3;
                 return cellX >= 0 && cellX < 3 && cellY >= roomY && cellY < roomY + 3;
             }
             
+            /**
+             * 检查指定的墙体是否可被编辑（防止编辑外墙和起始房间的墙）
+             */
             isWallEditable(wall) {
                 if (!wall) return false;
                 const {x, y, type} = wall;
@@ -2350,6 +2544,9 @@
                 return true;
             }
 
+            /**
+             * 检查指定格子是否已被实体（终点、鬼、物品）占据
+             */
             isCellOccupiedInEditor(x, y) {
                 if (this.endPos && this.endPos.x === x && this.endPos.y === y) return true;
                 if (this.ghosts.some(g => g.x === x && g.y === y)) return true;
@@ -2357,11 +2554,14 @@
                 return false;
             }
 
+            /**
+             * 使用橡皮擦工具擦除指定位置的墙体或实体
+             */
             eraseAtPos(pos) {
                 const wall = this.getWallAtPos(pos.x, pos.y);
                 if (wall && this.isWallEditable(wall)) {
-                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 0, keys: 0 };
-                    else this.vWalls[wall.y][wall.x] = { type: 0, keys: 0 };
+                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: WALL_TYPES.EMPTY, keys: 0 };
+                    else this.vWalls[wall.y][wall.x] = { type: WALL_TYPES.EMPTY, keys: 0 };
                 }
 
                 const cellX = Math.floor(pos.x / this.cellSize);
@@ -2376,8 +2576,11 @@
                 this.drawEditor();
             }
 
+            /**
+             * 处理游戏模式下的Canvas点击事件，用于玩家自动寻路移动
+             */
             handleCanvasClick(e) {
-                if (this.state !== 'playing' || this.editor.active) return;
+                if (this.state !== GAME_STATES.PLAYING || this.editor.active) return;
                 this.stopAutoMove();
 
                 const pos = this.getMousePos(e);
@@ -2386,22 +2589,24 @@
 
                 if (targetX < 0 || targetX >= this.width || targetY < 0 || targetY >= this.height) return;
                 
+                // 如果点击的是相邻格子，则直接移动
                 const dx = targetX - this.player.x;
                 const dy = targetY - this.player.y;
-
                 if (Math.abs(dx) + Math.abs(dy) === 1) {
                     this.movePlayer(dx, dy);
                     return;
                 }
 
+                // 如果点击的是不可见区域，则不响应
                 if (!this.seenCells[targetY][targetX] && !this.debugVision) return;
 
+                // 寻路到目标点
                 const path = this.findPlayerPath(this.player, {x: targetX, y: targetY});
                 
                 if (path && path.length > 1) {
                     let currentStep = 1;
                     const move = () => {
-                        if (currentStep >= path.length || this.state !== 'playing') {
+                        if (currentStep >= path.length || this.state !== GAME_STATES.PLAYING) {
                             this.stopAutoMove();
                             return;
                         }
@@ -2411,13 +2616,16 @@
                         this.movePlayer(dx, dy);
                         currentStep++;
                     };
-                    move(); // First move is instant
+                    move(); // 立即移动第一步
                     if (path.length > 2) {
-                        this.autoMoveInterval = setInterval(move, 200);
+                        this.autoMoveInterval = setInterval(move, 200); // 之后每隔200ms移动一步
                     }
                 }
             }
 
+            /**
+             * 停止玩家的自动移动
+             */
             stopAutoMove() {
                 if (this.autoMoveInterval) {
                     clearInterval(this.autoMoveInterval);
@@ -2428,47 +2636,51 @@
                 }
             }
 
+            /**
+             * 处理编辑器模式下的鼠标按下事件
+             */
             handleCanvasMouseDown(e) {
                 if (!this.editor.active) return;
                 
                 this.editor.isDragging = true;
                 this.editor.didDrag = false;
-
                 const pos = this.getMousePos(e);
 
-                if (this.editor.tool === 'wall' || this.editor.tool === 'glass') { 
+                if (this.editor.tool === EDITOR_TOOLS.WALL || this.editor.tool === EDITOR_TOOLS.GLASS) { 
                     const wall = this.getWallAtPos(pos.x, pos.y);
                     if (wall && this.isWallEditable(wall)) {
                         this.editor.dragAxis = wall.type;
-                        // 根据当前工具，传递正确的墙体类型给 toggleWall
-                        this.toggleWall(wall, this.editor.tool === 'glass' ? 5 : 1); 
+                        const type = this.editor.tool === EDITOR_TOOLS.GLASS ? WALL_TYPES.GLASS : WALL_TYPES.SOLID;
+                        this.toggleWall(wall, type); 
                         this.editor.lastDragPos = wall;
                     } else {
                         this.editor.dragAxis = null;
                     }
-                } else if (this.editor.tool === 'eraser') {
+                } else if (this.editor.tool === EDITOR_TOOLS.ERASER) {
                     this.eraseAtPos(pos);
-                } else if (this.editor.tool === 'oneway') {
+                } else if (this.editor.tool === EDITOR_TOOLS.ONE_WAY) {
                     const wall = this.getWallAtPos(pos.x, pos.y);
                     if (wall && this.isWallEditable(wall)) {
                         const direction = this.getMouseSideOfWall(pos.x, pos.y, wall);
-                        const newWall = { type: 4, direction: direction };
-                        if (wall.type === 'h') {
-                            this.hWalls[wall.y][wall.x] = newWall;
-                        } else {
-                            this.vWalls[wall.y][wall.x] = newWall;
-                        }
+                        const newWall = { type: WALL_TYPES.ONE_WAY, direction: direction };
+                        if (wall.type === 'h') this.hWalls[wall.y][wall.x] = newWall;
+                        else this.vWalls[wall.y][wall.x] = newWall;
                         this.editor.lastDragPos = wall; 
                         this.drawEditor();
                     }
                 }
             }
 
+            /**
+             * 处理编辑器模式下的鼠标移动事件
+             */
             handleCanvasMouseMove(e) {
                 if (!this.editor.active) return;
 
+                // 处理悬停预览
+                const isWallTool = [EDITOR_TOOLS.WALL, EDITOR_TOOLS.DOOR, EDITOR_TOOLS.LOCK, EDITOR_TOOLS.ONE_WAY, EDITOR_TOOLS.GLASS].includes(this.editor.tool);
                 if (!this.editor.isDragging) {
-                    if (this.editor.tool === 'wall' || this.editor.tool === 'door' || this.editor.tool === 'lock' || this.editor.tool === 'oneway' || this.editor.tool === 'glass') {
+                    if (isWallTool) {
                         const pos = this.getMousePos(e);
                         const wall = this.getWallAtPos(pos.x, pos.y);
                         if (wall && this.isWallEditable(wall)) {
@@ -2477,7 +2689,7 @@
                                 this.editor.hoveredWall = wall;
                                 needsRedraw = true;
                             }
-                            if (this.editor.tool === 'oneway') {
+                            if (this.editor.tool === EDITOR_TOOLS.ONE_WAY) {
                                 const direction = this.getMouseSideOfWall(pos.x, pos.y, wall);
                                 if (!this.editor.hoveredWall.direction || this.editor.hoveredWall.direction.dx !== direction.dx || this.editor.hoveredWall.direction.dy !== direction.dy) {
                                     this.editor.hoveredWall.direction = direction;
@@ -2493,11 +2705,12 @@
                     return;
                 }
 
+                // 处理拖动逻辑
                 this.editor.didDrag = true;
                 this.editor.hoveredWall = null;
-
                 const pos = this.getMousePos(e);
-                if ((this.editor.tool === 'wall' || this.editor.tool === 'glass') && this.editor.dragAxis) {
+
+                if ((this.editor.tool === EDITOR_TOOLS.WALL || this.editor.tool === EDITOR_TOOLS.GLASS) && this.editor.dragAxis) {
                     let wall;
                     if (this.editor.dragAxis === 'h') {
                         const x = Math.floor(pos.x / this.cellSize);
@@ -2510,58 +2723,54 @@
                     }
                     
                     if (wall && this.isWallEditable(wall) && (wall.x !== this.editor.lastDragPos.x || wall.y !== this.editor.lastDragPos.y)) {
-                        // 核心修正：确保拖动时也使用正确的类型
-                        const newType = this.editor.tool === 'glass' ? 5 : 1;
+                        const newType = this.editor.tool === EDITOR_TOOLS.GLASS ? WALL_TYPES.GLASS : WALL_TYPES.SOLID;
                         if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: newType };
                         else this.vWalls[wall.y][wall.x] = { type: newType };
                         this.drawEditor();
                         this.editor.lastDragPos = wall;
                     }
-                } else if (this.editor.tool === 'eraser') {
+                } else if (this.editor.tool === EDITOR_TOOLS.ERASER) {
                     this.eraseAtPos(pos);
-                } else if (this.editor.tool === 'oneway' && this.editor.lastDragPos) {
+                } else if (this.editor.tool === EDITOR_TOOLS.ONE_WAY && this.editor.lastDragPos) {
                     const wallData = this.editor.lastDragPos;
                     const newDirection = this.getMouseSideOfWall(pos.x, pos.y, wallData);
-                    
-                    let currentWall;
-                    if (wallData.type === 'h') {
-                        currentWall = this.hWalls[wallData.y][wallData.x];
-                    } else {
-                        currentWall = this.vWalls[wallData.y][wallData.x];
-                    }
-
-                    if (currentWall && currentWall.type === 4 && (currentWall.direction.dx !== newDirection.dx || currentWall.direction.dy !== newDirection.dy)) {
+                    let currentWall = (wallData.type === 'h') ? this.hWalls[wallData.y][wallData.x] : this.vWalls[wallData.y][wallData.x];
+                    if (currentWall && currentWall.type === WALL_TYPES.ONE_WAY && (currentWall.direction.dx !== newDirection.dx || currentWall.direction.dy !== newDirection.dy)) {
                         currentWall.direction = newDirection;
                         this.drawEditor();
                     }
                 }
             }
             
+            /**
+             * 处理编辑器模式下的鼠标松开事件
+             */
             handleCanvasMouseUp(e) {
                 if (!this.editor.active) return;
 
-                if (this.editor.isDragging && !this.editor.didDrag) { // 这是一个单击事件
+                // 如果没有发生拖动，则视为单击事件
+                if (this.editor.isDragging && !this.editor.didDrag) {
                     const pos = this.getMousePos(e);
                     const cellX = Math.floor(pos.x / this.cellSize);
                     const cellY = Math.floor(pos.y / this.cellSize);
                     
                     const wall = this.getWallAtPos(pos.x, pos.y);
                     if (wall && this.isWallEditable(wall)) {
-                        if (this.editor.tool === 'door') {
+                        if (this.editor.tool === EDITOR_TOOLS.DOOR) {
                             if (wall.type === 'h') {
                                 const currentType = this.hWalls[wall.y][wall.x].type;
-                                this.hWalls[wall.y][wall.x] = { type: currentType === 2 ? 0 : 2, keys: 0 };
+                                this.hWalls[wall.y][wall.x] = { type: currentType === WALL_TYPES.DOOR ? WALL_TYPES.EMPTY : WALL_TYPES.DOOR, keys: 0 };
                             } else {
                                 const currentType = this.vWalls[wall.y][wall.x].type;
-                                this.vWalls[wall.y][wall.x] = { type: currentType === 2 ? 0 : 2, keys: 0 };
+                                this.vWalls[wall.y][wall.x] = { type: currentType === WALL_TYPES.DOOR ? WALL_TYPES.EMPTY : WALL_TYPES.DOOR, keys: 0 };
                             }
-                        } else if (this.editor.tool === 'lock') {
+                        } else if (this.editor.tool === EDITOR_TOOLS.LOCK) {
                             const numStr = prompt('请输入锁需要的钥匙数量:', '0');
                             if (numStr !== null) {
                                 const keys = parseInt(numStr);
                                 if (!isNaN(keys) && keys >= 0) {
-                                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: 3, keys: keys };
-                                    else this.vWalls[wall.y][wall.x] = { type: 3, keys: keys };
+                                    if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: WALL_TYPES.LOCKED, keys: keys };
+                                    else this.vWalls[wall.y][wall.x] = { type: WALL_TYPES.LOCKED, keys: keys };
                                 } else {
                                     this.showToast('请输入一个有效的非负整数。', 3000, 'error');
                                 }
@@ -2569,42 +2778,41 @@
                         }
                     }
 
+                    // 处理在格子上放置实体的逻辑
                     if (!this.isPosInStartRoom(cellX, cellY)) {
                         const existingItemIndex = this.items.findIndex(i => i.x === cellX && i.y === cellY);
                         const isOccupied = this.isCellOccupiedInEditor(cellX, cellY);
 
                         switch (this.editor.tool) {
-                            case 'end':
+                            case EDITOR_TOOLS.END:
                                 if (!isOccupied || (this.endPos && this.endPos.x === cellX && this.endPos.y === cellY)) {
                                     this.endPos = { x: cellX, y: cellY };
                                 }
                                 break;
-                            case 'ghost':
+                            case EDITOR_TOOLS.GHOST:
                                 const existingGhostIndex = this.ghosts.findIndex(g => g.x === cellX && g.y === cellY);
-                                if (existingGhostIndex > -1) {
-                                    this.ghosts.splice(existingGhostIndex, 1);
-                                } else if (!isOccupied) {
-                                    this.ghosts.push({ x: cellX, y: cellY });
-                                }
+                                if (existingGhostIndex > -1) this.ghosts.splice(existingGhostIndex, 1);
+                                else if (!isOccupied) this.ghosts.push({ x: cellX, y: cellY });
                                 break;
-                            case 'key':
-                                if (existingItemIndex > -1 && this.items[existingItemIndex].type === 'key') {
-                                    this.items.splice(existingItemIndex, 1);
-                                } else if (!isOccupied) {
-                                    this.items.push({ x: cellX, y: cellY, type: 'key' });
-                                }
+                            case EDITOR_TOOLS.KEY:
+                                if (existingItemIndex > -1 && this.items[existingItemIndex].type === 'key') this.items.splice(existingItemIndex, 1);
+                                else if (!isOccupied) this.items.push({ x: cellX, y: cellY, type: 'key' });
                                 break;
                         }
                     }
                     this.drawEditor();
                 }
                 
+                // 重置拖动状态
                 this.editor.isDragging = false;
                 this.editor.didDrag = false;
                 this.editor.dragAxis = null;
                 this.editor.lastDragPos = null;
             }
             
+            /**
+             * 处理鼠标离开Canvas的事件，重置编辑器状态
+             */
             handleCanvasMouseLeave(e) {
                 if (this.editor.hoveredWall) {
                     this.editor.hoveredWall = null;
@@ -2616,6 +2824,9 @@
                 this.editor.lastDragPos = null;
             }
             
+            /**
+             * 根据鼠标坐标获取其附近的墙体
+             */
             getWallAtPos(mouseX, mouseY) {
                 const cs = this.cellSize;
                 const tolerance = cs / 5;
@@ -2627,46 +2838,43 @@
                 const nearHorizontal = Math.abs(gridY - Math.round(gridY)) * cs < tolerance;
                 const nearVertical = Math.abs(gridX - Math.round(gridX)) * cs < tolerance;
                 
-                if (nearHorizontal && !nearVertical) {
-                    return { type: 'h', x: x, y: Math.round(gridY) };
-                }
-                if (nearVertical && !nearHorizontal) {
-                    return { type: 'v', x: Math.round(gridX), y: y };
-                }
+                if (nearHorizontal && !nearVertical) return { type: 'h', x: x, y: Math.round(gridY) };
+                if (nearVertical && !nearHorizontal) return { type: 'v', x: Math.round(gridX), y: y };
                 return null;
             }
             
-            toggleWall(wall, targetType = 1) {
+            /**
+             * 切换指定墙体的类型（开/关）
+             */
+            toggleWall(wall, targetType = WALL_TYPES.SOLID) {
                 const {x, y, type} = wall;
                 if (type === 'h' && y >= 0 && y <= this.height && x >= 0 && x < this.width) {
-                    this.hWalls[y][x].type = this.hWalls[y][x].type === targetType ? 0 : targetType;
+                    this.hWalls[y][x].type = this.hWalls[y][x].type === targetType ? WALL_TYPES.EMPTY : targetType;
                 } else if (type === 'v' && x >= 0 && x <= this.width && y >= 0 && y < this.height) {
-                    this.vWalls[y][x].type = this.vWalls[y][x].type === targetType ? 0 : targetType;
+                    this.vWalls[y][x].type = this.vWalls[y][x].type === targetType ? WALL_TYPES.EMPTY : targetType;
                 }
                 this.drawEditor();
             }
 
             // ==================================================
-            //  UTILITIES (Pathfinding, Share Code)
+            //  工具函数 (寻路, 分享码等)
             // ==================================================
             
+            /**
+             * 判断鼠标在墙体的哪一侧，用于确定单向门的方向
+             */
             getMouseSideOfWall(mouseX, mouseY, wall) {
                 const cs = this.cellSize;
-                if (wall.type === 'h') { // 水平墙
-                    if (mouseY > wall.y * cs) {
-                        return { dx: 0, dy: 1 }; // 向下
-                    } else {
-                        return { dx: 0, dy: -1 }; // 向上
-                    }
-                } else { // 垂直墙
-                    if (mouseX > wall.x * cs) {
-                        return { dx: 1, dy: 0 }; // 向右
-                    } else {
-                        return { dx: -1, dy: 0 }; // 向左
-                    }
+                if (wall.type === 'h') {
+                    return (mouseY > wall.y * cs) ? { dx: 0, dy: 1 } : { dx: 0, dy: -1 };
+                } else {
+                    return (mouseX > wall.x * cs) ? { dx: 1, dy: 0 } : { dx: -1, dy: 0 };
                 }
             }
 
+            /**
+             * 使用广度优先搜索(BFS)计算从起点到地图上所有点的最短距离
+             */
             calculateDistances(startNode) {
                 const distances = Array(this.height).fill(null).map(() => Array(this.width).fill(Infinity));
                 const queue = [{ x: startNode.x, y: startNode.y, dist: 0 }];
@@ -2674,7 +2882,6 @@
 
                 while (queue.length > 0) {
                     const { x, y, dist } = queue.shift();
-                    
                     const neighbors = [ {dx:0, dy:-1}, {dx:1, dy:0}, {dx:0, dy:1}, {dx:-1, dy:0} ];
                     for (const {dx, dy} of neighbors) {
                         const nx = x + dx;
@@ -2687,7 +2894,7 @@
                             if (dy === 1) wall = this.hWalls[y + 1][x];
                             if (dy === -1) wall = this.hWalls[y][x];
 
-                            if (wall && (wall.type === 1 || wall.type === 3 || wall.type === 4)) continue;
+                            if (wall && [WALL_TYPES.SOLID, WALL_TYPES.LOCKED, WALL_TYPES.ONE_WAY].includes(wall.type)) continue;
                             
                             if (distances[ny][nx] === Infinity) {
                                 distances[ny][nx] = dist + 1;
@@ -2699,6 +2906,9 @@
                 return distances;
             }
             
+            /**
+             * 使用BFS为鬼寻找通往目标的最短路径 (不考虑门的状态)
+             */
             findShortestPath(start, end) {
                 const queue = [[{x: start.x, y: start.y}]];
                 const visited = new Set([`${start.x},${start.y}`]);
@@ -2707,9 +2917,7 @@
                     const path = queue.shift();
                     const { x, y } = path[path.length - 1];
 
-                    if (x === end.x && y === end.y) {
-                        return path;
-                    }
+                    if (x === end.x && y === end.y) return path;
 
                     const neighbors = [ {dx:0, dy:-1}, {dx:1, dy:0}, {dx:0, dy:1}, {dx:-1, dy:0} ];
                     for (const {dx, dy} of neighbors) {
@@ -2732,6 +2940,9 @@
                 return null;
             }
 
+            /**
+             * 使用BFS为玩家寻找通往目标的最短路径 (考虑视野和门的状态)
+             */
             findPlayerPath(start, end) {
                 const queue = [[{x: start.x, y: start.y}]];
                 const visited = new Set([`${start.x},${start.y}`]);
@@ -2740,9 +2951,7 @@
                     const path = queue.shift();
                     const { x, y } = path[path.length - 1];
 
-                    if (x === end.x && y === end.y) {
-                        return path;
-                    }
+                    if (x === end.x && y === end.y) return path;
 
                     const neighbors = [ {dx:0, dy:-1}, {dx:1, dy:0}, {dx:0, dy:1}, {dx:-1, dy:0} ];
                     for (const {dx, dy} of neighbors) {
@@ -2761,10 +2970,9 @@
                             else if (dy === -1) wall = this.hWalls[y][x];
 
                             if (wall) {
-                                if (wall.type === 1 || wall.type === 5 || (wall.type === 3 && this.player.keys < wall.keys)) {
+                                if (wall.type === WALL_TYPES.SOLID || wall.type === WALL_TYPES.GLASS || (wall.type === WALL_TYPES.LOCKED && this.player.keys < wall.keys)) {
                                     isBlocked = true;
-                                } else if (wall.type === 4) {
-                                    // 检查单向门方向。如果移动方向与门的方向不符，则阻塞
+                                } else if (wall.type === WALL_TYPES.ONE_WAY) {
                                     if (dx !== wall.direction.dx || dy !== wall.direction.dy) {
                                         isBlocked = true;
                                     }
@@ -2781,28 +2989,60 @@
                 return null;
             }           
             
+            /**
+             * [私有] 从剪贴板读取文本并调用加载函数
+             * @param {boolean} isEditor - 是否加载到编辑器
+             */
+            async _loadCodeFromClipboard(isEditor = false) {
+                try {
+                    const code = await navigator.clipboard.readText();
+                    if (code) {
+                        this.loadFromShareCode(code, isEditor);
+                    } else {
+                        this.showToast('剪贴板为空。', 3000, 'error');
+                    }
+                } catch (err) {
+                    console.error('无法读取剪贴板内容: ', err);
+                    this.showToast('无法读取剪贴板。请检查浏览器权限。', 3000, 'error');
+                }
+            }
+
+            /**
+             * 生成地图的分享码
+             * @param {boolean} isEditor - 是否为编辑器模式生成
+             * @returns {string|null} 分享码或null
+             */
             generateShareCode(isEditor = false) {
                 try {
-                    let mapSource;
+                    let sourceData;
                     if (isEditor) {
-                        mapSource = {
-                            w: this.width, h: this.height,
-                            hw: this.hWalls, vw: this.vWalls,
-                            e: this.endPos, g: this.ghosts, i: this.items,
-                            gm: this.gameMode,
-                            ih: parseInt(document.getElementById('editor-initial-health').value) || 5,
-                            is: parseInt(document.getElementById('editor-initial-stamina').value) || 100
+                        sourceData = {
+                            width: this.width, height: this.height,
+                            hWalls: this.hWalls, vWalls: this.vWalls,
+                            endPos: this.endPos, initialGhosts: this.ghosts, items: this.items,
+                            gameMode: this.gameMode,
+                            initialHealth: parseInt(document.getElementById('editor-initial-health').value) || 5,
+                            initialStamina: parseInt(document.getElementById('editor-initial-stamina').value) || 100
                         };
                     } else {
                         if (!this.mapData) return null;
-                        mapSource = {
-                            w: this.mapData.width, h: this.mapData.height,
-                            hw: this.mapData.hWalls, vw: this.mapData.vWalls,
-                            e: this.mapData.endPos, g: this.mapData.initialGhosts, i: this.mapData.items,
-                            gm: this.gameMode, ih: this.initialHealth, is: this.initialStamina
+                        sourceData = {
+                            width: this.mapData.width, height: this.mapData.height,
+                            hWalls: this.mapData.hWalls, vWalls: this.mapData.vWalls,
+                            endPos: this.mapData.endPos, initialGhosts: this.mapData.initialGhosts, items: this.mapData.items,
+                            gameMode: this.gameMode, initialHealth: this.initialHealth, initialStamina: this.initialStamina
                         };
                     }
 
+                    // 统一的数据结构
+                    const mapSource = {
+                        w: sourceData.width, h: sourceData.height,
+                        hw: sourceData.hWalls, vw: sourceData.vWalls,
+                        e: sourceData.endPos, g: sourceData.initialGhosts, i: sourceData.items,
+                        gm: sourceData.gameMode, ih: sourceData.initialHealth, is: sourceData.initialStamina
+                    };
+
+                    // 流程: 对象 -> JSON字符串 -> pako压缩 -> 二进制字符串 -> Base64编码
                     const jsonString = JSON.stringify(mapSource);
                     const compressedData = pako.deflate(jsonString);
                     const binaryString = String.fromCharCode.apply(null, compressedData);
@@ -2811,30 +3051,35 @@
                     return shareCode;
 
                 } catch (e) {
-                    console.error("Error generating compressed share code:", e);
+                    console.error("生成分享码失败:", e);
                     this.showToast('生成分享码失败。', 3000, 'error');
                     return null;
                 }
             }
 
+            /**
+             * 从分享码加载地图
+             * @param {string} code - 分享码
+             * @param {boolean} isEditor - 是否加载到编辑器
+             */
             loadFromShareCode(code, isEditor = false) {
                 if (!code) {
                     this.showToast('请输入分享码。', 3000, 'error');
                     return;
                 }
                 try {
+                    // 流程: Base64解码 -> 二进制数据 -> pako解压 -> JSON字符串 -> 对象
                     const binaryString = atob(code);
                     const len = binaryString.length;
                     const bytes = new Uint8Array(len);
                     for (let i = 0; i < len; i++) {
                         bytes[i] = binaryString.charCodeAt(i);
                     }
-
                     const jsonString = pako.inflate(bytes, { to: 'string' });
                     const data = JSON.parse(jsonString);
 
                     if (!data.w || !data.h || !data.hw || !data.vw) {
-                        throw new Error("Invalid map data structure");
+                        throw new Error("无效的地图数据结构");
                     }
 
                     const mapData = {
@@ -2850,10 +3095,7 @@
                     const loadedStamina = data.is || 100;
 
                     if (isEditor) {
-                        // *** 关键修复：改变了函数调用顺序 ***
-                        // 1. 先调用 setGameMode 更新UI和内部状态
                         this.setGameMode(loadedMode, true); 
-                        // 2. 再更新编辑器输入框的值
                         document.getElementById('editor-initial-health').value = loadedHealth;
                         document.getElementById('editor-initial-stamina').value = loadedStamina;
 
@@ -2866,31 +3108,33 @@
                         this.endPos = mapData.endPos;
                         this.ghosts = mapData.initialGhosts;
                         this.items = mapData.items;
+                        
+                        this._renderStaticLayer(); // 加载新地图后重绘静态层
                         this.drawEditor();
                     } else {
-                        // *** 关键修复：改变了函数调用顺序 ***
-                        // 1. 先设置初始值
                         this.initialHealth = loadedHealth;
                         this.initialStamina = loadedStamina;
-                        // 2. 再调用 setGameMode，它会正确地更新UI和内部状态
                         this.setGameMode(loadedMode);
-                        // 3. 最后用已完全同步的状态启动游戏
                         this.startGame(mapData);
                     }
                     this.showToast('地图加载成功！', 2000, 'success');
 
                 } catch (e) {
-                    console.error("Error loading from compressed share code:", e);
+                    console.error("加载分享码失败:", e);
                     this.showToast('加载分享码失败，格式不正确或已损坏。', 3000, 'error');
                 }
             }
 
             // ==================================================
-            //  HISTORY & UNDO SYSTEM (NEW)
+            //  历史与撤销系统
             // ==================================================
 
+            /**
+             * 创建当前游戏状态的快照
+             * @param {boolean} isRevivalPoint - 是否为复活点/存档点
+             * @returns {object} 状态快照对象
+             */
             createSnapshot(isRevivalPoint = false) {
-                // 创建一个包含所有可变游戏状态的快照
                 return {
                     player: JSON.parse(JSON.stringify(this.player)),
                     ghosts: JSON.parse(JSON.stringify(this.ghosts)),
@@ -2901,25 +3145,29 @@
                 };
             }
 
+            /**
+             * 从快照恢复游戏状态
+             * @param {object} snapshot - 状态快照对象
+             */
             loadFromSnapshot(snapshot) {
-                // 从快照恢复游戏状态，【必须】使用深拷贝来防止历史记录被后续操作污染
                 this.player = JSON.parse(JSON.stringify(snapshot.player));
                 this.ghosts = JSON.parse(JSON.stringify(snapshot.ghosts));
                 this.items = JSON.parse(JSON.stringify(snapshot.items));
                 this.hWalls = JSON.parse(JSON.stringify(snapshot.hWalls));
                 this.vWalls = JSON.parse(JSON.stringify(snapshot.vWalls));
                 
-                // 恢复后立即刷新显示
                 this.updateUIDisplays();
                 this.draw();
             }
 
+            /**
+             * 记录当前状态到历史记录中
+             * @param {boolean} isRevivalPoint - 当前状态是否为复活点
+             */
             recordHistory(isRevivalPoint = false) {
-                // 如果当前指针不在历史记录的末尾 (意味着玩家撤销后走了新路)
-                // 则需要截断旧的“未来”历史
+                // 如果在撤销后走了新的分支，则截断旧的未来历史
                 if (this.currentStep < this.history.length - 1) {
                     this.history = this.history.slice(0, this.currentStep + 1);
-                    // 同时也要删除掉被截断的未来中的存档点
                     this.checkpoints = this.checkpoints.filter(cp => cp <= this.currentStep);
                 }
                 
@@ -2930,25 +3178,31 @@
                 this.updateHistoryButtons();
             }
 
+            /**
+             * 更新撤销、存档、回溯按钮的可用状态
+             */
             updateHistoryButtons() {
                 const undoBtn = document.getElementById('undo-btn');
                 const saveBtn = document.getElementById('save-btn');
                 const rewindBtn = document.getElementById('rewind-btn');
 
-                // 撤回按钮的可用逻辑
+                // 只有在当前步数不是第一步且不是复活点时才能撤销
                 const canUndo = this.currentStep > 0 && !this.history[this.currentStep].isRevivalPoint;
                 undoBtn.disabled = !canUndo;
 
-                // 存档按钮的可用逻辑
+                // 只有在当前步数比上一个存档点更晚时才能存档
                 const lastCheckpoint = this.checkpoints.length > 0 ? this.checkpoints[this.checkpoints.length - 1] : -1;
                 const canSave = this.currentStep > lastCheckpoint;
                 saveBtn.disabled = !canSave;
 
-                // 回溯按钮的可用逻辑：检查是否存在一个存档点严格小于当前步数
+                // 只有存在比当前步数更早的存档点时才能回溯
                 const canRewind = this.checkpoints.some(cp => cp < this.currentStep);
                 rewindBtn.disabled = !canRewind;
             }
 
+            /**
+             * 处理撤销操作
+             */
             handleUndo() {
                 if (this.currentStep <= 0) return;
                 if (this.history[this.currentStep].isRevivalPoint) {
@@ -2961,6 +3215,9 @@
                 this.updateHistoryButtons();
             }
 
+            /**
+             * 处理存档操作
+             */
             handleSave() {
                 const lastCheckpoint = this.checkpoints.length > 0 ? this.checkpoints[this.checkpoints.length - 1] : -1;
                 if (this.currentStep <= lastCheckpoint) {
@@ -2973,28 +3230,28 @@
                 this.updateHistoryButtons();
             }
 
+            /**
+             * 处理回溯到上一个存档点的操作
+             */
             handleRewind() {
-                // 步骤 1: 从所有存档点中，筛选出那些步数严格小于当前步数的存档点。
+                // 找到所有比当前步数早的存档点
                 const availableCheckpoints = this.checkpoints.filter(cp => cp < this.currentStep);
-
-                // 步骤 2: 检查是否存在任何更早的存档点。
                 if (availableCheckpoints.length === 0) {
-                    // 如果一个都没有，说明已经无法再回溯了。
                     this.showToast('没有更早的存档点可供回溯', 2000, 'error');
                     return;
                 }
 
-                // 步骤 3: 在所有可用的存档点中，找到数值最大的那一个。
-                // 这就是离当前位置最近的、更早的存档点。
+                // 回溯到最近的一个早期存档点
                 const targetStep = Math.max(...availableCheckpoints);
-
-                // 步骤 4: 执行回溯。
                 this.currentStep = targetStep;
                 this.loadFromSnapshot(this.history[this.currentStep]);
                 this.updateHistoryButtons();
                 this.showToast(`已回溯至存档点 (第 ${targetStep} 步)`, 2000, 'success');
             }
 
+            /**
+             * 生成分享码并复制到剪贴板
+             */
             copyShareCode(isEditor = false) {
                 const code = this.generateShareCode(isEditor);
                 if (code) {
@@ -3009,6 +3266,7 @@
             }
         }
 
+        // 创建游戏实例
         const game = new GhostMazeGame();
     });
     </script>
