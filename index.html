@@ -2633,9 +2633,22 @@
                 };
                 
                 this.startGame(editedMapData);
+                // 在地址栏写入分享码
+                const code = this.generateShareCode(mapData);
+                this.updateURLWithShareCode(code);
+
                 this.updateDpadVisibility(); 
             }
             
+            /**
+            * 更新地址栏 URL 并写入分享码 (?map=xxxx)
+            * 不会刷新页面，不会触发重新加载。
+            */
+            updateURLWithShareCode(code) {
+                const newURL = `${window.location.pathname}?map=${encodeURIComponent(code)}`;
+                window.history.replaceState({}, "", newURL);
+            }
+
             /**
              * 清空编辑器中的所有内容
              */
