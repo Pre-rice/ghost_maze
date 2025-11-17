@@ -821,8 +821,38 @@
                 // 绑定所有UI事件并显示初始欢迎信息
                 this.bindUI();
                 this.showInitialMessage();
+                // 页面加载时尝试从 URL 查询参数或 hash 读取分享码
+            this.loadShareCodeFromURL();
             }
             
+            /**
+            * 从 URL 自动解析分享码，例如：
+            *   https://xxx.com/?map=xxxx
+            *   https://xxx.com/#xxxx
+            * 自动加载地图。
+            */
+            loadShareCodeFromURL() {
+                // 1. 从 ?map= 获取
+                const params = new URLSearchParams(window.location.search);
+                let code = params.get("map");
+
+                // 2. 若没有，从 #hash 获取
+                if (!code && window.location.hash) {
+                    code = window.location.hash.substring(1);
+                }
+
+                if (!code) return;  // URL 没有分享码，则不处理
+
+                this.showToast("检测到分享码，正在加载…", 2000);
+
+                try {
+                    this.loadFromShareCode(code);
+                } catch (e) {
+                    console.error(e);
+                    this.showToast("分享码无效或无法解析", 3000, "error");
+                }
+            }
+
             /**
              * 在游戏开始前，在Canvas上显示欢迎信息
              */
