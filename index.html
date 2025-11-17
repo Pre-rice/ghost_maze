@@ -32,6 +32,34 @@
             --hover-highlight-color: #ffc107;
         }
 
+        @media (prefers-color-scheme: dark) {
+            :root:not(.light) {
+                /* 自动进入深色模式 */
+                --bg-color: #1e1e1e;
+                --danger-bg-color: #4b0c0c;
+                --container-bg: #2c2c2c;
+                --text-color: #e6e6e6;
+                --border-color: #444;
+                --primary-color: #177ddc;
+                --primary-hover-color: #3c9ae8;
+                --danger-color: #ff6b6d;
+                --danger-hover-color: #ff8a8d;
+                --success-color: #52c41a;
+                --disabled-color: #3a3a3a;
+                --disabled-text-color: #777;
+
+                --ground-color: #2b2b2b;
+                --grid-line-color: #3a3a3a;
+                --unexplored-color: #000;
+                --wall-color: #666;
+                --player-color: #3c9ae8;
+                --ghost-color: #d9534f;
+                --end-point-color: #3fbf5a;
+                --key-color: #e6c34a;
+            }
+        }
+
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
             background-color: var(--bg-color);
@@ -821,8 +849,38 @@
                 // 绑定所有UI事件并显示初始欢迎信息
                 this.bindUI();
                 this.showInitialMessage();
+                // 页面加载时尝试从 URL 查询参数或 hash 读取分享码
+            this.loadShareCodeFromURL();
             }
             
+            /**
+            * 从 URL 自动解析分享码，例如：
+            *   https://xxx.com/?map=xxxx
+            *   https://xxx.com/#xxxx
+            * 自动加载地图。
+            */
+            loadShareCodeFromURL() {
+                // 1. 从 ?map= 获取
+                const params = new URLSearchParams(window.location.search);
+                let code = params.get("map");
+
+                // 2. 若没有，从 #hash 获取
+                if (!code && window.location.hash) {
+                    code = window.location.hash.substring(1);
+                }
+
+                if (!code) return;  // URL 没有分享码，则不处理
+
+                this.showToast("检测到分享码，正在加载…", 2000);
+
+                try {
+                    this.loadFromShareCode(code);
+                } catch (e) {
+                    console.error(e);
+                    this.showToast("分享码无效或无法解析", 3000, "error");
+                }
+            }
+
             /**
              * 在游戏开始前，在Canvas上显示欢迎信息
              */
@@ -2603,9 +2661,22 @@
                 };
                 
                 this.startGame(editedMapData);
+                // 在地址栏写入分享码
+                const code = this.generateShareCode(mapData);
+                this.updateURLWithShareCode(code);
+
                 this.updateDpadVisibility(); 
             }
             
+            /**
+            * 更新地址栏 URL 并写入分享码 (?map=xxxx)
+            * 不会刷新页面，不会触发重新加载。
+            */
+            updateURLWithShareCode(code) {
+                const newURL = `${window.location.pathname}?map=${encodeURIComponent(code)}`;
+                window.history.replaceState({}, "", newURL);
+            }
+
             /**
              * 清空编辑器中的所有内容
              */
