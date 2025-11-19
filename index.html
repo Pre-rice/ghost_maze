@@ -6,6 +6,8 @@
         <title>鬼迷宫</title>
         <style>
         :root {
+            color-scheme: light;
+
             --bg-color: #f0f2f5;
             --danger-bg-color: #680e0e;
             --container-bg: #ffffff;
@@ -32,9 +34,13 @@
             --hover-highlight-color: #ffc107;
         }
 
+        /* ===========================
+        系统深色模式自动适配
+        （仅在用户未手动切换时生效）
+        =========================== */
         @media (prefers-color-scheme: dark) {
-            :root:not(.light) {
-                /* 自动进入深色模式 */
+            :root:not(.light):not(.dark) {
+                color-scheme: dark;
                 --bg-color: #1e1e1e;
                 --danger-bg-color: #4b0c0c;
                 --container-bg: #2c2c2c;
@@ -59,6 +65,77 @@
             }
         }
 
+        /* ===========================
+        用户强制深色模式覆盖系统设置
+        =========================== */
+        :root.dark {
+            color-scheme: dark;
+
+            --bg-color: #1e1e1e;
+            --container-bg: #2c2c2c;
+            --text-color: #e6e6e6;
+            --border-color: #444;
+
+            --primary-color: #177ddc;
+            --primary-hover-color: #3c9ae8;
+
+            --danger-color: #ff6b6d;
+            --danger-hover-color: #ff8a8d;
+            --danger-bg-color: #4b0c0c;
+
+            --success-color: #52c41a;
+
+            --disabled-color: #3a3a3a;
+            --disabled-text-color: #777;
+
+            --ground-color: #2b2b2b;
+            --grid-line-color: #3a3a3a;
+            --unexplored-color: #000;
+            --wall-color: #666;
+            --player-color: #3c9ae8;
+            --ghost-color: #d9534f;
+            --end-point-color: #3fbf5a;
+            --key-color: #e6c34a;
+        }
+
+        /* ===========================
+        用户强制浅色模式覆盖系统设置
+        =========================== */
+        :root.light {
+            color-scheme: light;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+        }
+
+        .theme-toggle-btn {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background-color: var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.25s;
+        }
+
+        .theme-toggle-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: var(--text-color);
+            stroke: var(--text-color);
+            transition: transform 0.4s ease;
+        }
+
+        .theme-toggle-btn.active svg {
+            transform: rotate(180deg);
+        }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
@@ -507,6 +584,12 @@
                 <div id="game-controls">
                     <div class="control-group">
                         <h3>状态</h3>
+                        <!-- 主题切换按钮（右上角） -->
+                        <div class="theme-toggle" id="theme-toggle">
+                            <div class="theme-toggle-btn" id="theme-toggle-btn">
+                                <svg id="theme-icon" viewBox="0 0 24 24"></svg>
+                            </div>
+                        </div>
                         <!-- 探索模式状态栏 -->
                         <div id="status-bar-exploration" class="status-bar">
                             <div id="player-health-display" class="label">生命:
@@ -738,6 +821,58 @@
 
     // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
     document.addEventListener('DOMContentLoaded', () => {
+                // ====== 三态主题切换：light / dark / auto ======
+
+        const sunIcon = `
+            <path d="M12 4.5V2m0 20v-2.5M4.93 4.93 3.51 3.51m16.98 16.98-1.42-1.42M4.5 12H2m20 0h-2.5M4.93 19.07l-1.42 1.42m16.98-16.98-1.42 1.42M12 7.5A4.5 4.5 0 1 1 7.5 12 4.505 4.505 0 0 1 12 7.5z"/>
+        `;
+
+        const moonIcon = `
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        `;
+
+        const systemIcon = `
+            <path d="M3 4h18v12H3z M8 20h8M10 16h4" stroke-width="2" stroke="currentColor" fill="none"/>
+        `;
+
+        const toggleBtn = document.getElementById("theme-toggle-btn");
+        const themeIcon = document.getElementById("theme-icon");
+
+        function applyTheme(mode) {
+            // 清空
+            document.documentElement.classList.remove("light", "dark");
+
+            if (mode === "light") {
+                document.documentElement.classList.add("light");
+                themeIcon.innerHTML = sunIcon;
+                toggleBtn.classList.remove("active");
+            }
+            else if (mode === "dark") {
+                document.documentElement.classList.add("dark");
+                themeIcon.innerHTML = moonIcon;
+                toggleBtn.classList.add("active");
+            }
+            else {
+                // 系统模式
+                const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+                themeIcon.innerHTML = systemIcon;
+                toggleBtn.classList.toggle("active", systemDark);
+            }
+        }
+
+        // 初始化
+        let saved = localStorage.getItem("theme") || "auto";
+        applyTheme(saved);
+
+        // 点击循环切换：light → dark → auto
+        document.getElementById("theme-toggle").addEventListener("click", () => {
+            let current = localStorage.getItem("theme") || "auto";
+            let next = current === "light" ? "dark" : current === "dark" ? "auto" : "light";
+
+            applyTheme(next);
+            localStorage.setItem("theme", next);
+        });
+
         // 获取Canvas元素及其2D渲染上下文
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
