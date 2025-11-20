@@ -1503,6 +1503,13 @@
 
                 // 记录游戏的初始状态
                 this.recordHistory();
+
+                // 在这里自动生成分享码并更新 URL
+                // 使用 setTimeout 确保在当前执行栈清空后执行，避免任何潜在的时序问题
+                setTimeout(() => {
+                    const code = this.generateShareCode();
+                    this.updateURLWithShareCode(code);
+                }, 0);
             }
 
             /**
@@ -2805,6 +2812,9 @@
             /**
              * 退出编辑器，并使用当前编辑的地图开始游戏
              */
+            /**
+             * 退出编辑器，并使用当前编辑的地图开始游戏
+             */
             playEditedMap() {
                 this.editor.active = false;
                 document.getElementById('game-controls').style.display = 'block';
@@ -2824,21 +2834,25 @@
                     buttons: this.buttons
                 };
                 
+                // 只需要调用 startGame，它内部会自动更新 URL
                 this.startGame(editedMapData);
-                // 在地址栏写入分享码
-                const code = this.generateShareCode(mapData);
-                this.updateURLWithShareCode(code);
 
                 this.updateDpadVisibility(); 
             }
             
             /**
-            * 更新地址栏 URL 并写入分享码 (?map=xxxx)
-            * 不会刷新页面，不会触发重新加载。
-            */
+             * 更新浏览器地址栏 URL，无刷新替换当前分享码
+             */
             updateURLWithShareCode(code) {
-                const newURL = `${window.location.pathname}?map=${encodeURIComponent(code)}`;
-                window.history.replaceState({}, "", newURL);
+                if (!code) return;
+                // 使用 URL API 更加安全和规范
+                const url = new URL(window.location.href);
+                // 设置 ?map=xxxx
+                url.searchParams.set('map', code);
+                // 清理掉 hash (#xxx) 避免混淆，因为我们现在主要用 ?map=
+                url.hash = '';
+                // 替换历史记录，不产生新记录，不刷新页面
+                window.history.replaceState({}, "", url.toString());
             }
 
             /**
