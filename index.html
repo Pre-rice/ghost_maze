@@ -872,6 +872,11 @@
 
             applyTheme(next);
             localStorage.setItem("theme", next);
+
+            // 如果游戏实例已存在，通知它刷新主题颜色
+            if (typeof game !== 'undefined') {
+                game.refreshTheme();
+            }
         });
 
         // 获取Canvas元素及其2D渲染上下文
@@ -907,19 +912,7 @@
                 this.staticLayerCtx = this.staticLayerCanvas.getContext('2d');
                 
                 // 从CSS变量中获取颜色值，便于在Canvas绘图中统一风格
-                const computedStyle = getComputedStyle(document.documentElement);
-                this.colors = {
-                    ground: computedStyle.getPropertyValue('--ground-color').trim(),
-                    gridLine: computedStyle.getPropertyValue('--grid-line-color').trim(),
-                    unexplored: computedStyle.getPropertyValue('--unexplored-color').trim(),
-                    wall: computedStyle.getPropertyValue('--wall-color').trim(),
-                    player: computedStyle.getPropertyValue('--player-color').trim(),
-                    ghost: computedStyle.getPropertyValue('--ghost-color').trim(),
-                    endPoint: computedStyle.getPropertyValue('--end-point-color').trim(),
-                    key: computedStyle.getPropertyValue('--key-color').trim(),
-                    startRoomHighlight: computedStyle.getPropertyValue('--start-room-highlight').trim(),
-                    hoverHighlight: computedStyle.getPropertyValue('--hover-highlight-color').trim()
-                };
+                this.updateColors();
                 
                 // 核心游戏状态
                 this.state = GAME_STATES.MENU;
@@ -988,6 +981,41 @@
                 // 页面加载时尝试从 URL 查询参数或 hash 读取分享码
             this.loadShareCodeFromURL();
             }
+
+            /**
+             * 从 CSS 变量重新读取所有颜色配置
+             */
+            updateColors() {
+                const computedStyle = getComputedStyle(document.documentElement);
+                this.colors = {
+                    ground: computedStyle.getPropertyValue('--ground-color').trim(),
+                    gridLine: computedStyle.getPropertyValue('--grid-line-color').trim(),
+                    unexplored: computedStyle.getPropertyValue('--unexplored-color').trim(),
+                    wall: computedStyle.getPropertyValue('--wall-color').trim(),
+                    player: computedStyle.getPropertyValue('--player-color').trim(),
+                    ghost: computedStyle.getPropertyValue('--ghost-color').trim(),
+                    endPoint: computedStyle.getPropertyValue('--end-point-color').trim(),
+                    key: computedStyle.getPropertyValue('--key-color').trim(),
+                    startRoomHighlight: computedStyle.getPropertyValue('--start-room-highlight').trim(),
+                    hoverHighlight: computedStyle.getPropertyValue('--hover-highlight-color').trim(),
+                    // 新增：将文本颜色也存入配置
+                    text: computedStyle.getPropertyValue('--text-color').trim()
+                };
+            }
+
+            /**
+             * 刷新主题：更新颜色并重绘界面
+             */
+            refreshTheme() {
+                this.updateColors(); // 重新获取新主题的颜色
+                
+                if (this.state === GAME_STATES.MENU) {
+                    this.showInitialMessage(); // 如果在菜单界面，重绘欢迎语
+                } else {
+                    this._renderStaticLayer(); // 重绘背景层（地面颜色变了）
+                    this.draw(); // 重绘游戏画面
+                }
+            }
             
             /**
             * 从 URL 自动解析分享码，例如：
@@ -1022,7 +1050,7 @@
              */
             showInitialMessage() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = 'black';
+                ctx.fillStyle = this.colors.text;
                 ctx.font = '20px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('点击 "随机生成新地图" 或加载分享码开始游戏', canvas.width / 2, canvas.height / 2);
