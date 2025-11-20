@@ -3596,12 +3596,14 @@
             }
 
             /**
-             * 生成地图的分享码
-             * @param {boolean} isEditor - 是否为编辑器模式生成
-             * @returns {string|null} 分享码或null
+             * 生成【极致压缩】的分享码
+             * 优化 1: 使用 4-bit (Nibble) 存储墙体类型，体积减半
+             * 优化 2: 使用 deflateRaw 去除头部开销
+             * 优化 3: 使用 URL-Safe Base64 避免地址栏转义膨胀
              */
             generateShareCode(isEditor = false) {
                 try {
+                    // 1. 收集数据
                     let sourceData;
                     if (isEditor) {
                         sourceData = {
@@ -3619,38 +3621,117 @@
                             width: this.mapData.width, height: this.mapData.height,
                             hWalls: this.mapData.hWalls, vWalls: this.mapData.vWalls,
                             endPos: this.mapData.endPos, initialGhosts: this.mapData.initialGhosts, items: this.mapData.items,
+                            buttons: this.mapData.buttons || [],
                             gameMode: this.gameMode, initialHealth: this.initialHealth, initialStamina: this.initialStamina
                         };
                     }
 
-                    // 统一的数据结构
-                    const mapSource = {
-                        w: sourceData.width, h: sourceData.height,
-                        hw: sourceData.hWalls, vw: sourceData.vWalls,
-                        e: sourceData.endPos, g: sourceData.initialGhosts, i: sourceData.items,
-                        b: sourceData.buttons,
-                        gm: sourceData.gameMode, ih: sourceData.initialHealth, is: sourceData.initialStamina
+                    const buffer = [];
+                    
+                    // 2. 写入头部 (同上一版)
+                    buffer.push(sourceData.width);
+                    buffer.push(sourceData.height);
+                    buffer.push(sourceData.gameMode === 'exploration' ? 0 : 1);
+                    buffer.push(sourceData.initialHealth);
+                    buffer.push((sourceData.initialStamina >> 8) & 0xFF);
+                    buffer.push(sourceData.initialStamina & 0xFF);
+
+                    if (sourceData.endPos) {
+                        buffer.push(sourceData.endPos.x, sourceData.endPos.y);
+                    } else {
+                        buffer.push(0xFF, 0xFF);
+                    }
+
+                    // 3. 写入实体 (同上一版)
+                    const pushEntities = (list, serializeFn) => {
+                        buffer.push(list.length);
+                        list.forEach(serializeFn);
+                    };
+                    pushEntities(sourceData.initialGhosts, g => buffer.push(g.x, g.y));
+                    pushEntities(sourceData.items, i => buffer.push(i.x, i.y));
+                    pushEntities(sourceData.buttons, b => {
+                        buffer.push(b.x, b.y);
+                        let dir = 0;
+                        if (b.direction.dy === -1) dir = 0;
+                        else if (b.direction.dy === 1) dir = 1;
+                        else if (b.direction.dx === -1) dir = 2;
+                        else dir = 3;
+                        buffer.push(dir);
+                        buffer.push(b.letter.charCodeAt(0));
+                    });
+
+                    // 4. 【核心优化】墙体分离：类型压缩 + 参数队列
+                    const typeNibbles = []; // 存储 4-bit 的类型
+                    const paramsQueue = []; // 存储额外参数
+
+                    const processWall = (wall) => {
+                        typeNibbles.push(wall.type);
+                        
+                        // 如果墙体有额外参数，推入参数队列
+                        if (wall.type === 3) { // LOCKED
+                            paramsQueue.push(wall.keys); 
+                        } else if (wall.type === 4) { // ONE_WAY
+                            let dir = 0;
+                            if (wall.direction.dy === -1) dir = 0;
+                            else if (wall.direction.dy === 1) dir = 1;
+                            else if (wall.direction.dx === -1) dir = 2;
+                            else dir = 3;
+                            paramsQueue.push(dir);
+                        } else if (wall.type === 6) { // LETTER_DOOR
+                            paramsQueue.push(wall.letter.charCodeAt(0));
+                            paramsQueue.push(wall.initialState === 'open' ? 1 : 0);
+                        }
                     };
 
-                    // 流程: 对象 -> JSON字符串 -> pako压缩 -> 二进制字符串 -> Base64编码
-                    const jsonString = JSON.stringify(mapSource);
-                    const compressedData = pako.deflate(jsonString);
-                    const binaryString = String.fromCharCode.apply(null, compressedData);
-                    const shareCode = btoa(binaryString);
+                    // 遍历顺序必须严格一致：先横后竖，先左后右
+                    for (let y = 0; y <= sourceData.height; y++) {
+                        for (let x = 0; x < sourceData.width; x++) processWall(sourceData.hWalls[y][x]);
+                    }
+                    for (let y = 0; y < sourceData.height; y++) {
+                        for (let x = 0; x <= sourceData.width; x++) processWall(sourceData.vWalls[y][x]);
+                    }
+
+                    // 5. 【核心优化】Bit-Packing：将两个 4-bit 类型合并为一个字节
+                    for (let i = 0; i < typeNibbles.length; i += 2) {
+                        const t1 = typeNibbles[i];
+                        const t2 = (i + 1 < typeNibbles.length) ? typeNibbles[i + 1] : 0;
+                        buffer.push((t1 << 4) | t2);
+                    }
+
+                    // 6. 追加参数数据
+                    paramsQueue.forEach(p => buffer.push(p));
+
+                    // 7. 【核心优化】DeflateRaw + URL-Safe Base64
+                    const uint8Data = new Uint8Array(buffer);
+                    // 使用 deflateRaw 去除 zlib 头 (节省约 6 字节)
+                    const compressed = pako.deflateRaw(uint8Data);
                     
-                    return shareCode;
+                    let binaryString = '';
+                    const len = compressed.byteLength;
+                    for (let i = 0; i < len; i++) {
+                        binaryString += String.fromCharCode(compressed[i]);
+                    }
+                    
+                    // URL Safe 替换: +->- , /->_ , 去掉 =
+                    const base64 = btoa(binaryString)
+                        .replace(/\+/g, '-')
+                        .replace(/\//g, '_')
+                        .replace(/=+$/, '');
+                    
+                    return base64;
 
                 } catch (e) {
-                    console.error("生成分享码失败:", e);
-                    this.showToast('生成分享码失败。', 3000, 'error');
+                    console.error("Share code gen failed", e);
+                    this.showToast('生成分享码失败', 3000, 'error');
                     return null;
                 }
             }
 
             /**
-             * 从分享码加载地图
-             * @param {string} code - 分享码
-             * @param {boolean} isEditor - 是否加载到编辑器
+             * 加载【极致压缩】的分享码
+             * 兼容性：
+             * 1. 优先尝试解析新版 (Nibble + DeflateRaw + URLSafe)
+             * 2. 失败则回退尝试解析旧版 JSON
              */
             loadFromShareCode(code, isEditor = false) {
                 if (!code) {
@@ -3658,62 +3739,198 @@
                     return;
                 }
                 try {
-                    // 流程: Base64解码 -> 二进制数据 -> pako解压 -> JSON字符串 -> 对象
-                    const binaryString = atob(code);
+                    // 1. URL-Safe Base64 还原
+                    // 替换回标准字符，并补全 padding
+                    let base64 = code.replace(/-/g, '+').replace(/_/g, '/');
+                    while (base64.length % 4) {
+                        base64 += '=';
+                    }
+
+                    const binaryString = atob(base64);
                     const len = binaryString.length;
                     const bytes = new Uint8Array(len);
                     for (let i = 0; i < len; i++) {
                         bytes[i] = binaryString.charCodeAt(i);
                     }
-                    const jsonString = pako.inflate(bytes, { to: 'string' });
-                    const data = JSON.parse(jsonString);
 
-                    if (!data.w || !data.h || !data.hw || !data.vw) {
-                        throw new Error("无效的地图数据结构");
+                    // 2. 解压
+                    let inflated;
+                    let isLegacyJson = false;
+
+                    try {
+                        // 尝试作为新版 (Raw) 解压
+                        inflated = pako.inflateRaw(bytes);
+                    } catch (e) {
+                        try {
+                            // 失败则尝试作为标准 Zlib 解压 (兼容中间版本)
+                            inflated = pako.inflate(bytes);
+                        } catch (e2) {
+                            // 还是失败，可能是未压缩的 JSON (极旧版本)
+                            // 但这里我们主要检查解压后是否是JSON
+                            throw new Error("Decompression failed");
+                        }
+                    }
+
+                    // 3. 检测内容类型
+                    if (inflated[0] === 123) { // ASCII '{'
+                        isLegacyJson = true;
+                    }
+
+                    // === 旧版 JSON 处理逻辑 ===
+                    if (isLegacyJson) {
+                        const jsonString = new TextDecoder().decode(inflated);
+                        const data = JSON.parse(jsonString);
+                        const mapData = {
+                            width: data.w, height: data.h,
+                            hWalls: data.hw, vWalls: data.vw,
+                            endPos: data.e || null,
+                            initialGhosts: data.g || [],
+                            items: data.i || [],
+                            buttons: data.b || []
+                        };
+                        this._applyLoadedData(mapData, data.gm, data.ih, data.is, isEditor);
+                        return;
+                    }
+
+                    // === 新版极致压缩 处理逻辑 ===
+                    let ptr = 0;
+                    const read = () => inflated[ptr++];
+                    
+                    const width = read();
+                    const height = read();
+                    const modeInt = read();
+                    const gameMode = modeInt === 0 ? 'exploration' : 'death-loop';
+                    const initialHealth = read();
+                    const staminaHigh = read();
+                    const staminaLow = read();
+                    const initialStamina = (staminaHigh << 8) | staminaLow;
+
+                    let endPos = null;
+                    const ex = read();
+                    const ey = read();
+                    if (ex !== 0xFF) endPos = { x: ex, y: ey };
+
+                    // 实体读取
+                    const readEntities = (createFn) => {
+                        const count = read();
+                        const list = [];
+                        for(let i=0; i<count; i++) list.push(createFn());
+                        return list;
+                    };
+
+                    const initialGhosts = readEntities(() => ({ x: read(), y: read() }));
+                    const items = readEntities(() => ({ x: read(), y: read(), type: 'key' }));
+                    const buttons = readEntities(() => {
+                        const x = read();
+                        const y = read();
+                        const dirCode = read();
+                        const letter = String.fromCharCode(read());
+                        let direction = {dx:0, dy:0};
+                        if (dirCode === 0) direction = {dx:0, dy:-1};
+                        else if (dirCode === 1) direction = {dx:0, dy:1};
+                        else if (dirCode === 2) direction = {dx:-1, dy:0};
+                        else direction = {dx:1, dy:0};
+                        return { x, y, direction, letter };
+                    });
+
+                    // 计算压缩包中 PackedTypes 区域的长度
+                    // 横墙数: (H+1)*W, 竖墙数: H*(W+1)
+                    const totalWalls = (height + 1) * width + height * (width + 1);
+                    const packedBytesLen = Math.ceil(totalWalls / 2);
+
+                    // 提取 PackedTypes 区域
+                    const packedTypes = inflated.subarray(ptr, ptr + packedBytesLen);
+                    ptr += packedBytesLen;
+
+                    // 辅助函数：从 PackedTypes 中获取第 n 个墙的类型
+                    const getWallType = (index) => {
+                        const byteIndex = Math.floor(index / 2);
+                        const byte = packedTypes[byteIndex];
+                        // 如果是偶数个(0, 2...), 取高4位；奇数个(1, 3...), 取低4位
+                        if (index % 2 === 0) return (byte >> 4) & 0x0F;
+                        else return byte & 0x0F;
+                    };
+
+                    let wallCounter = 0;
+
+                    const readNextWall = () => {
+                        const type = getWallType(wallCounter++);
+                        const wall = { type: type, keys: 0 };
+                        
+                        // 如果类型需要参数，则从 ptr 继续读取 (参数存储在 PackedTypes 之后)
+                        if (type === 3) { // LOCKED
+                            wall.keys = read();
+                        } else if (type === 4) { // ONE_WAY
+                            const d = read();
+                            if (d === 0) wall.direction = {dx:0, dy:-1};
+                            else if (d === 1) wall.direction = {dx:0, dy:1};
+                            else if (d === 2) wall.direction = {dx:-1, dy:0};
+                            else wall.direction = {dx:1, dy:0};
+                        } else if (type === 6) { // LETTER_DOOR
+                            wall.letter = String.fromCharCode(read());
+                            const s = read();
+                            wall.initialState = s === 1 ? 'open' : 'closed';
+                            wall.currentState = wall.initialState;
+                        }
+                        return wall;
+                    };
+
+                    // 重建墙体数组
+                    const hWalls = [];
+                    for(let y=0; y<=height; y++) {
+                        const row = [];
+                        for(let x=0; x<width; x++) row.push(readNextWall());
+                        hWalls.push(row);
+                    }
+                    
+                    const vWalls = [];
+                    for(let y=0; y<height; y++) {
+                        const row = [];
+                        for(let x=0; x<=width; x++) row.push(readNextWall());
+                        vWalls.push(row);
                     }
 
                     const mapData = {
-                        width: data.w, height: data.h,
-                        hWalls: data.hw, vWalls: data.vw,
-                        endPos: data.e || null,
-                        initialGhosts: data.g || [],
-                        items: data.i || [],
-                        buttons: data.b || [] 
+                        width, height, hWalls, vWalls, endPos, initialGhosts, items, buttons
                     };
 
-                    const loadedMode = data.gm || 'exploration';
-                    const loadedHealth = data.ih || 5;
-                    const loadedStamina = data.is || 100;
-
-                    if (isEditor) {
-                        this.setGameMode(loadedMode, true); 
-                        document.getElementById('editor-initial-health').value = loadedHealth;
-                        document.getElementById('editor-initial-stamina').value = loadedStamina;
-
-                        this.width = mapData.width;
-                        this.height = mapData.height;
-                        this.editorMapSizeInput.value = this.width;
-                        this.cellSize = canvas.width / this.width;
-                        this.hWalls = mapData.hWalls;
-                        this.vWalls = mapData.vWalls;
-                        this.endPos = mapData.endPos;
-                        this.ghosts = mapData.initialGhosts;
-                        this.items = mapData.items;
-                        
-                        this._renderStaticLayer(); // 加载新地图后重绘静态层
-                        this.drawEditor();
-                    } else {
-                        this.initialHealth = loadedHealth;
-                        this.initialStamina = loadedStamina;
-                        this.setGameMode(loadedMode);
-                        this.startGame(mapData);
-                    }
-                    this.showToast('地图加载成功！', 2000, 'success');
+                    this._applyLoadedData(mapData, gameMode, initialHealth, initialStamina, isEditor);
 
                 } catch (e) {
-                    console.error("加载分享码失败:", e);
-                    this.showToast('加载分享码失败，格式不正确或已损坏。', 3000, 'error');
+                    console.error("Load failed", e);
+                    this.showToast('分享码无效或已损坏。', 3000, 'error');
                 }
+            }
+
+            /**
+             * 内部辅助：应用加载的数据到游戏或编辑器
+             */
+            _applyLoadedData(mapData, gameMode, health, stamina, isEditor) {
+                 if (isEditor) {
+                    this.setGameMode(gameMode, true); 
+                    document.getElementById('editor-initial-health').value = health;
+                    document.getElementById('editor-initial-stamina').value = stamina;
+
+                    this.width = mapData.width;
+                    this.height = mapData.height;
+                    this.editorMapSizeInput.value = this.width;
+                    this.cellSize = canvas.width / this.width;
+                    this.hWalls = mapData.hWalls;
+                    this.vWalls = mapData.vWalls;
+                    this.endPos = mapData.endPos;
+                    this.ghosts = mapData.initialGhosts;
+                    this.items = mapData.items;
+                    this.buttons = mapData.buttons || [];
+                    
+                    this._renderStaticLayer();
+                    this.drawEditor();
+                } else {
+                    this.initialHealth = health;
+                    this.initialStamina = stamina;
+                    this.setGameMode(gameMode);
+                    this.startGame(mapData);
+                }
+                this.showToast('地图加载成功！', 2000, 'success');
             }
 
             // ==================================================
