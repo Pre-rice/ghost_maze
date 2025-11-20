@@ -105,6 +105,56 @@
             color-scheme: light;
         }
 
+/* ... 现有的 .theme-toggle 样式上方或下方 ... */
+
+        /* 新增：右上角操作区容器 */
+        .header-controls {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            gap: 10px; /* 按钮之间的间距 */
+            align-items: center;
+            z-index: 10;
+        }
+
+        /* 重写：重置原有的主题开关定位，让它服从 Flex 布局 */
+        .header-controls .theme-toggle {
+            position: relative;
+            top: auto;
+            right: auto;
+            margin: 0;
+        }
+
+        /* 新增：帮助按钮样式（复用主题按钮的风格） */
+        .help-btn {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background-color: var(--border-color); /* 与主题按钮背景一致 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none; /* 去除链接下划线 */
+            transition: background 0.25s;
+        }
+
+        .help-btn:hover {
+            background-color: #c0c0c0; /* 简单的悬停效果，适配浅色 */
+        }
+        /* 深色模式下的悬停微调 */
+        @media (prefers-color-scheme: dark) {
+             .help-btn:hover { background-color: #555; }
+        }
+        :root.dark .help-btn:hover { background-color: #555; }
+
+        .help-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: var(--text-color);
+            stroke: var(--text-color);
+        }
+
         .theme-toggle {
             position: absolute;
             top: 8px;
@@ -585,10 +635,20 @@
                 <div id="game-controls">
                     <div class="control-group">
                         <h3>状态</h3>
-                        <!-- 主题切换按钮（右上角） -->
-                        <div class="theme-toggle" id="theme-toggle">
-                            <div class="theme-toggle-btn" id="theme-toggle-btn">
-                                <svg id="theme-icon" viewBox="0 0 24 24"></svg>
+                        <!-- 右上角操作区：包含帮助和主题切换 -->
+                        <div class="header-controls">
+                            <!-- 帮助按钮 -->
+                            <a href="/help" class="help-btn" title="查看帮助" target="_blank">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
+                                </svg>
+                            </a>
+                            
+                            <!-- 原有的主题切换按钮 (保持 ID 不变以兼容 JS) -->
+                            <div class="theme-toggle" id="theme-toggle">
+                                <div class="theme-toggle-btn" id="theme-toggle-btn">
+                                    <svg id="theme-icon" viewBox="0 0 24 24"></svg>
+                                </div>
                             </div>
                         </div>
                         <!-- 探索模式状态栏 -->
