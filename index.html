@@ -32,6 +32,10 @@
             --key-color: #ffc107;
             --start-room-highlight: rgba(173, 216, 230, 0.4);
             --hover-highlight-color: #ffc107;
+
+            /* 新增：自由编辑模式相关颜色 */
+            --start-point-color: #00c9a7;
+            --void-grid-color: #ccc;
         }
 
         /* ===========================
@@ -62,6 +66,10 @@
                 --ghost-color: #d9534f;
                 --end-point-color: #3fbf5a;
                 --key-color: #e6c34a;
+                
+                /* 新增 */
+                --start-point-color: #00c9a7;
+                --void-grid-color: #444;
             }
         }
 
@@ -96,6 +104,10 @@
             --ghost-color: #d9534f;
             --end-point-color: #3fbf5a;
             --key-color: #e6c34a;
+            
+            /* 新增 */
+            --start-point-color: #00c9a7;
+            --void-grid-color: #444;
         }
 
         /* ===========================
@@ -213,10 +225,12 @@
         }
 
         #game-canvas {
-            border: 1px solid var(--border-color);
-            background-color: var(--container-bg);
+            border: none; /* 默认无边框，由JS控制 */
+            /* 背景设为透明，以便在虚空区域显示body背景（如红色警示） */
+            background-color: transparent; 
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
             cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .controls-panel {
@@ -388,6 +402,8 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+            /* 微调：左对齐以便新按钮排版 */
+            justify-content: flex-start;
         }
 
         .share-buttons-container {
@@ -742,23 +758,33 @@
                     <div class="control-group">
                         <h3>编辑器工具</h3>
                         <div class="editor-toolbar">
-                            <button id="tool-wall"
-                                class="tool-btn active">墙壁</button>
+                            <button id="tool-wall" class="tool-btn active">墙壁</button>
                             <button id="tool-glass" class="tool-btn">玻璃</button>
                             <button id="tool-door" class="tool-btn">门</button>
-                            <button id="tool-oneway"
-                                class="tool-btn">单向门</button>
+                            <button id="tool-oneway" class="tool-btn">单向门</button>
                             <button id="tool-lock" class="tool-btn">数字门</button>
-                            <button id="tool-letter"
-                                class="tool-btn">字母门</button>
-                            <button id="tool-button"
-                                class="tool-btn">按钮</button>
+                            <button id="tool-letter" class="tool-btn">字母门</button>
+                            <button id="tool-button" class="tool-btn">按钮</button>
                             <button id="tool-ghost" class="tool-btn">鬼</button>
                             <button id="tool-key" class="tool-btn">钥匙</button>
+                            <!-- 新增起点工具 (自由模式显示) -->
+                            <button id="tool-start" class="tool-btn" style="display:none;">起点</button>
                             <button id="tool-end" class="tool-btn">终点</button>
-                            <button id="tool-eraser"
-                                class="tool-btn">橡皮擦</button>
+                            <button id="tool-eraser" class="tool-btn">橡皮擦</button>
+                            <!-- 新增地图方格工具 (自由模式显示) -->
+                            <button id="tool-grid" class="tool-btn" style="display:none;">地图方格</button>
                         </div>
+                    </div>
+                    <div class="control-group">
+                        <h3>控制</h3>
+                        <!-- 新增：编辑器模式切换 -->
+                        <label class="label">编辑类型</label>
+                        <div class="mode-selector" style="margin-bottom: 10px;">
+                            <button id="edit-type-regular-btn" class="mode-btn active">常规模式</button>
+                            <button id="edit-type-free-btn" class="mode-btn">自由编辑</button>
+                        </div>
+                        <button id="play-edited-map-btn">游玩地图</button>
+                        <button id="clear-map-btn" class="danger">清空地图</button>
                     </div>
                     <div class="control-group">
                         <h3>地图选项</h3>
@@ -787,11 +813,6 @@
                             <input type="number" id="editor-initial-stamina"
                                 value="100" min="1">
                         </div>
-                    </div>
-                    <div class="control-group">
-                        <h3>控制</h3>
-                        <button id="play-edited-map-btn">游玩地图</button>
-                        <button id="clear-map-btn" class="danger">清空地图</button>
                     </div>
                     <div class="control-group">
                         <h3>分享</h3>
@@ -884,8 +905,10 @@
         BUTTON: 'button',
         GHOST: 'ghost',
         KEY: 'key',
+        START: 'start', // 新增起点工具
         END: 'end',
-        ERASER: 'eraser'
+        ERASER: 'eraser',
+        GRID: 'grid' // 新增地图方格工具
     };
 
     // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
@@ -990,8 +1013,12 @@
                 this.loopCount = 0;
                 this.width = 10;
                 this.height = 10;
+                this.padding = 15;
                 this.cellSize = canvas.width / this.width;
                 this.mapData = null;
+
+                // 新增：视口偏移（用于居中非标准地图）
+                this.drawOffset = { x: 0, y: 0 };
 
                 // 玩家状态
                 this.player = { x: 1, y: 1, hp: 5, stamina: 100, trail: [], keys: 0 , steps: 0};
@@ -1007,6 +1034,8 @@
                 this.vWalls = [];
                 this.startPos = { x: 1, y: 1 };
                 this.endPos = { x: 0, y: 0 };
+                this.customStartPos = null; // 新增：自定义起点
+                this.activeCells = []; // 新增：有效地图方格位图
                 
                 // 视野系统
                 this.seenCells = [];
@@ -1015,13 +1044,15 @@
                 // 编辑器状态
                 this.editor = {
                     active: false,
+                    mode: 'regular', // 'regular' or 'free'
                     tool: EDITOR_TOOLS.WALL,
                     isDragging: false,
                     didDrag: false,
                     dragAxis: null,
                     lastDragPos: null,
                     hoveredWall: null,
-                    hoveredButtonHotspot: null
+                    hoveredButtonHotspot: null,
+                    gridDragAction: null // 'add' or 'remove'
                 };
 
                 // 历史记录系统状态
@@ -1063,11 +1094,13 @@
                     player: computedStyle.getPropertyValue('--player-color').trim(),
                     ghost: computedStyle.getPropertyValue('--ghost-color').trim(),
                     endPoint: computedStyle.getPropertyValue('--end-point-color').trim(),
+                    startPoint: computedStyle.getPropertyValue('--start-point-color').trim(), // New
                     key: computedStyle.getPropertyValue('--key-color').trim(),
                     startRoomHighlight: computedStyle.getPropertyValue('--start-room-highlight').trim(),
                     hoverHighlight: computedStyle.getPropertyValue('--hover-highlight-color').trim(),
                     // 新增：将文本颜色也存入配置
-                    text: computedStyle.getPropertyValue('--text-color').trim()
+                    text: computedStyle.getPropertyValue('--text-color').trim(),
+                    voidGrid: computedStyle.getPropertyValue('--void-grid-color').trim() // New
                 };
             }
 
@@ -1118,6 +1151,16 @@
              */
             showInitialMessage() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // 绘制未加载时的边框 (缩进 padding 大小，模拟地图边界)
+                ctx.strokeStyle = this.colors.border; // 使用定义好的边框颜色
+                if (!this.colors.border) ctx.strokeStyle = '#d9d9d9'; // 降级处理
+                ctx.lineWidth = 2;
+                // 绘制虚线边框以示区分
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(this.padding, this.padding, canvas.width - 2 * this.padding, canvas.height - 2 * this.padding);
+                ctx.setLineDash([]);
+
                 ctx.fillStyle = this.colors.text;
                 ctx.font = '20px sans-serif';
                 ctx.textAlign = 'center';
@@ -1182,6 +1225,9 @@
                 window.addEventListener('keydown', (e) => this.handleKeyPress(e));
                 
                 // Canvas上的鼠标事件 (主要用于编辑器和玩家点击移动)
+                // 包装器用于在移动端将 TouchEvent 转换为 MouseLike 对象
+                const touchWrapper = (handler) => (e) => { if(this.editor.active) { e.preventDefault(); handler(e.changedTouches[0]); }};
+                
                 canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
                 canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
                 canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
@@ -1189,31 +1235,10 @@
                 canvas.addEventListener('mouseleave', (e) => this.handleCanvasMouseLeave(e));
 
                 // Canvas上的触摸事件 (移动端编辑器支持)
-                const handleTouchStart = (e) => {
-                    if (this.editor.active) {
-                        e.preventDefault();
-                        const touch = e.touches[0];
-                        this.handleCanvasMouseDown(touch);
-                    }
-                };
-                const handleTouchMove = (e) => {
-                    if (this.editor.active) {
-                        e.preventDefault();
-                        const touch = e.touches[0];
-                        this.handleCanvasMouseMove(touch);
-                    }
-                };
-                const handleTouchEnd = (e) => {
-                    if (this.editor.active) {
-                        e.preventDefault();
-                        const touch = e.changedTouches[0];
-                        this.handleCanvasMouseUp(touch);
-                    }
-                };
-                canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-                canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-                canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-                canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+                canvas.addEventListener('touchstart', touchWrapper(this.handleCanvasMouseDown.bind(this)), { passive: false });
+                canvas.addEventListener('touchmove', touchWrapper(this.handleCanvasMouseMove.bind(this)), { passive: false });
+                canvas.addEventListener('touchend', touchWrapper(this.handleCanvasMouseUp.bind(this)), { passive: false });
+                canvas.addEventListener('touchcancel', touchWrapper(this.handleCanvasMouseUp.bind(this)), { passive: false });
 
                 // 虚拟方向键(D-pad)相关绑定
                 this.bindDpadControls();
@@ -1226,6 +1251,10 @@
                 document.getElementById('undo-btn').addEventListener('click', () => this.handleUndo());
                 document.getElementById('save-btn').addEventListener('click', () => this.handleSave());
                 document.getElementById('rewind-btn').addEventListener('click', () => this.handleRewind());
+
+                // 新增：编辑模式切换
+                document.getElementById('edit-type-regular-btn').addEventListener('click', () => this.attemptSetEditorMode('regular'));
+                document.getElementById('edit-type-free-btn').addEventListener('click', () => this.attemptSetEditorMode('free'));
             }
 
             /**
@@ -1528,7 +1557,18 @@
                 // 应用地图尺寸
                 this.width = mapData.width;
                 this.height = mapData.height;
-                this.cellSize = canvas.width / this.width;
+                this.padding = 15; // 新增：定义内边距
+                this.cellSize = (canvas.width - 2 * this.padding) / this.width; // 修改：计算单元格大小时预留边距
+                this.startPos = { x: 1, y: this.height - 2 };
+                
+                // 新增：加载自由模式数据
+                this.editor.mode = mapData.editorMode || 'regular';
+                this.activeCells = mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
+                this.customStartPos = mapData.customStartPos || null;
+
+                // 计算视口偏移以居中地图
+                this.calculateDrawOffset();
+
                 this._renderStaticLayer(); // 渲染静态背景层
                 
                 // 加载地图结构
@@ -1550,8 +1590,9 @@
                     }
                 }));
                 
-                // 初始化玩家状态
-                this.player = { x: 1, y: this.height - 2, trail: [], keys: 0 ,steps: 0 };
+                // 初始化玩家状态：如果自由模式有自定义起点，使用它；否则使用默认
+                const start = this.customStartPos || this.startPos;
+                this.player = { x: start.x, y: start.y, hp: this.initialHealth, stamina: this.initialStamina, trail: [], keys: 0 , steps: 0};
                 if (this.gameMode === 'exploration') {
                     this.player.hp = this.initialHealth;
                 } else {
@@ -1585,6 +1626,39 @@
                 }, 0);
             }
 
+            calculateDrawOffset() {
+                // 仅在非编辑器模式下计算偏移
+                if (this.state === GAME_STATES.EDITOR) {
+                    this.drawOffset = { x: 0, y: 0 };
+                    return;
+                }
+
+                let minX = this.width, maxX = 0, minY = this.height, maxY = 0;
+                let hasActive = false;
+                for(let y=0; y<this.height; y++) {
+                    for(let x=0; x<this.width; x++) {
+                        if(this.activeCells[y][x]) {
+                            hasActive = true;
+                            if(x < minX) minX = x;
+                            if(x > maxX) maxX = x;
+                            if(y < minY) minY = y;
+                            if(y > maxY) maxY = y;
+                        }
+                    }
+                }
+                if (!hasActive) { this.drawOffset = {x:0, y:0}; return; }
+
+                // 有效区域的像素宽度和高度
+                const activeW = (maxX - minX + 1) * this.cellSize;
+                const activeH = (maxY - minY + 1) * this.cellSize;
+                
+                // 居中偏移量 = (画布总宽 - 内容宽) / 2 - 内容左上角坐标
+                const offsetX = (canvas.width - activeW) / 2 - (minX * this.cellSize);
+                const offsetY = (canvas.height - activeH) / 2 - (minY * this.cellSize);
+                
+                this.drawOffset = { x: offsetX, y: offsetY };
+            }
+
             /**
              * 生成一张新的随机地图并开始游戏
              */
@@ -1598,6 +1672,9 @@
                 this.initialHealth = 5;
                 this.initialStamina = 100;
                 const mapData = this.generateMaze(size, size);
+                // 随机地图总是常规模式
+                mapData.editorMode = 'regular';
+                mapData.activeCells = Array(size).fill(null).map(()=>Array(size).fill(true));
                 this.startGame(mapData);
             }
             
@@ -1625,7 +1702,8 @@
             generateMaze(width, height) {
                 this.width = width;
                 this.height = height;
-                this.cellSize = canvas.width / this.width;
+                this.padding = 15; // 新增
+                this.cellSize = (canvas.width - 2 * this.padding) / this.width; // 修改
 
                 // 定义墙体、空地和门的基础对象
                 const wall = () => ({ type: WALL_TYPES.SOLID, keys: 0 });
@@ -1884,6 +1962,7 @@
 
                 // 1. 检查是否越界
                 if (newX < 0 || newX >= this.width || newY < 0 || newY >= this.height) return;
+                if (!this.activeCells[newY][newX]) return; // 新增：不能走进虚空
 
                 // 2. 检查是否有墙阻挡
                 let wall;
@@ -1991,8 +2070,10 @@
              * 将玩家位置重置到出生点
              */
             resetPlayerPos() {
-                this.player.x = this.startPos.x;
-                this.player.y = this.height - 2;
+                // 新增：支持自定义起点
+                const start = this.customStartPos || this.startPos;
+                this.player.x = start.x;
+                this.player.y = start.y;
                 this.player.trail = [];
             }
             
@@ -2297,12 +2378,17 @@
              * 根据玩家当前位置更新可见的单元格
              */
             updateVisibility() {
-                // 起始房间永久可见
-                const roomY = this.height - 3;
-                for (let y = roomY; y < roomY + 3; y++) {
-                    for (let x = 0; x < 3; x++) {
-                        this.seenCells[y][x] = true;
+                // 新增：自由模式下，没有固定起始房间，只显示起点
+                if (this.editor.mode === 'regular') {
+                    const roomY = this.height - 3;
+                    for (let y = roomY; y < roomY + 3; y++) {
+                        for (let x = 0; x < 3; x++) {
+                            this.seenCells[y][x] = true;
+                        }
                     }
+                } else {
+                     const start = this.customStartPos || this.startPos;
+                     if(start) this.seenCells[start.y][start.x] = true;
                 }
 
                 const { x, y } = this.player;
@@ -2310,21 +2396,25 @@
 
                 // 沿四个方向进行“射线投射”，直到遇到非玻璃墙
                 for (let i = x + 1; i < this.width; i++) {
+                    if(!this.activeCells[y][i]) break; // 遇到虚空停止
                     const wall = this.vWalls[y][i];
                     if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[y][i] = true;
                 }
                 for (let i = x - 1; i >= 0; i--) {
+                    if(!this.activeCells[y][i]) break; // 遇到虚空停止
                     const wall = this.vWalls[y][i + 1];
                     if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[y][i] = true;
                 }
                 for (let i = y + 1; i < this.height; i++) {
+                    if(!this.activeCells[i][x]) break; // 遇到虚空停止
                     const wall = this.hWalls[i][x];
                     if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[i][x] = true;
                 }
                 for (let i = y - 1; i >= 0; i--) {
+                    if(!this.activeCells[i][x]) break; // 遇到虚空停止
                     const wall = this.hWalls[i + 1][x];
                     if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[i][x] = true;
@@ -2344,117 +2434,378 @@
                 const ctx = this.staticLayerCtx;
                 const cs = this.cellSize;
 
-                // 绘制地面
-                ctx.fillStyle = this.colors.ground;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 绘制网格线
-                ctx.strokeStyle = this.colors.gridLine;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                for (let i = 0; i <= this.width; i++) {
-                    const x = Math.round(i * cs) + 0.5;
-                    ctx.moveTo(x, 0);
-                    ctx.lineTo(x, this.height * cs);
+                // 绘制地面
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        if (this.activeCells[y][x]) {
+                            ctx.fillStyle = this.colors.ground;
+                            ctx.fillRect(x * cs, y * cs, cs, cs);
+                            // 绘制网格线
+                            ctx.strokeStyle = this.colors.gridLine;
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(x * cs, y * cs, cs, cs);
+                        } else if (this.state === GAME_STATES.EDITOR) {
+                            // 编辑器显示虚空网格
+                            ctx.fillStyle = "rgba(0,0,0,0)";
+                            ctx.strokeStyle = this.colors.voidGrid;
+                            ctx.lineWidth = 0.5;
+                            ctx.setLineDash([2, 2]);
+                            ctx.strokeRect(x * cs, y * cs, cs, cs);
+                            ctx.setLineDash([]);
+                        }
+                    }
                 }
-                for (let i = 0; i <= this.height; i++) {
-                    const y = Math.round(i * cs) + 0.5;
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(this.width * cs, y);
-                }
-                ctx.stroke();
             }
 
             /**
-             * 主渲染函数，负责在Canvas上绘制整个游戏画面
+             * 绘制墙角填充块，解决线条连接处的凹陷问题
+             * @param {boolean} isEditor - 是否为编辑器模式
+             */
+            drawCorners(isEditor = false) {
+                const cs = this.cellSize;
+                const w = Math.max(2, cs / 10); // 与墙体宽度保持一致
+
+                ctx.fillStyle = this.colors.wall;
+
+                // 辅助函数：判断某点(x,y)在指定方向是否应该有视觉上的线条（实体墙 或 虚空边界）
+                const hasVisualLine = (type, wx, wy) => {
+                    // 1. 检查是否有实体墙
+                    if (type === 'h') {
+                        if (wx < 0 || wx >= this.width) return false;
+                        if (this.hWalls[wy][wx].type > 0) return true;
+                    } else { // type === 'v'
+                        if (wy < 0 || wy >= this.height) return false;
+                        if (this.vWalls[wy][wx].type > 0) return true;
+                    }
+                    
+                    // 2. 检查是否是虚空边界 (Active vs Void)
+                    // 边界定义：线两侧的状态不一样 (一个Active一个Void，或者一个In-Bounds一个Out-Bounds)
+                    const isActive = (cx, cy) => {
+                        if (cx < 0 || cx >= this.width || cy < 0 || cy >= this.height) return false;
+                        return this.activeCells[cy][cx];
+                    };
+
+                    if (type === 'h') {
+                        const up = isActive(wx, wy - 1);
+                        const down = isActive(wx, wy);
+                        return up !== down;
+                    } else { // type === 'v'
+                        const left = isActive(wx - 1, wy);
+                        const right = isActive(wx, wy);
+                        return left !== right;
+                    }
+                };
+
+                for (let y = 0; y <= this.height; y++) {
+                    for (let x = 0; x <= this.width; x++) {
+                        // 检查四个方向是否有“视觉线条”连接到该点
+                        const hasHLeft = hasVisualLine('h', x - 1, y);
+                        const hasHRight = hasVisualLine('h', x, y);
+                        const hasVUp = hasVisualLine('v', x, y - 1);
+                        const hasVDown = hasVisualLine('v', x, y);
+
+                        const connectedCount = (hasHLeft ? 1 : 0) + (hasHRight ? 1 : 0) + (hasVUp ? 1 : 0) + (hasVDown ? 1 : 0);
+                        if (connectedCount < 2) continue;
+
+                        // 游戏模式下的视野检查：只要该点涉及的任何一堵墙是边缘墙，或者周围有可见区域，就显示
+                        if (!isEditor && !this.debugVision) {
+                            // 简单的视野检查：如果拐角所在的四个格子没有一个被探索过，且不是边缘，则隐藏
+                            // 但根据需求“边缘墙必须全部显示”，我们需要放宽条件
+                            
+                            // 重新使用 hasVisualLine 判断该点是否连接着“边界”，如果是边界连接点，强制显示
+                            const isBoundaryPoint = hasVisualLine('h', x - 1, y) || hasVisualLine('h', x, y) || hasVisualLine('v', x, y - 1) || hasVisualLine('v', x, y);
+                            
+                            // 如果不是强制显示的边界点，再检查Fog
+                            // 这里简化处理：因为上面的 hasVisualLine 已经包含了边界判断，
+                            // 如果 connectedCount >= 2 且包含了边界线，它自然应该显示。
+                            // 我们只需要过滤掉那些“纯内部墙且未探索”的拐角。
+                            
+                            const cTL = (x > 0 && y > 0 && this.seenCells[y - 1][x - 1]);
+                            const cTR = (x < this.width && y > 0 && this.seenCells[y - 1][x]);
+                            const cBL = (x > 0 && y < this.height && this.seenCells[y][x - 1]);
+                            const cBR = (x < this.width && y < this.height && this.seenCells[y][x]);
+
+                            // 如果是纯内部点（周围全是Active），且不可见，则跳过
+                            // 这里的逻辑反过来想：如果它处于Void边缘，它肯定会被绘制
+                            const isPureInternal = (x>0 && x<this.width && y>0 && y<this.height && 
+                                                    this.activeCells[y-1][x-1] && this.activeCells[y-1][x] && 
+                                                    this.activeCells[y][x-1] && this.activeCells[y][x]);
+
+                            if (isPureInternal && !cTL && !cTR && !cBL && !cBR) continue;
+                        }
+
+                        // 绘制中心正方形
+                        ctx.fillRect(x * cs - w / 2, y * cs - w / 2, w, w);
+                    }
+                }
+            }
+
+            /**
+             * 主渲染函数 (修改：实现虚空透明和边界墙切割)
              */
             draw() {
                 if (this.state === GAME_STATES.MENU) return;
                 if (this.editor.active) {
-                    this.drawEditor(); // 如果在编辑器模式，则调用编辑器渲染函数
+                    this.drawEditor();
                     return;
                 }
 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.save();
+                ctx.translate(this.drawOffset.x, this.drawOffset.y);
+                
                 const cs = this.cellSize;
                 const now = Date.now();
-                const trailLifetime = 500;
-                const initialAlpha = 0.3;
 
-                // 渲染层级 1: 静态背景 (从离屏Canvas绘制)
+                // 1. Static Layer (Ground & Grid)
                 ctx.drawImage(this.staticLayerCanvas, 0, 0);
-                
-                // 渲染层级 2: 拖尾效果
-                this.player.trail.forEach(p => {
+
+                // 2. Trail
+                const drawTrail = (arr, color) => arr.forEach(p => {
                     if (this.seenCells[p.y][p.x] || this.debugVision) {
                         const age = now - p.timestamp;
-                        const alpha = initialAlpha * (1 - age / trailLifetime);
-                        this.drawCircle(p.x, p.y, this.colors.player, alpha);
+                        const alpha = 0.3 * (1 - age / 500);
+                        this.drawCircle(p.x, p.y, color, alpha);
                     }
                 });
-                this.ghosts.forEach(ghost => {
-                    ghost.trail.forEach(p => {
-                        if (this.seenCells[p.y][p.x] || this.debugVision) {
-                            const age = now - p.timestamp;
-                            const alpha = initialAlpha * (1 - age / trailLifetime);
-                            this.drawCircle(p.x, p.y, this.colors.ghost, alpha);
-                        }
-                    });
-                });
+                drawTrail(this.player.trail, this.colors.player);
+                this.ghosts.forEach(ghost => drawTrail(ghost.trail, this.colors.ghost));
 
-                // 渲染层级 3: 未探索区域的战争迷雾
+                // 3. Fog of War
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
-                        if (!this.seenCells[y][x] && !this.debugVision) {
+                        if (this.activeCells[y][x] && !this.seenCells[y][x] && !this.debugVision) {
                             ctx.fillStyle = this.colors.unexplored;
                             ctx.fillRect(x * cs, y * cs, cs, cs);
                         }
                     }
                 }
 
-                // 渲染层级 4: 墙体
+                // 4. Walls
                 ctx.beginPath();
-                for (let y = 0; y < this.height; y++) {
+                const shouldDrawBoundary = (bx, by, isH) => {
+                    if (isH) {
+                        const up = (by > 0 && by <= this.height) ? this.activeCells[by-1][bx] : false;
+                        const down = (by < this.height && by >= 0) ? this.activeCells[by][bx] : false;
+                        return up !== down;
+                    } else {
+                        const left = (bx > 0 && bx <= this.width) ? this.activeCells[by][bx-1] : false;
+                        const right = (bx < this.width && bx >= 0) ? this.activeCells[by][bx] : false;
+                        return left !== right;
+                    }
+                };
+
+                // 绘制横墙
+                for (let y = 0; y <= this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
-                        if (this.seenCells[y][x] || this.debugVision) {
-                            if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
-                            if (this.hWalls[y + 1][x].type > 0) this.drawWallOrDoor(x * cs, (y + 1) * cs, (x + 1) * cs, (y + 1) * cs, this.hWalls[y + 1][x]);
-                            if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
-                            if (this.vWalls[y][x + 1].type > 0) this.drawWallOrDoor((x + 1) * cs, y * cs, (x + 1) * cs, (y + 1) * cs, this.vWalls[y][x + 1]);
+                        const isBoundary = shouldDrawBoundary(x, y, true);
+                        const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y-1][x]);
+                        
+                        if (!isActiveRow && !isBoundary) continue;
+
+                        // 可见性：如果是边界墙，强制显示；否则按FOV逻辑
+                        const isVisible = isBoundary || this.debugVision || 
+                            (y < this.height && this.activeCells[y][x] && this.seenCells[y][x]) || 
+                            (y > 0 && this.activeCells[y-1][x] && this.seenCells[y-1][x]);
+
+                        if (isVisible) {
+                            if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x*cs, y*cs, (x+1)*cs, y*cs, this.hWalls[y][x]);
+                            else if (isBoundary) this.drawWallOrDoor(x*cs, y*cs, (x+1)*cs, y*cs, {type:1});
+                        }
+                    }
+                }
+                // 绘制竖墙
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x <= this.width; x++) {
+                        const isBoundary = shouldDrawBoundary(x, y, false);
+                        const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x-1]);
+                        
+                        if (!isActiveCol && !isBoundary) continue;
+
+                        const isVisible = isBoundary || this.debugVision || 
+                            (x < this.width && this.activeCells[y][x] && this.seenCells[y][x]) || 
+                            (x > 0 && this.activeCells[y][x-1] && this.seenCells[y][x-1]);
+
+                        if (isVisible) {
+                            if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x*cs, y*cs, x*cs, (y+1)*cs, this.vWalls[y][x]);
+                            else if (isBoundary) this.drawWallOrDoor(x*cs, y*cs, x*cs, (y+1)*cs, {type:1});
                         }
                     }
                 }
                 ctx.stroke();
+                
+                // 5. 绘制墙角填充
+                this.drawCorners(false);
 
-                // 渲染层级 5: 终点
+                // 6. Entities
                 if (this.endPos && (this.seenCells[this.endPos.y][this.endPos.x] || this.debugVision)) {
                     this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
                 }
-
-                // 渲染层级 6: 鬼和玩家
                 this.ghosts.forEach(ghost => {
                     if (this.seenCells[ghost.y][ghost.x] || this.debugVision) {
                         this.drawCircle(ghost.x, ghost.y, this.colors.ghost);
                     }
                 });
                 this.drawCircle(this.player.x, this.player.y, this.colors.player);
-                
-                // 渲染层级 7: 物品
                 this.items.forEach(item => {
                     if (this.seenCells[item.y][item.x] || this.debugVision) {
                         this.drawItem(item);
                     }
                 });
-
-                // 渲染层级 8: 按钮
                 this.buttons.forEach(button => {
                     if (this.seenCells[button.y][button.x] || this.debugVision) {
                         this.drawButton(button);
                     }
                 });
-
-                // 渲染层级 9: 墙体上的覆盖物 (如数字门的数字)
                 this.drawWallOverlays(true);
+                
+                ctx.restore();
+            }
+
+            /**
+             * 渲染编辑器界面 (修改：实现虚空透明、边界切割，并统一颜色)
+             */
+            drawEditor() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.save(); // 保存状态以便应用偏移
+                ctx.translate(this.padding || 0, this.padding || 0); // 应用内边距偏移
+
+                const cs = this.cellSize;
+
+                // 1. 静态层 (地面)
+                ctx.drawImage(this.staticLayerCanvas, 0, 0);
+
+                // 起始房间高亮 (常规模式)
+                if (this.editor.mode === 'regular') {
+                    ctx.fillStyle = this.colors.startRoomHighlight;
+                    ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs);
+                }
+                
+                // 2. 墙壁绘制
+                ctx.beginPath();
+                const shouldDrawBoundary = (bx, by, isH) => {
+                    if (isH) {
+                        const up = (by > 0) ? this.activeCells[by-1][bx] : false;
+                        const down = (by < this.height) ? this.activeCells[by][bx] : false;
+                        return up !== down;
+                    } else {
+                        const left = (bx > 0) ? this.activeCells[by][bx-1] : false;
+                        const right = (bx < this.width) ? this.activeCells[by][bx] : false;
+                        return left !== right;
+                    }
+                };
+
+                for (let y = 0; y <= this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y-1][x]);
+                        if (!isActiveRow) continue;
+
+                        if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
+                        else if (this.editor.mode === 'free' && shouldDrawBoundary(x, y, true)) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, {type:1});
+                    }
+                }
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x <= this.width; x++) {
+                        const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x-1]);
+                        if (!isActiveCol) continue;
+
+                        if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
+                        else if (this.editor.mode === 'free' && shouldDrawBoundary(x, y, false)) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, {type:1});
+                    }
+                }
+                ctx.stroke();
+                
+                // === 核心修改：编辑器中的虚空擦除与网格重绘 ===
+                // 先擦除虚空区域，实现边界墙的切割效果
+                for(let y=0; y<this.height; y++) {
+                    for(let x=0; x<this.width; x++) {
+                        if(!this.activeCells[y][x]) {
+                            ctx.clearRect(x*cs, y*cs, cs, cs);
+                        }
+                    }
+                }
+
+                // 再在虚空区域补画虚线网格 (仅自由模式)
+                if (this.editor.mode === 'free') {
+                    ctx.beginPath();
+                    ctx.strokeStyle = this.colors.voidGrid;
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    
+                    // 绘制虚空格子
+                    for(let y=0; y<this.height; y++) {
+                        for(let x=0; x<this.width; x++) {
+                            if(!this.activeCells[y][x]) {
+                                ctx.strokeRect(x*cs, y*cs, cs, cs);
+                            }
+                        }
+                    }
+                    // 绘制最大边界框
+                    ctx.strokeRect(0, 0, this.width * cs, this.height * cs);
+                    ctx.setLineDash([]);
+                }
+
+                this.drawWallOverlays();
+                
+                // 鼠标悬停高亮
+                if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.hoveredWall) {
+                    const {x, y} = this.editor.hoveredWall;
+                    if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+                        ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
+                        ctx.fillRect(x * cs, y * cs, cs, cs);
+                    }
+                } else if (this.editor.hoveredWall && !this.editor.isDragging && this.editor.tool !== EDITOR_TOOLS.ERASER) {
+                    const {x, y, type, direction} = this.editor.hoveredWall;
+                    let wallType = 1;
+                    switch(this.editor.tool) {
+                        case EDITOR_TOOLS.DOOR: wallType=2; break; case EDITOR_TOOLS.GLASS: wallType=5; break; case EDITOR_TOOLS.LOCK: wallType=3; break; case EDITOR_TOOLS.ONE_WAY: wallType=4; break; case EDITOR_TOOLS.LETTER_DOOR: wallType=6; break; default: wallType=1;
+                    }
+                    const isValidWall = (type==='h') 
+                        ? (y>0 && this.activeCells[y-1][x]) || (y<this.height && this.activeCells[y][x])
+                        : (x>0 && this.activeCells[y][x-1]) || (x<this.width && this.activeCells[y][x]);
+
+                    if (isValidWall) {
+                         ctx.beginPath();
+                         const wallObject = { type: wallType, keys: '?', direction: direction };
+                         if (type === 'h') this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, wallObject, true);
+                         else this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, wallObject, true);
+                         ctx.stroke();
+
+                         if (wallObject.type === WALL_TYPES.ONE_WAY && wallObject.direction) {
+                            if (type === 'h') {
+                                this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, direction, 'white', false);
+                            } else {
+                                this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, direction, 'white', false);
+                            }
+                        }
+                    }
+                }
+
+               // 绘制实体
+                this.items.forEach(item => this.drawItem(item));
+                if (this.endPos) this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
+                
+                // 修改：自由模式起点使用玩家颜色
+                if (this.customStartPos) this.drawCircle(this.customStartPos.x, this.customStartPos.y, this.colors.player); 
+                
+                this.ghosts.forEach(g => this.drawCircle(g.x, g.y, this.colors.ghost));
+                this.buttons.forEach(b => this.drawButton(b));
+                
+                if (this.editor.mode === 'regular') this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
+
+                if (this.editor.hoveredButtonHotspot) {
+                    const virtualButton = {
+                        x: this.editor.hoveredButtonHotspot.x,
+                        y: this.editor.hoveredButtonHotspot.y,
+                        direction: this.editor.hoveredButtonHotspot.direction
+                    };
+                    this.drawButton(virtualButton, true);
+                }              
+                ctx.restore(); // 恢复画布状态
             }
 
             /**
@@ -2610,15 +2961,19 @@
                 // 遍历水平墙
                 for (let y = 1; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
-                        const wall = this.hWalls[y][x];
+                        const w = this.hWalls[y][x];
+                        // 新增：检查activeCells
+                        const isActiveRow = this.activeCells[y][x] && this.activeCells[y-1][x];
+                        if (!isActiveRow) continue;
+
                         const isVisible = !inGame || this.debugVision || this.seenCells[y - 1][x] || this.seenCells[y][x];
                         if (isVisible) {
-                            if (wall.type === WALL_TYPES.LOCKED) {
-                                drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, wall.keys);
-                            } else if (wall.type === WALL_TYPES.LETTER_DOOR) {
-                                drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, wall.letter);
-                            } else if (wall.type === WALL_TYPES.ONE_WAY && wall.direction) {
-                                this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, wall.direction, this.colors.key, true);
+                            if (w.type === WALL_TYPES.LOCKED) {
+                                drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, w.keys);
+                            } else if (w.type === WALL_TYPES.LETTER_DOOR) {
+                                drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, w.letter);
+                            } else if (w.type === WALL_TYPES.ONE_WAY && w.direction) {
+                                this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, w.direction, this.colors.key, true);
                             }
                         }
                     }
@@ -2627,15 +2982,19 @@
                 // 遍历垂直墙
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 1; x < this.width; x++) {
-                        const wall = this.vWalls[y][x];
+                        const w = this.vWalls[y][x];
+                        // 新增：检查activeCells
+                        const isActiveCol = this.activeCells[y][x] && this.activeCells[y][x-1];
+                        if (!isActiveCol) continue;
+
                         const isVisible = !inGame || this.debugVision || this.seenCells[y][x - 1] || this.seenCells[y][x];
                         if (isVisible) {
-                            if (wall.type === WALL_TYPES.LOCKED) {
-                                drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, wall.keys);
-                            } else if (wall.type === WALL_TYPES.LETTER_DOOR) {
-                                drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, wall.letter);
-                            } else if (wall.type === WALL_TYPES.ONE_WAY && wall.direction) {
-                                this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, wall.direction, this.colors.key, true);
+                            if (w.type === WALL_TYPES.LOCKED) {
+                                drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, w.keys);
+                            } else if (w.type === WALL_TYPES.LETTER_DOOR) {
+                                drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, w.letter);
+                            } else if (w.type === WALL_TYPES.ONE_WAY && w.direction) {
+                                this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, w.direction, this.colors.key, true);
                             }
                         }
                     }
@@ -2790,6 +3149,8 @@
                 if (!this.mapData) { // 如果没有现有地图，则创建一个空白地图
                     this.width = 10;
                     this.height = 10;
+                    // 默认为常规模式
+                    this.editor.mode = 'regular';
                     this.createBlankEditorMap();
                     this.mapData = {
                         width: this.width, height: this.height,
@@ -2797,7 +3158,9 @@
                         vWalls: JSON.parse(JSON.stringify(this.vWalls)),
                         endPos: null,
                         initialGhosts: [],
-                        items: []
+                        items: [],
+                        activeCells: this.activeCells,
+                        editorMode: 'regular'
                     };
                 }
 
@@ -2812,25 +3175,69 @@
                 // 从mapData加载数据到编辑器
                 this.width = this.mapData.width;
                 this.height = this.mapData.height;
-                this.startPos = { x: 1, y: this.height - 2 };
+                this.startPos = { x: 1, y: this.height - 2 }; // 默认起点
+                this.customStartPos = this.mapData.customStartPos || null; // 加载自定义起点
+                this.activeCells = this.mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
+                this.editor.mode = this.mapData.editorMode || 'regular';
+
                 this.editorMapSizeInput.value = this.width;
-                this.cellSize = canvas.width / this.width;
+                this.padding = 15; // 新增
+                this.cellSize = (canvas.width - 2 * this.padding) / this.width; // 修改
                 this.hWalls = JSON.parse(JSON.stringify(this.mapData.hWalls));
                 this.vWalls = JSON.parse(JSON.stringify(this.mapData.vWalls));
                 this.endPos = this.mapData.endPos ? {...this.mapData.endPos} : null;
                 this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts || []));
                 this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
+                this.buttons = JSON.parse(JSON.stringify(this.mapData.buttons || []));
                 
+                // 更新编辑器UI状态
+                this.updateEditorUIForMode();
+
                 this._renderStaticLayer(); // 为编辑器渲染静态背景
                 this.drawEditor();
                 this.updateDpadVisibility();
+            }
+
+            /**
+             * 尝试切换编辑模式 (修改：一次确认，强制清空)
+             */
+            attemptSetEditorMode(mode) {
+                if (this.editor.mode === mode) return;
+                this.showConfirm(`切换编辑模式将清空当前地图，确定吗？`, () => {
+                    this.editor.mode = mode;
+                    // 直接创建新地图，跳过 clearEditorMap 的确认
+                    this.createBlankEditorMap();
+                    this.updateEditorUIForMode();
+                    // 强制刷新视图
+                    this._renderStaticLayer();
+                    this.drawEditor();
+                });
+            }
+
+            /**
+             * 根据当前编辑模式更新UI工具的显隐
+             */
+            updateEditorUIForMode() {
+                const isRegular = this.editor.mode === 'regular';
+                document.getElementById('edit-type-regular-btn').classList.toggle('active', isRegular);
+                document.getElementById('edit-type-free-btn').classList.toggle('active', !isRegular);
+                
+                // 工具显隐
+                document.getElementById('tool-start').style.display = isRegular ? 'none' : 'block';
+                document.getElementById('tool-grid').style.display = isRegular ? 'none' : 'block';
+                
+                // 如果当前工具在当前模式下不可用，重置为墙壁
+                if (isRegular && (this.editor.tool === EDITOR_TOOLS.GRID || this.editor.tool === EDITOR_TOOLS.START)) {
+                    this.setEditorTool(EDITOR_TOOLS.WALL);
+                }
             }
             
             /**
              * 创建一个带外墙和起始房间的空白地图
              */
             createBlankEditorMap() {
-                this.cellSize = canvas.width / this.width;
+                this.padding = 15; // 新增
+                this.cellSize = (canvas.width - 2 * this.padding) / this.width; // 修改
                 
                 const wall = () => ({ type: WALL_TYPES.SOLID, keys: 0 });
                 const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
@@ -2840,30 +3247,40 @@
                 this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty));
                 this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty));
                 
-                // 创建外墙
-                for (let x = 0; x < this.width; x++) {
-                    this.hWalls[0][x] = wall();
-                    this.hWalls[this.height][x] = wall();
+                // 默认全填充
+                this.activeCells = Array(this.height).fill(null).map(() => Array(this.width).fill(true));
+                this.customStartPos = null;
+
+                if (this.editor.mode === 'regular') {
+                    // Regular Mode: 外墙和固定房间
+                    for (let x = 0; x < this.width; x++) {
+                        this.hWalls[0][x] = wall();
+                        this.hWalls[this.height][x] = wall();
+                    }
+                    for (let y = 0; y < this.height; y++) {
+                        this.vWalls[y][0] = wall();
+                        this.vWalls[y][this.width] = wall();
+                    }
+                    
+                    // 创建固定的起始房间
+                    const roomY = this.height - 3;
+                    for (let x = 0; x < 3; x++) this.hWalls[roomY + 3][x] = wall();
+                    for (let y = roomY; y < roomY + 3; y++) this.vWalls[y][0] = wall();
+                    this.hWalls[roomY][0] = wall(); this.hWalls[roomY][2] = wall();
+                    this.vWalls[roomY][3] = wall(); this.vWalls[roomY+2][3] = wall();
+                    this.hWalls[roomY][1] = door();
+                    this.vWalls[roomY+1][3] = door();
+                } else {
+                    // Free Mode: 空旷，但初始填满 activeCells (作为可编辑区域)
+                    // 不需要预置墙壁，用户需要自己画
                 }
-                for (let y = 0; y < this.height; y++) {
-                    this.vWalls[y][0] = wall();
-                    this.vWalls[y][this.width] = wall();
-                }
-                
-                // 创建固定的起始房间
-                const roomY = this.height - 3;
-                for (let x = 0; x < 3; x++) this.hWalls[roomY + 3][x] = wall();
-                for (let y = roomY; y < roomY + 3; y++) this.vWalls[y][0] = wall();
-                this.hWalls[roomY][0] = wall(); this.hWalls[roomY][2] = wall();
-                this.vWalls[roomY][3] = wall(); this.vWalls[roomY+2][3] = wall();
-                this.hWalls[roomY][1] = door();
-                this.vWalls[roomY+1][3] = door();
                 
                 // 重置实体
                 this.startPos = { x: 1, y: this.height - 2 };
                 this.endPos = null;
                 this.ghosts = [];
                 this.items = [];
+                this.buttons = [];
             }
 
             /**
@@ -2878,18 +3295,24 @@
                 }
                 this.width = size;
                 this.height = size;
-                this._renderStaticLayer(); // 尺寸变化，重新渲染静态层
+                // createBlankEditorMap 会重新计算 cellSize，所以这里不需要手动计算
                 this.createBlankEditorMap();
+                this._renderStaticLayer(); // 尺寸变化，重新渲染静态层
                 this.drawEditor();
             }
             
             /**
              * 退出编辑器，并使用当前编辑的地图开始游戏
              */
-            /**
-             * 退出编辑器，并使用当前编辑的地图开始游戏
-             */
             playEditedMap() {
+                // 校验逻辑
+                if (this.editor.mode === 'free') {
+                    if (!this.customStartPos) { 
+                        this.showToast('自由模式必须设置起点！', 3000, 'error'); 
+                        return; 
+                    }
+                }
+
                 this.editor.active = false;
                 document.getElementById('game-controls').style.display = 'block';
                 document.getElementById('editor-controls').style.display = 'none';
@@ -2905,7 +3328,10 @@
                     endPos: this.endPos,
                     initialGhosts: this.ghosts.map((g, i) => ({x: g.x, y: g.y, id: i})),
                     items: this.items,
-                    buttons: this.buttons
+                    buttons: this.buttons,
+                    activeCells: this.activeCells, 
+                    editorMode: this.editor.mode, 
+                    customStartPos: this.customStartPos
                 };
                 
                 // 只需要调用 startGame，它内部会自动更新 URL
@@ -2956,75 +3382,127 @@
              * 渲染编辑器界面
              */
             drawEditor() {
+                // 1. 清空整个画布
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // 2. 应用偏移 (Padding)
+                ctx.save();
+                ctx.translate(this.padding, this.padding);
+
                 const cs = this.cellSize;
 
-                // 绘制静态背景和网格
+                // 3. 绘制静态层 (地面)
                 ctx.drawImage(this.staticLayerCanvas, 0, 0);
+
+                // 4. 绘制虚线网格 (仅自由模式，且在墙体之前绘制)
+                if (this.editor.mode === 'free') {
+                    ctx.beginPath();
+                    ctx.strokeStyle = this.colors.voidGrid;
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    
+                    // 绘制虚空格子
+                    for(let y=0; y<this.height; y++) {
+                        for(let x=0; x<this.width; x++) {
+                            if(!this.activeCells[y][x]) {
+                                ctx.strokeRect(x*cs, y*cs, cs, cs);
+                            }
+                        }
+                    }
+                    // 绘制最大边界框
+                    ctx.strokeRect(0, 0, this.width * cs, this.height * cs);
+                    ctx.setLineDash([]);
+                }
+
+                // 5. 常规模式起始房间高亮
+                if (this.editor.mode === 'regular') {
+                    ctx.fillStyle = this.colors.startRoomHighlight;
+                    ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs);
+                }
                 
-                // 绘制起始房间高亮
-                ctx.fillStyle = this.colors.startRoomHighlight;
-                ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs);
-                
-                // 绘制所有墙体
+                // 6. 绘制墙体
                 ctx.beginPath();
+                const shouldDrawBoundary = (bx, by, isH) => {
+                    if (isH) {
+                        const up = (by > 0) ? this.activeCells[by-1][bx] : false;
+                        const down = (by < this.height) ? this.activeCells[by][bx] : false;
+                        return up !== down;
+                    } else {
+                        const left = (bx > 0) ? this.activeCells[by][bx-1] : false;
+                        const right = (bx < this.width) ? this.activeCells[by][bx] : false;
+                        return left !== right;
+                    }
+                };
+
                 for (let y = 0; y <= this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
-                        if (this.hWalls[y][x].type > 0) {
-                            this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
-                        }
+                        const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y-1][x]);
+                        if (!isActiveRow) continue;
+
+                        if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
+                        else if (this.editor.mode === 'free' && shouldDrawBoundary(x, y, true)) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, {type:1});
                     }
                 }
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x <= this.width; x++) {
-                        if (this.vWalls[y][x].type > 0) {
-                            this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
-                        }
+                        const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x-1]);
+                        if (!isActiveCol) continue;
+
+                        if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
+                        else if (this.editor.mode === 'free' && shouldDrawBoundary(x, y, false)) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, {type:1});
                     }
                 }
                 ctx.stroke();
+
+                // 7. 绘制墙角填充
+                this.drawCorners(true);
+
+                // 8. 绘制墙体覆盖物 (数字、箭头等)
                 this.drawWallOverlays();
                 
-                // 绘制鼠标悬停时的墙体预览
-                if (this.editor.hoveredWall && !this.editor.isDragging) {
-                    ctx.beginPath();
+                // 9. 鼠标悬停高亮逻辑
+                if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.hoveredWall) {
+                    const {x, y} = this.editor.hoveredWall;
+                    if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+                        ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
+                        ctx.fillRect(x * cs, y * cs, cs, cs);
+                    }
+                } else if (this.editor.hoveredWall && !this.editor.isDragging && this.editor.tool !== EDITOR_TOOLS.ERASER) {
                     const {x, y, type, direction} = this.editor.hoveredWall;
-                    
-                    let wallType;
+                    let wallType = 1;
                     switch(this.editor.tool) {
-                        case EDITOR_TOOLS.DOOR: wallType = WALL_TYPES.DOOR; break;
-                        case EDITOR_TOOLS.GLASS: wallType = WALL_TYPES.GLASS; break;
-                        case EDITOR_TOOLS.LOCK: wallType = WALL_TYPES.LOCKED; break;
-                        case EDITOR_TOOLS.ONE_WAY: wallType = WALL_TYPES.ONE_WAY; break;
-                        case EDITOR_TOOLS.LETTER_DOOR: wallType = WALL_TYPES.LETTER_DOOR; break; 
-                        default: wallType = WALL_TYPES.SOLID;
+                        case EDITOR_TOOLS.DOOR: wallType=2; break; case EDITOR_TOOLS.GLASS: wallType=5; break; case EDITOR_TOOLS.LOCK: wallType=3; break; case EDITOR_TOOLS.ONE_WAY: wallType=4; break; case EDITOR_TOOLS.LETTER_DOOR: wallType=6; break; default: wallType=1;
                     }
-                    const wallObject = { type: wallType, keys: '?', direction: direction };
+                    const isValidWall = (type==='h') 
+                        ? (y>0 && this.activeCells[y-1][x]) || (y<this.height && this.activeCells[y][x])
+                        : (x>0 && this.activeCells[y][x-1]) || (x<this.width && this.activeCells[y][x]);
 
-                    if (type === 'h') {
-                        this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, wallObject, true);
-                    } else {
-                        this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, wallObject, true);
-                    }
-                    ctx.stroke();
+                    if (isValidWall) {
+                         ctx.beginPath();
+                         const wallObject = { type: wallType, keys: '?', direction: direction };
+                         if (type === 'h') this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, wallObject, true);
+                         else this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, wallObject, true);
+                         ctx.stroke();
 
-                    if (wallObject.type === WALL_TYPES.ONE_WAY && wallObject.direction) {
-                        if (type === 'h') {
-                            this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, direction, 'white', false);
-                        } else {
-                            this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, direction, 'white', false);
+                         if (wallObject.type === WALL_TYPES.ONE_WAY && wallObject.direction) {
+                            if (type === 'h') {
+                                this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, direction, 'white', false);
+                            } else {
+                                this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, direction, 'white', false);
+                            }
                         }
                     }
                 }
 
-               // 绘制所有实体
+               // 10. 绘制所有实体
                 this.items.forEach(item => this.drawItem(item));
                 if (this.endPos) this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
+                if (this.customStartPos) this.drawCircle(this.customStartPos.x, this.customStartPos.y, this.colors.player); 
                 this.ghosts.forEach(g => this.drawCircle(g.x, g.y, this.colors.ghost));
                 this.buttons.forEach(b => this.drawButton(b));
-                this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
+                if (this.editor.mode === 'regular') this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
 
-                // 将按钮热点高亮移动到最后绘制，确保它在顶层
+                // 11. 绘制按钮热点预览
                 if (this.editor.hoveredButtonHotspot) {
                     const virtualButton = {
                         x: this.editor.hoveredButtonHotspot.x,
@@ -3033,6 +3511,9 @@
                     };
                     this.drawButton(virtualButton, true);
                 }
+                
+                // 12. 恢复画布状态
+                ctx.restore();
             }
             
             /**
@@ -3044,18 +3525,27 @@
                 const rect = canvas.getBoundingClientRect();
                 const scaleX = canvas.width / rect.width;
                 const scaleY = canvas.height / rect.height;
-                return {
-                    x: (e.clientX - rect.left) * scaleX,
-                    y: (e.clientY - rect.top) * scaleY
-                };
+                const mx = (e.clientX - rect.left) * scaleX;
+                const my = (e.clientY - rect.top) * scaleY;
+                
+                // 游戏模式下，drawOffset 会自动包含 padding 带来的偏移（因为它是居中计算的）
+                if (this.state === GAME_STATES.PLAYING) {
+                    return { x: mx - this.drawOffset.x, y: my - this.drawOffset.y };
+                }
+                // 编辑器模式下，需要手动减去 padding
+                return { x: mx - (this.padding || 0), y: my - (this.padding || 0) };
             }
             
             /**
              * 检查指定格子是否在固定的起始房间内
              */
             isPosInStartRoom(cellX, cellY) {
-                const roomY = this.height - 3;
-                return cellX >= 0 && cellX < 3 && cellY >= roomY && cellY < roomY + 3;
+                // 常规模式才检查固定起始房间
+                if (this.editor.mode === 'regular') {
+                    const roomY = this.height - 3;
+                    return cellX >= 0 && cellX < 3 && cellY >= roomY && cellY < roomY + 3;
+                }
+                return false;
             }
             
             /**
@@ -3063,24 +3553,32 @@
              */
             isWallEditable(wall) {
                 if (!wall) return false;
-                const {x, y, type} = wall;
                 
+                if (this.editor.mode === 'free') {
+                    // 自由模式: 只有当墙体两侧都是有效格子（内部墙）时，才能作为“门/窗/单向”编辑
+                    // 边界墙（一侧有效一侧虚空）是系统自动生成的，不可编辑为通过点
+                    const {x, y, type} = wall;
+                    const up = (type==='h' && y>0) ? this.activeCells[y-1][x] : false;
+                    const down = (type==='h' && y<this.height) ? this.activeCells[y][x] : false;
+                    const left = (type==='v' && x>0) ? this.activeCells[y][x-1] : false;
+                    const right = (type==='v' && x<this.width) ? this.activeCells[y][x] : false;
+                    
+                    if (type==='h') return up && down;
+                    if (type==='v') return left && right;
+                    return false;
+                }
+
+                // Regular logic...
+                const {x, y, type} = wall;
                 if (type === 'h' && (y === 0 || y === this.height)) return false;
                 if (type === 'v' && (x === 0 || x === this.width)) return false;
-                
                 const roomY = this.height - 3;
                 if (type === 'h' && y === roomY && x >= 0 && x < 3) return false;
                 if (type === 'h' && y === roomY + 3 && x >= 0 && x < 3) return false;
                 if (type === 'v' && x === 0 && y >= roomY && y < roomY + 3) return false;
                 if (type === 'v' && x === 3 && y >= roomY && y < roomY + 3) return false;
-                
-                if (x >= 0 && x < 3 && y > roomY && y < roomY + 3) {
-                     if (type === 'h') return false;
-                }
-                if (y >= roomY && y < roomY + 3 && x > 0 && x < 3) {
-                     if (type === 'v') return false;
-                }
-
+                if (x >= 0 && x < 3 && y > roomY && y < roomY + 3 && type === 'h') return false;
+                if (y >= roomY && y < roomY + 3 && x > 0 && x < 3 && type === 'v') return false;
                 return true;
             }
 
@@ -3089,6 +3587,7 @@
              */
             isCellOccupiedInEditor(x, y) {
                 if (this.endPos && this.endPos.x === x && this.endPos.y === y) return true;
+                if (this.customStartPos && this.customStartPos.x === x && this.customStartPos.y === y) return true; // Check start
                 if (this.ghosts.some(g => g.x === x && g.y === y)) return true;
                 if (this.items.some(i => i.x === x && i.y === y)) return true;
                 return false;
@@ -3098,6 +3597,7 @@
              * 使用橡皮擦工具擦除指定位置的墙体或实体
              */
             eraseAtPos(pos) {
+                // 橡皮擦 不影响 地图方格的有效性
                 const wall = this.getWallAtPos(pos.x, pos.y);
                 if (wall && this.isWallEditable(wall)) {
                     if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: WALL_TYPES.EMPTY, keys: 0 };
@@ -3106,9 +3606,12 @@
 
                 const cellX = Math.floor(pos.x / this.cellSize);
                 const cellY = Math.floor(pos.y / this.cellSize);
-                if (!this.isPosInStartRoom(cellX, cellY)) {
+                if (this.editor.mode === 'free' || !this.isPosInStartRoom(cellX, cellY)) {
                     if (this.endPos && this.endPos.x === cellX && this.endPos.y === cellY) {
                         this.endPos = null;
+                    }
+                    if (this.customStartPos && this.customStartPos.x === cellX && this.customStartPos.y === cellY) {
+                        this.customStartPos = null; // Erase custom start
                     }
                     this.ghosts = this.ghosts.filter(g => g.x !== cellX || g.y !== cellY);
                     this.items = this.items.filter(i => i.x !== cellX || i.y !== cellY);
@@ -3186,7 +3689,15 @@
                 this.editor.didDrag = false;
                 const pos = this.getMousePos(e);
 
-                if (this.editor.tool === EDITOR_TOOLS.WALL || this.editor.tool === EDITOR_TOOLS.GLASS) { 
+                if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.mode === 'free') {
+                    const cellX = Math.floor(pos.x / this.cellSize);
+                    const cellY = Math.floor(pos.y / this.cellSize);
+                    if (cellX >= 0 && cellX < this.width && cellY >= 0 && cellY < this.height) {
+                        // 确定本次拖动的行为：如果当前是 active，则行为是 remove，反之 add
+                        this.editor.gridDragAction = this.activeCells[cellY][cellX] ? 'remove' : 'add';
+                        this.toggleActiveCell(cellX, cellY, this.editor.gridDragAction);
+                    }
+                } else if (this.editor.tool === EDITOR_TOOLS.WALL || this.editor.tool === EDITOR_TOOLS.GLASS) { 
                     const wall = this.getWallAtPos(pos.x, pos.y);
                     if (wall && this.isWallEditable(wall)) {
                         this.editor.dragAxis = wall.type;
@@ -3216,11 +3727,36 @@
              */
             handleCanvasMouseMove(e) {
                 if (!this.editor.active) return;
+                const pos = this.getMousePos(e);
+
+                // Grid Tool Logic
+                if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.mode === 'free') {
+                    // Grid tool highlighting
+                    const cellX = Math.floor(pos.x / this.cellSize);
+                    const cellY = Math.floor(pos.y / this.cellSize);
+                    // 使用 hoveredWall 作为临时存储单元格坐标的 hack
+                    if (!this.editor.hoveredWall || this.editor.hoveredWall.x !== cellX || this.editor.hoveredWall.y !== cellY) {
+                        this.editor.hoveredWall = {x: cellX, y: cellY};
+                        this.drawEditor();
+                    }
+
+                    if (this.editor.isDragging) {
+                        this.editor.didDrag = true;
+                        if (cellX >= 0 && cellX < this.width && cellY >= 0 && cellY < this.height) {
+                            // 仅执行与初始点击相同的动作
+                            const currentStatus = this.activeCells[cellY][cellX];
+                            if ((this.editor.gridDragAction === 'add' && !currentStatus) ||
+                                (this.editor.gridDragAction === 'remove' && currentStatus)) {
+                                this.toggleActiveCell(cellX, cellY, this.editor.gridDragAction);
+                            }
+                        }
+                    }
+                    return;
+                }
 
                 const isWallTool = [EDITOR_TOOLS.WALL, EDITOR_TOOLS.DOOR, EDITOR_TOOLS.LOCK, EDITOR_TOOLS.ONE_WAY, EDITOR_TOOLS.GLASS, EDITOR_TOOLS.LETTER_DOOR].includes(this.editor.tool);
 
                 if (!this.editor.isDragging) {
-                    const pos = this.getMousePos(e);
                     let needsRedraw = false;
 
                     // 先处理墙体工具
@@ -3277,7 +3813,6 @@
                 // 处理拖动逻辑
                 this.editor.didDrag = true;
                 this.editor.hoveredWall = null;
-                const pos = this.getMousePos(e);
 
                 if ((this.editor.tool === EDITOR_TOOLS.WALL || this.editor.tool === EDITOR_TOOLS.GLASS) && this.editor.dragAxis) {
                     let wall;
@@ -3310,18 +3845,49 @@
                     }
                 }
             }
+
+            /**
+             * 切换活动方格状态，并自动清理关联实体
+             */
+            toggleActiveCell(x, y, action) {
+                if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
+                const newState = (action === 'add');
+                if (this.activeCells[y][x] === newState) return;
+
+                this.activeCells[y][x] = newState;
+
+                // 如果清除了方格，移除上面的实体和墙
+                if (!newState) {
+                    if (this.customStartPos && this.customStartPos.x === x && this.customStartPos.y === y) this.customStartPos = null;
+                    if (this.endPos && this.endPos.x === x && this.endPos.y === y) this.endPos = null;
+                    this.ghosts = this.ghosts.filter(g => g.x !== x || g.y !== y);
+                    this.items = this.items.filter(i => i.x !== x || i.y !== y);
+                    this.buttons = this.buttons.filter(b => b.x !== x || b.y !== y);
+                    // 清除内部墙数据 (设为 Empty，避免渲染混淆)
+                    this.hWalls[y][x] = {type:0}; this.hWalls[y+1][x] = {type:0};
+                    this.vWalls[y][x] = {type:0}; this.vWalls[y][x+1] = {type:0};
+                }
+
+                this._renderStaticLayer(); // Re-render grid/void
+                this.drawEditor();
+            }
             
             /**
              * 处理编辑器模式下的鼠标松开事件
              */
             handleCanvasMouseUp(e) {
                 if (!this.editor.active) return;
+                this.editor.gridDragAction = null; // Reset grid action
 
                 // 如果没有发生拖动，则视为单击事件
                 if (this.editor.isDragging && !this.editor.didDrag) {
                     const pos = this.getMousePos(e);
-                    const cellX = Math.floor(pos.x / this.cellSize);
-                    const cellY = Math.floor(pos.y / this.cellSize);
+                    const cx = Math.floor(pos.x / this.cellSize);
+                    const cy = Math.floor(pos.y / this.cellSize);
+
+                    // 修改：移除了 Grid Tool 在此处的逻辑
+                    // 因为 MouseDown 已经处理了第一次点击的添加/删除，
+                    // 这里再处理会导致状态反转（即添加后立即删除），看起来像没反应。
                     
                     const wall = this.getWallAtPos(pos.x, pos.y);
                     if (wall && this.isWallEditable(wall)) {
@@ -3347,19 +3913,14 @@
                         } else if (this.editor.tool === EDITOR_TOOLS.LETTER_DOOR) { 
                             const wallRef = wall.type === 'h' ? this.hWalls[wall.y][wall.x] : this.vWalls[wall.y][wall.x];
                             if (wallRef.type === WALL_TYPES.LETTER_DOOR) {
-                                // 如果已是字母门，切换初始状态
                                 wallRef.initialState = (wallRef.initialState === 'open') ? 'closed' : 'open';
                             } else {
-                                // 创建新字母门
-
                                 const letter = prompt('请输入一个字母:', 'A');
                                 if (letter && /^[a-zA-Z]$/.test(letter)) {
                                     const newWall = { type: WALL_TYPES.LETTER_DOOR, letter: letter.toUpperCase(), initialState: 'closed' };
                                     if (wall.type === 'h') this.hWalls[wall.y][wall.x] = newWall;
-                                    else
- this.vWalls[wall.y][wall.x] = newWall;
-                                } else
- if (letter !== null) {
+                                    else this.vWalls[wall.y][wall.x] = newWall;
+                                } else if (letter !== null) {
                                     this.showToast('请输入单个英文字母。', 3000, 'error');
                                 }
                             }
@@ -3369,13 +3930,11 @@
                     // 处理按钮工具的点击
                     if (this.editor.tool === EDITOR_TOOLS.BUTTON) {
                         const hotspot = this.getButtonHotspotAtPos(pos.x, pos.y);
-                        if (hotspot) {
+                        if (hotspot && this.activeCells[hotspot.y][hotspot.x]) {
                             const existingButtonIndex = this.buttons.findIndex(b => b.x === hotspot.x && b.y === hotspot.y && b.direction.dx === hotspot.direction.dx && b.direction.dy === hotspot.direction.dy);
                             if (existingButtonIndex > -1) {
-                                // 如果按钮已存在，则删除
                                 this.buttons.splice(existingButtonIndex, 1);
                             } else {
-                                // 创建新按钮
                                 const letter = prompt('请输入一个字母:', 'A');
                                 if (letter && /^[a-zA-Z]$/.test(letter)) {
                                     this.buttons.push({ ...hotspot, letter: letter.toUpperCase() });
@@ -3387,31 +3946,41 @@
                     }
 
                     // 处理在格子上放置实体的逻辑
-                    if (!this.isPosInStartRoom(cellX, cellY)) {
-                        const existingItemIndex = this.items.findIndex(i => i.x === cellX && i.y === cellY);
-                        const isOccupied = this.isCellOccupiedInEditor(cellX, cellY);
+                    if (cx >= 0 && cx < this.width && cy >= 0 && cy < this.height && this.activeCells[cy][cx]) {
+                        const allowed = this.editor.mode === 'free' ? true : !this.isPosInStartRoom(cx, cy);
 
-                        switch (this.editor.tool) {
-                            case EDITOR_TOOLS.END:
-                                if (!isOccupied || (this.endPos && this.endPos.x === cellX && this.endPos.y === cellY)) {
-                                    this.endPos = { x: cellX, y: cellY };
-                                }
-                                break;
-                            case EDITOR_TOOLS.GHOST:
-                                const existingGhostIndex = this.ghosts.findIndex(g => g.x === cellX && g.y === cellY);
-                                if (existingGhostIndex > -1) this.ghosts.splice(existingGhostIndex, 1);
-                                else if (!isOccupied) this.ghosts.push({ x: cellX, y: cellY });
-                                break;
-                            case EDITOR_TOOLS.KEY:
-                                if (existingItemIndex > -1 && this.items[existingItemIndex].type === 'key') this.items.splice(existingItemIndex, 1);
-                                else if (!isOccupied) this.items.push({ x: cellX, y: cellY, type: 'key' });
-                                break;
+                        if (allowed) {
+                            const existingItemIndex = this.items.findIndex(i => i.x === cx && i.y === cy);
+                            const isOccupied = this.isCellOccupiedInEditor(cx, cy);
+
+                            switch (this.editor.tool) {
+                                case EDITOR_TOOLS.END:
+                                    if (!isOccupied || (this.endPos && this.endPos.x === cx && this.endPos.y === cy)) {
+                                        this.endPos = { x: cx, y: cy };
+                                    }
+                                    break;
+                                case EDITOR_TOOLS.START: 
+                                    if (this.editor.mode === 'free') {
+                                        if (!isOccupied || (this.customStartPos && this.customStartPos.x === cx && this.customStartPos.y === cy)) {
+                                            this.customStartPos = { x: cx, y: cy };
+                                        }
+                                    }
+                                    break;
+                                case EDITOR_TOOLS.GHOST:
+                                    const existingGhostIndex = this.ghosts.findIndex(g => g.x === cx && g.y === cy);
+                                    if (existingGhostIndex > -1) this.ghosts.splice(existingGhostIndex, 1);
+                                    else if (!isOccupied) this.ghosts.push({ x: cx, y: cy });
+                                    break;
+                                case EDITOR_TOOLS.KEY:
+                                    if (existingItemIndex > -1 && this.items[existingItemIndex].type === 'key') this.items.splice(existingItemIndex, 1);
+                                    else if (!isOccupied) this.items.push({ x: cx, y: cy, type: 'key' });
+                                    break;
+                            }
                         }
                     }
                     this.drawEditor();
                 }
                 
-                // 重置拖动状态
                 this.editor.isDragging = false;
                 this.editor.didDrag = false;
                 this.editor.dragAxis = null;
@@ -3457,8 +4026,27 @@
              */
             getButtonHotspotAtPos(mouseX, mouseY) {
                 const cs = this.cellSize;
-                const cellX = Math.floor(mouseX / cs);
-                const cellY = Math.floor(mouseY / cs);
+                let cellX = Math.floor(mouseX / cs);
+                let cellY = Math.floor(mouseY / cs);
+
+                // 辅助：检查坐标是否在地图范围内
+                const isValidCell = (cx, cy) => cx >= 0 && cx < this.width && cy >= 0 && cy < this.height;
+
+                // 如果当前点击的是无效格子（例如边缘墙的外侧），尝试修正到相邻的有效格子
+                if (!isValidCell(cellX, cellY)) {
+                    const localX = mouseX - cellX * cs;
+                    const localY = mouseY - cellY * cs;
+                    const tolerance = cs * 0.3; // 容差范围
+
+                    if (localX > cs - tolerance && isValidCell(cellX + 1, cellY)) cellX++;
+                    else if (localX < tolerance && isValidCell(cellX - 1, cellY)) cellX--;
+                    else if (localY > cs - tolerance && isValidCell(cellX, cellY + 1)) cellY++;
+                    else if (localY < tolerance && isValidCell(cellX, cellY - 1)) cellY--;
+                    else return null; // 无法修正到有效格子
+                }
+
+                // 再次检查修正后的格子是否有效（且不是虚空）
+                if (!isValidCell(cellX, cellY) || !this.activeCells[cellY][cellX]) return null;
 
                 // 鼠标在单元格内的相对坐标
                 const localX = mouseX - cellX * cs;
@@ -3478,21 +4066,40 @@
 
                 if (!direction) return null;
 
-                // 检查热点旁边是否有墙
-                let wallExists = false;
-                if (direction.dy === -1 && this.hWalls[cellY][cellX].type > 0) wallExists = true;
-                if (direction.dy === 1 && this.hWalls[cellY + 1][cellX].type > 0) wallExists = true;
-                if (direction.dx === -1 && this.vWalls[cellY][cellX].type > 0) wallExists = true;
-                if (direction.dx === 1 && this.vWalls[cellY][cellX + 1].type > 0) wallExists = true;
+                // 新增：辅助函数，安全地检查一个格子是否为 active
+                const isActive = (x, y) => {
+                    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return false;
+                    return this.activeCells[y][x];
+                };
+
+                // 重写墙体检查逻辑
+                let isAttachable = false;
+                if (direction.dy === -1) { // Top
+                    const isSolid = this.hWalls[cellY][cellX].type === WALL_TYPES.SOLID;
+                    const isBoundary = isActive(cellX, cellY) && !isActive(cellX, cellY - 1);
+                    if (isSolid || isBoundary) isAttachable = true;
+                } else if (direction.dy === 1) { // Bottom
+                    const isSolid = this.hWalls[cellY + 1][cellX].type === WALL_TYPES.SOLID;
+                    const isBoundary = isActive(cellX, cellY) && !isActive(cellX, cellY + 1);
+                    if (isSolid || isBoundary) isAttachable = true;
+                } else if (direction.dx === -1) { // Left
+                    const isSolid = this.vWalls[cellY][cellX].type === WALL_TYPES.SOLID;
+                    const isBoundary = isActive(cellX, cellY) && !isActive(cellX - 1, cellY);
+                    if (isSolid || isBoundary) isAttachable = true;
+                } else if (direction.dx === 1) { // Right
+                    const isSolid = this.vWalls[cellY][cellX + 1].type === WALL_TYPES.SOLID;
+                    const isBoundary = isActive(cellX, cellY) && !isActive(cellX + 1, cellY);
+                    if (isSolid || isBoundary) isAttachable = true;
+                }
                 
-                if (wallExists) {
+                if (isAttachable) {
                     // 检查这堵墙是否是起始房间的边界墙
                     const roomYStart = this.height - 3;
                     const isTopBoundary = direction.dy === -1 && cellY === roomYStart && cellX >= 0 && cellX < 3;
                     const isRightBoundary = direction.dx === 1 && cellX === 2 && cellY >= roomYStart && cellY < this.height;
 
-                    // 如果是起始房间的边界墙，则不允许放置按钮
-                    if (isTopBoundary || isRightBoundary) {
+                    // 如果是起始房间的边界墙，则不允许放置按钮 (仅在 Regular Mode)
+                    if (this.editor.mode === 'regular' && (isTopBoundary || isRightBoundary)) {
                         return null;
                     }
 
@@ -3501,19 +4108,6 @@
                 return null;
             }
 
-            /**
-             * 切换指定墙体的类型（开/关）
-             */
-            toggleWall(wall, targetType = WALL_TYPES.SOLID) {
-                const {x, y, type} = wall;
-                if (type === 'h' && y >= 0 && y <= this.height && x >= 0 && x < this.width) {
-                    this.hWalls[y][x].type = this.hWalls[y][x].type === targetType ? WALL_TYPES.EMPTY : targetType;
-                } else if (type === 'v' && x >= 0 && x <= this.width && y >= 0 && y < this.height) {
-                    this.vWalls[y][x].type = this.vWalls[y][x].type === targetType ? WALL_TYPES.EMPTY : targetType;
-                }
-                this.drawEditor();
-            }
-            
             /**
              * 切换指定墙体的类型（开/关）
              */
@@ -3701,7 +4295,10 @@
                             buttons: this.buttons,
                             gameMode: this.gameMode,
                             initialHealth: parseInt(document.getElementById('editor-initial-health').value) || 5,
-                            initialStamina: parseInt(document.getElementById('editor-initial-stamina').value) || 100
+                            initialStamina: parseInt(document.getElementById('editor-initial-stamina').value) || 100,
+                            activeCells: this.activeCells,
+                            editorMode: this.editor.mode,
+                            customStartPos: this.customStartPos
                         };
                     } else {
                         if (!this.mapData) return null;
@@ -3710,16 +4307,24 @@
                             hWalls: this.mapData.hWalls, vWalls: this.mapData.vWalls,
                             endPos: this.mapData.endPos, initialGhosts: this.mapData.initialGhosts, items: this.mapData.items,
                             buttons: this.mapData.buttons || [],
-                            gameMode: this.gameMode, initialHealth: this.initialHealth, initialStamina: this.initialStamina
+                            gameMode: this.gameMode, initialHealth: this.initialHealth, initialStamina: this.initialStamina,
+                            activeCells: this.mapData.activeCells || Array(this.mapData.height).fill(null).map(()=>Array(this.mapData.width).fill(true)),
+                            editorMode: this.mapData.editorMode || 'regular',
+                            customStartPos: this.mapData.customStartPos
                         };
                     }
 
                     const buffer = [];
                     
-                    // 2. 写入头部 (同上一版)
+                    // 2. 写入头部
                     buffer.push(sourceData.width);
                     buffer.push(sourceData.height);
-                    buffer.push(sourceData.gameMode === 'exploration' ? 0 : 1);
+                    
+                    // Mode Byte: Bit 0: 0=Exploration, 1=Loop; Bit 1: 0=Regular, 1=Free
+                    let modeByte = (sourceData.gameMode === 'exploration' ? 0 : 1);
+                    if (sourceData.editorMode === 'free') modeByte |= 2;
+                    buffer.push(modeByte);
+                    
                     buffer.push(sourceData.initialHealth);
                     buffer.push((sourceData.initialStamina >> 8) & 0xFF);
                     buffer.push(sourceData.initialStamina & 0xFF);
@@ -3728,6 +4333,29 @@
                         buffer.push(sourceData.endPos.x, sourceData.endPos.y);
                     } else {
                         buffer.push(0xFF, 0xFF);
+                    }
+
+                    // 新增：自由模式特有数据 (Custom Start + Active Cells Bitmask)
+                    if (sourceData.editorMode === 'free') {
+                        if (sourceData.customStartPos) {
+                            buffer.push(sourceData.customStartPos.x, sourceData.customStartPos.y);
+                        } else {
+                            buffer.push(0xFF, 0xFF); // Should be validated before, but safe fallback
+                        }
+                        // Bit-pack active cells (Row by row)
+                        let bits = 0, bitCount = 0;
+                        for(let y=0; y<sourceData.height; y++) {
+                            for(let x=0; x<sourceData.width; x++) {
+                                if (sourceData.activeCells[y][x]) bits |= (1 << bitCount);
+                                bitCount++;
+                                if (bitCount === 8) {
+                                    buffer.push(bits);
+                                    bits = 0;
+                                    bitCount = 0;
+                                }
+                            }
+                        }
+                        if (bitCount > 0) buffer.push(bits); // Remaining bits
                     }
 
                     // 3. 写入实体 (同上一版)
@@ -3874,7 +4502,11 @@
                             endPos: data.e || null,
                             initialGhosts: data.g || [],
                             items: data.i || [],
-                            buttons: data.b || []
+                            buttons: data.b || [],
+                            // Legacy maps default to regular
+                            activeCells: Array(data.h).fill(null).map(()=>Array(data.w).fill(true)),
+                            editorMode: 'regular',
+                            customStartPos: null
                         };
                         this._applyLoadedData(mapData, data.gm, data.ih, data.is, isEditor);
                         return;
@@ -3886,8 +4518,10 @@
                     
                     const width = read();
                     const height = read();
-                    const modeInt = read();
-                    const gameMode = modeInt === 0 ? 'exploration' : 'death-loop';
+                    const modeByte = read();
+                    const gameMode = (modeByte & 1) === 0 ? 'exploration' : 'death-loop';
+                    const editorMode = (modeByte & 2) === 0 ? 'regular' : 'free';
+                    
                     const initialHealth = read();
                     const staminaHigh = read();
                     const staminaLow = read();
@@ -3897,6 +4531,29 @@
                     const ex = read();
                     const ey = read();
                     if (ex !== 0xFF) endPos = { x: ex, y: ey };
+
+                    // Free Mode Data Unpacking
+                    let customStartPos = null;
+                    let activeCells = null;
+
+                    if (editorMode === 'free') {
+                        const csx = read();
+                        const csy = read();
+                        if (csx !== 0xFF) customStartPos = { x: csx, y: csy };
+
+                        activeCells = [];
+                        let bits = 0, bc = 0;
+                        for(let y=0; y<height; y++) {
+                            const row = [];
+                            for(let x=0; x<width; x++) {
+                                if (bc === 0) { bits = read(); bc = 0; }
+                                const val = (bits & (1 << bc)) !== 0;
+                                row.push(val);
+                                bc++; if (bc===8) bc=0;
+                            }
+                            activeCells.push(row);
+                        }
+                    }
 
                     // 实体读取
                     const readEntities = (createFn) => {
@@ -3979,7 +4636,10 @@
                     }
 
                     const mapData = {
-                        width, height, hWalls, vWalls, endPos, initialGhosts, items, buttons
+                        width, height, hWalls, vWalls, endPos, initialGhosts, items, buttons,
+                        editorMode: editorMode,
+                        customStartPos: customStartPos,
+                        activeCells: activeCells
                     };
 
                     this._applyLoadedData(mapData, gameMode, initialHealth, initialStamina, isEditor);
@@ -4011,6 +4671,18 @@
                     this.items = mapData.items;
                     this.buttons = mapData.buttons || [];
                     
+                    // 扩展属性加载
+                    this.activeCells = mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
+                    this.editor.mode = mapData.editorMode || 'regular';
+                    this.customStartPos = mapData.customStartPos;
+
+                    this.mapData = { // 更新当前的 mapData，确保 reset/play 正确
+                        ...mapData,
+                        hWalls: JSON.parse(JSON.stringify(this.hWalls)),
+                        vWalls: JSON.parse(JSON.stringify(this.vWalls))
+                    };
+
+                    this.updateEditorUIForMode(); // 更新UI状态
                     this._renderStaticLayer();
                     this.drawEditor();
                 } else {
