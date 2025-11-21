@@ -3,283 +3,250 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>👻 鬼迷宫 (Ghost Maze) - 游戏说明</title>
+    <title>鬼迷宫 - 游戏帮助</title>
     <style>
         :root {
-            --bg-color: #1a1a1a;
-            --text-color: #e0e0e0;
-            --accent-color: #4ade80; /* 绿色，对应终点 */
-            --danger-color: #f87171; /* 红色，对应鬼 */
-            --secondary-bg: #262626;
-            --border-color: #404040;
+            color-scheme: light;
+            --bg-color: #f0f2f5;
+            --container-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #d9d9d9;
+            --primary-color: #1890ff;
+            --primary-hover-color: #40a9ff;
+            --danger-color: #ff4d4f;
+            --success-color: #52c41a;
+            --key-color: #ffc107;
+            --wall-color: #495360;
+            --ghost-color: #dc3545;
+            --player-color: #007bff;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: dark;
+                --bg-color: #1e1e1e;
+                --container-bg: #2c2c2c;
+                --text-color: #e6e6e6;
+                --border-color: #444;
+                --primary-color: #177ddc;
+                --primary-hover-color: #3c9ae8;
+                --danger-color: #ff6b6d;
+                --success-color: #52c41a;
+                --key-color: #e6c34a;
+                --wall-color: #666;
+                --player-color: #3c9ae8;
+                --ghost-color: #d9534f;
+            }
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            line-height: 1.6;
-            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background-color: var(--bg-color);
+            color: var(--text-color);
             margin: 0;
             padding: 20px;
+            line-height: 1.6;
+            display: flex;
+            justify-content: center;
         }
 
-        .container {
+        .help-container {
+            background-color: var(--container-bg);
+            width: 100%;
             max-width: 800px;
-            margin: 0 auto;
-            background-color: var(--secondary-bg);
             padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-        }
-
-        h1, h2, h3 {
-            color: #fff;
-            margin-top: 1.5em;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
 
         h1 {
             text-align: center;
-            font-size: 2.5em;
-            margin-top: 0;
+            margin-bottom: 30px;
+            color: var(--primary-color);
             border-bottom: 2px solid var(--border-color);
-            padding-bottom: 20px;
+            padding-bottom: 15px;
         }
 
         h2 {
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
-            color: var(--accent-color);
+            margin-top: 30px;
+            border-left: 5px solid var(--primary-color);
+            padding-left: 10px;
+            font-size: 1.4rem;
         }
 
         h3 {
-            color: #ddd;
-            margin-bottom: 10px;
+            margin-top: 20px;
+            color: var(--text-color);
+            opacity: 0.9;
+            font-size: 1.1rem;
         }
 
-        p {
-            margin-bottom: 1em;
+        p, li {
+            font-size: 15px;
         }
 
-        strong {
-            color: #fff;
-            font-weight: 700;
-        }
-
-        /* 图片样式 */
-        img {
-            max-width: 100%;
-            height: auto;
-            display: block;
-            margin: 20px auto;
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-        }
-
-        /* 列表样式 */
-        ul, ol {
+        ul {
             padding-left: 20px;
-            margin-bottom: 1.5em;
         }
 
         li {
             margin-bottom: 8px;
         }
 
-        /* 分割线 */
-        hr {
-            border: 0;
-            height: 1px;
-            background: var(--border-color);
-            margin: 40px 0;
+        .icon-block {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
         }
 
-        /* 按键样式 (KBD) */
-        kbd {
-            background-color: #333;
-            border: 1px solid #555;
-            border-radius: 4px;
-            box-shadow: 0 2px 0 #000;
-            color: #fff;
+        .tag {
             display: inline-block;
-            font-family: monospace;
-            font-size: 0.85em;
-            font-weight: 700;
-            line-height: 1;
             padding: 2px 6px;
-            white-space: nowrap;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
             margin: 0 2px;
         }
 
-        /* 强调特定文字 */
-        .highlight-danger {
-            color: var(--danger-color);
-            font-weight: bold;
-        }
-        
-        .highlight-success {
-            color: var(--accent-color);
-            font-weight: bold;
-        }
+        .key-tag { background-color: var(--key-color); color: #000; }
+        .ghost-tag { background-color: var(--ghost-color); }
+        .player-tag { background-color: var(--player-color); }
+        .wall-tag { background-color: var(--wall-color); }
 
-        /* 按钮样式 */
-        .play-button {
+        .back-btn {
             display: block;
-            width: fit-content;
-            margin: 40px auto;
-            padding: 15px 30px;
-            background-color: var(--accent-color);
-            color: #000;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 1.2em;
-            border-radius: 50px;
-            transition: transform 0.2s, box-shadow 0.2s;
+            width: 200px;
+            margin: 40px auto 0;
+            padding: 12px;
             text-align: center;
+            background-color: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: background 0.2s;
         }
 
-        .play-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 0 15px rgba(74, 222, 128, 0.4);
+        .back-btn:hover {
+            background-color: var(--primary-hover-color);
         }
 
-        /* 移动端适配 */
-        @media (max-width: 600px) {
-            .container {
-                padding: 20px;
-            }
-            h1 {
-                font-size: 1.8em;
-            }
+        code {
+            background-color: var(--bg-color);
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: monospace;
+            border: 1px solid var(--border-color);
+        }
+
+        /* Mobile Adaptation */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .help-container { padding: 20px; }
+            h1 { font-size: 1.5rem; }
         }
     </style>
 </head>
 <body>
 
-<div class="container">
+    <div class="help-container">
+        <h1>鬼迷宫 - 游戏指南</h1>
 
-    <h1>👻 鬼迷宫 (Ghost Maze)</h1>
+        <section>
+            <h2>1. 游戏简介</h2>
+            <p>《鬼迷宫》是一款回合制策略解谜游戏。你需要在一个充满迷雾、机关和敌人的迷宫中寻找出路。你的每一次移动，敌人也会随之行动。利用地形、视野和机关，避开追击，抵达终点。</p>
+        </section>
 
-    <p>欢迎来到鬼迷宫！这是一款结合了探索、解谜与生存元素的2D迷宫游戏。你不仅需要找到通往终点的路，还必须躲避在迷宫中游荡、会主动追捕你的鬼魂。游戏内置了强大的地图编辑器，让你能创造并分享属于你自己的挑战！</p>
-
-    <!-- 注意：请确保图片路径正确，或者替换为实际的URL -->
-    <img src="./ingame-image.png" alt="鬼迷宫游戏截图">
-
-    <hr>
-
-    <h2>✨ 游戏特色</h2>
-    <ul>
-        <li><strong>动态视野系统</strong>: 战争迷雾笼罩着未知的区域，你只能看到已经探索过或在直线视野内的路径。</li>
-        <li><strong>丰富的地图元素</strong>: 不仅仅是墙壁，还有需要钥匙才能通过的门数字门，增加了策略维度。以后还会有更多元素加入！</li>
-        <li><strong>内置地图编辑器</strong>: 强大的可视化编辑器，让你像画画一样轻松创建、修改和测试自己的迷宫。</li>
-        <li><strong>分享与挑战</strong>: 将你精心设计的地图（或随机生成的地图）压缩成一串简短的分享码，发送给朋友，让他们来挑战你的杰作！</li>
-        <li><strong>双端适配体验</strong>: 无论在电脑还是手机上，都能获得流畅的游戏体验，移动端更有专属的虚拟方向键。</li>
-    </ul>
-
-    <hr>
-
-    <h2>📜 游戏规则与玩法详解</h2>
-
-    <h3>🎯 核心目标</h3>
-    <p>你的唯一目标是：<span class="highlight-success">安全抵达迷宫中的绿色终点</span>。</p>
-
-    <h3>🧩 迷宫元素</h3>
-    <ol>
-        <li><strong>玩家 (蓝色圆点)</strong>
+        <section>
+            <h2>2. 游戏目标与模式</h2>
+            <p>游戏的核心目标是找到<span class="tag" style="background-color: var(--success-color)">绿色终点</span>。</p>
+            
+            <h3>🗺️ 探索模式 (Exploration)</h3>
             <ul>
-                <li><strong>生命 (HP)</strong>: 你拥有初始5点生命值。每次被鬼抓住，你会损失1点生命并回到起点。当生命值降为0时，游戏结束。</li>
-                <li><strong>钥匙</strong>: 你的初始钥匙数量为0。你需要探索迷宫，收集钥匙。</li>
+                <li><strong>机制：</strong>拥有固定的生命值（默认为 5）。</li>
+                <li><strong>失败：</strong>触碰鬼魂会扣除 1 点生命值。生命归零则游戏彻底结束。</li>
+                <li><strong>特点：</strong>适合休闲体验，容错率较高。</li>
             </ul>
-        </li>
-        <li><strong>视野与探索</strong>
+
+            <h3>♾️ 死亡循环模式 (Death Loop)</h3>
             <ul>
-                <li>游戏开始时，你只能看到你所在的初始房间。</li>
-                <li>当你移动时，你走过的路径以及当前位置的直线无障碍视野范围都会被点亮。</li>
-                <li>善用“调试视野”开关可以看清全图，但这会失去探索的乐趣！</li>
+                <li><strong>机制：</strong>拥有体力值（默认为 100）。每移动一步消耗 1 点体力。</li>
+                <li><strong>失败：</strong>触碰鬼魂或体力耗尽即视为死亡。</li>
+                <li><strong>循环：</strong>死亡后可以选择“复活”，这会重置你的位置、物品和体力，但保留你已探索的地图视野。</li>
+                <li><strong>挑战：</strong>尝试用最少的循环次数通关。</li>
             </ul>
-        </li>
-        <li><strong>环境</strong>
+        </section>
+
+        <section>
+            <h2>3. 操作方法</h2>
+            <h3>💻 电脑端</h3>
             <ul>
-                <li><strong>墙壁</strong>: 无法通过的障碍。</li>
-                <li><strong>门</strong>: 可以自由通过。</li>
-                <li><strong>数字门 (带数字的墙)</strong>: 必须拥有<strong>等于或大于</strong>数字门上所示数字的钥匙数量，才能通过。通过时不会消耗钥匙。</li>
-                <li><strong>钥匙 (黄色菱形)</strong>: 走上去即可拾取，增加你的钥匙持有数量。</li>
-                <li><strong>终点 (绿色圆点)</strong>: 游戏的目标，到达则胜利。</li>
+                <li><strong>移动：</strong>使用键盘 <code>W</code> <code>A</code> <code>S</code> <code>D</code> 或 <code>↑</code> <code>↓</code> <code>←</code> <code>→</code>。</li>
+                <li><strong>鼠标操作：</strong>点击地图上的任意位置，角色会自动寻路移动（如果目标点可见且可达）。</li>
             </ul>
-        </li>
-    </ol>
 
-    <h3>👻 敌人：鬼</h3>
-    <ol>
-        <li><strong>鬼 (红色圆点)</strong>
+            <h3>📱 移动端</h3>
             <ul>
-                <li>它们是迷宫中的主要威胁。</li>
-                <li>鬼会在迷宫中移动，并且比你稍微“聪明”一点。</li>
+                <li><strong>虚拟方向键：</strong>屏幕右下角有方向控制盘。</li>
+                <li><strong>拖动调整：</strong>按住方向键中间的圆点可以拖动位置。</li>
+                <li><strong>缩放调整：</strong>双指捏合方向键区域可以放大或缩小按键。</li>
+                <li><strong>点击移动：</strong>同样支持直接点击屏幕上的格子进行移动。</li>
             </ul>
-        </li>
-        <li><strong>触发追捕</strong>
+        </section>
+
+        <section>
+            <h2>4. 游戏机制详解</h2>
+            
+            <h3>👻 鬼魂 (Ghost)</h3>
+            <p>地图上游荡的<span class="tag ghost-tag">红色敌人</span>。</p>
             <ul>
-                <li>鬼的AI核心是<strong>直线视野</strong>。如果一只鬼和你处于同一行或同一列，且中间没有任何墙壁或数字门阻挡，它就会“看到”你。</li>
-                <li>一旦被看到，鬼会立刻将你数字门定为目标，并沿着最短路径向你冲来！</li>
-                <li>如果你躲到墙壁后面，鬼会失去你的确切位置，但它仍会前往你最后出现的地方进行搜寻。</li>
+                <li><strong>行动规则：</strong>你动一步，它动一步。</li>
+                <li><strong>视野机制：</strong>如果鬼魂和你在同一直线上且没有墙壁阻挡，它会“看见”你并开始追击。</li>
+                <li><strong>记忆机制：</strong>如果你逃离了鬼魂的视野，它会移动到最后一次看见你的位置进行检查。</li>
+                <li><strong>危险预警：</strong>当屏幕边框变红且显示“周围鬼数”增加时，说明附近有看不见的敌人，请小心！</li>
             </ul>
-        </li>
-        <li><strong>危险警报</strong>
+
+            <h3>🌫️ 迷雾与视野</h3>
             <ul>
-                <li>当有鬼进入你周围的九宫格范围时，游戏界面会变为<span class="highlight-danger">危险的红色</span>，同时状态栏的“周围鬼数”会更新。这是一个强烈的警告，告诉你必须立刻移动或改变策略！</li>
+                <li>未探索的区域是黑色的。</li>
+                <li><strong>玻璃墙：</strong>阻挡移动，但不阻挡视线。你可以透过玻璃看到鬼，鬼也能透过玻璃看到你！</li>
             </ul>
-        </li>
-        <li><strong>被捕后果</strong>
+
+            <h3>🔐 机关与门</h3>
             <ul>
-                <li>当鬼与你进入同一个格子时，你会被抓住。</li>
-                <li>你会损失1点生命，并被传送回迷宫的初始房间。鬼也会留在原地。</li>
+                <li><strong>普通门：</strong>可以直接通过。</li>
+                <li><strong>数字门：</strong>上方标有数字。你需要收集足够的 <span class="tag key-tag">黄色钥匙</span> 才能通过（不会消耗钥匙，只需持有数量达标）。</li>
+                <li><strong>单向门：</strong>标有箭头的墙壁，只能顺着箭头方向通过，逆向无法通行。</li>
+                <li><strong>字母门与按钮：</strong>标有字母（如 A, B）的门默认为关闭状态。你需要找到对应字母的<strong>按钮</strong>，踩上去（或点击）来切换门的开关状态。</li>
             </ul>
-        </li>
-    </ol>
+        </section>
 
-    <hr>
-
-    <h2>🕹️ 操作指南</h2>
-
-    <h3>🖥️ 电脑端 (Desktop)</h3>
-    <ul>
-        <li><strong>键盘移动</strong>: 使用 <kbd>W</kbd>, <kbd>A</kbd>, <kbd>S</kbd>, <kbd>D</kbd> 键或 <kbd>↑</kbd>, <kbd>←</kbd>, <kbd>↓</kbd>, <kbd>→</kbd> 方向键进行移动。</li>
-        <li><strong>鼠标移动</strong>: 直接点击视野内任何<strong>可到达</strong>的格子，角色会自动寻路移动过去。</li>
-    </ul>
-
-    <h3>📱 移动端 (Mobile)</h3>
-    <ul>
-        <li><strong>点击移动</strong>: 与电脑端一样，可以点击视野内的格子进行自动寻路。</li>
-        <li><strong>虚拟方向键 (D-Pad)</strong>:
+        <section>
+            <h2>5. 工具栏功能</h2>
             <ul>
-                <li>屏幕右下角会显示一个虚拟方向键，点击或按住对应的方向即可移动。</li>
-                <li><strong>可以开关</strong>: 在“控制”栏中，可以随时通过“方向按键”开关来显示或隐藏虚拟方向键。</li>
+                <li><strong>撤回：</strong>退回到上一步操作（由于随机性，不可撤销死亡）。</li>
+                <li><strong>存档/回溯：</strong>可以手动创建一个“存档点”，之后可以随时回溯到该状态。</li>
+                <li><strong>调试视野：</strong>开启上帝视角，看清全图（作弊模式）。</li>
+                <li><strong>分享：</strong>点击“复制分享码”，将当前地图生成一段代码发送给朋友。朋友点击“粘贴并加载”即可游玩同一张地图。</li>
             </ul>
-        </li>
-    </ul>
+        </section>
 
-    <hr>
-
-    <h2>🛠️ 地图编辑器</h2>
-    <p>通过主界面的“编辑地图”按钮，你可以进入功能强大的地图编辑器。</p>
-    <ul>
-        <li><strong>切换工具</strong>: 在顶部的工具栏选择你想要放置的元素。</li>
-        <li><strong>放置/删除</strong>:
+        <section>
+            <h2>6. 地图编辑器</h2>
+            <p>点击主界面的“编辑地图”可进入创作模式。</p>
             <ul>
-                <li><strong>墙壁</strong>: 按住并拖动鼠标/手指，可以连续绘制墙壁。再次点击或拖动已有的墙壁可以将其擦除。</li>
-                <li><strong>其他元素 (门、数字门、钥匙、鬼、终点等)</strong>: 单击画布上的有效位置即可放置。再次单击已放置的元素可以将其移除。</li>
-                <li><strong>橡皮擦</strong>: 可以擦除任何你放置的墙壁或实体。</li>
+                <li><strong>绘制：</strong>选择工具（墙、门、鬼、钥匙等），在地图上拖动绘制。</li>
+                <li><strong>属性：</strong>放置数字门或字母门时，系统会提示输入所需的钥匙数量或对应字母。</li>
+                <li><strong>橡皮擦：</strong>用于擦除墙壁或物品。</li>
+                <li><strong>游玩：</strong>编辑完成后，点击“游玩地图”即可亲自测试你的设计。</li>
             </ul>
-        </li>
-        <li><strong>游玩地图</strong>: 编辑完成后，点击“游玩地图”即可立即开始测试你的创作。</li>
-        <li><strong>清空/加载/分享</strong>: 你可以清空整个地图，或通过分享码加载/复制你的编辑器作品。</li>
-    </ul>
+        </section>
 
-    <hr>
-
-    <h2>🚀 如何游玩</h2>
-    <a href="https://ghostmaze.novic.cc" class="play-button" target="_blank">🎮 点此游玩 (Ghost Maze)</a>
-
-</div>
+        <a href="javascript:window.close();" class="back-btn" onclick="history.back(); return false;">返回游戏</a>
+    </div>
 
 </body>
 </html>
