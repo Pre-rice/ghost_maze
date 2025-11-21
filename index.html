@@ -127,7 +127,7 @@
         }
 
         /* 新增：帮助按钮样式（复用主题按钮的风格） */
-        .help-btn {
+        .help-btn, .home-btn {
             width: 26px;
             height: 26px;
             border-radius: 50%;
@@ -137,18 +137,19 @@
             justify-content: center;
             text-decoration: none; /* 去除链接下划线 */
             transition: background 0.25s;
+            cursor: pointer; /* 新增：确保 div 也有手型光标 */
         }
 
-        .help-btn:hover {
+        .help-btn:hover, .home-btn:hover {
             background-color: #c0c0c0; /* 简单的悬停效果，适配浅色 */
         }
         /* 深色模式下的悬停微调 */
         @media (prefers-color-scheme: dark) {
-             .help-btn:hover { background-color: #555; }
+             .help-btn:hover, .home-btn:hover { background-color: #555; }
         }
-        :root.dark .help-btn:hover { background-color: #555; }
+        :root.dark .help-btn:hover, .root.dark .home-btn:hover { background-color: #555; }
 
-        .help-btn svg {
+        .help-btn svg, .home-btn svg {
             width: 18px;
             height: 18px;
             fill: var(--text-color);
@@ -637,8 +638,15 @@
                         <h3>状态</h3>
                         <!-- 右上角操作区：包含帮助和主题切换 -->
                         <div class="header-controls">
+                            <!-- Home 按钮 -->
+                            <div id="home-btn" class="home-btn" title="回到首页">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                                </svg>
+                            </div>
+
                             <!-- 帮助按钮 -->
-                            <a href="/help" class="help-btn" title="查看帮助" target="_blank">
+                            <a href="help.html" class="help-btn" title="查看帮助" target="_blank">
                                 <svg viewBox="0 0 24 24">
                                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
                                 </svg>
@@ -1124,6 +1132,11 @@
              * 绑定所有HTML元素的事件监听器
              */
             bindUI() {
+                // Home 按钮逻辑 (回到纯路径，去除 ?map=... 和 #...)
+                document.getElementById('home-btn').addEventListener('click', () => {
+                    window.location.href = window.location.pathname;
+                });
+
                 // 游戏控制按钮
                 document.getElementById('generate-map-btn').addEventListener('click', () => this.generateNewRandomMap());
                 document.getElementById('reset-map-btn').addEventListener('click', () => this.resetCurrentMap());

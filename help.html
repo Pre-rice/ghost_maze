@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>鬼迷宫 - 游戏帮助</title>
-    <style>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>鬼迷宫 - 游戏帮助</title>
+        <style>
         :root {
             color-scheme: light;
             --bg-color: #f0f2f5;
@@ -149,104 +149,112 @@
             h1 { font-size: 1.5rem; }
         }
     </style>
-</head>
-<body>
+    </head>
+    <body>
 
-    <div class="help-container">
-        <h1>鬼迷宫 - 游戏指南</h1>
+        <div class="help-container">
+            <h1>👻 鬼迷宫 (Ghost Maze) - 游戏指南</h1>
 
-        <section>
-            <h2>1. 游戏简介</h2>
-            <p>《鬼迷宫》是一款回合制策略解谜游戏。你需要在一个充满迷雾、机关和敌人的迷宫中寻找出路。你的每一次移动，敌人也会随之行动。利用地形、视野和机关，避开追击，抵达终点。</p>
-        </section>
+            <section>
+                <h2>1. 游戏简介</h2>
+                <p>欢迎来到鬼迷宫！这是一款结合了探索、解谜与生存元素的2D迷宫游戏。你不仅需要找到通往终点的路，还必须躲避在迷宫中游荡、会主动追捕你的鬼魂。游戏内置了强大的地图编辑器，让你能创造并分享属于你自己的挑战！</p>
+            </section>
 
-        <section>
-            <h2>2. 游戏目标与模式</h2>
-            <p>游戏的核心目标是找到<span class="tag" style="background-color: var(--success-color)">绿色终点</span>。</p>
-            
-            <h3>🗺️ 探索模式 (Exploration)</h3>
-            <ul>
-                <li><strong>机制：</strong>拥有固定的生命值（默认为 5）。</li>
-                <li><strong>失败：</strong>触碰鬼魂会扣除 1 点生命值。生命归零则游戏彻底结束。</li>
-                <li><strong>特点：</strong>适合休闲体验，容错率较高。</li>
-            </ul>
+            <section>
+                <h2>2. 游戏目标与模式</h2>
+                <p>游戏的核心目标是找到<span class="tag"
+                        style="background-color: var(--success-color)">绿色终点</span>。</p>
 
-            <h3>♾️ 死亡循环模式 (Death Loop)</h3>
-            <ul>
-                <li><strong>机制：</strong>拥有体力值（默认为 100）。每移动一步消耗 1 点体力。</li>
-                <li><strong>失败：</strong>触碰鬼魂或体力耗尽即视为死亡。</li>
-                <li><strong>循环：</strong>死亡后可以选择“复活”，这会重置你的位置、物品和体力，但保留你已探索的地图视野。</li>
-                <li><strong>挑战：</strong>尝试用最少的循环次数通关。</li>
-            </ul>
-        </section>
+                <h3>🗺️ 探索模式 (Exploration)</h3>
+                <ul>
+                    <li><strong>机制：</strong>拥有固定的生命值（默认为 5）。</li>
+                    <li><strong>失败：</strong>触碰鬼魂会扣除 1 点生命值。生命归零则游戏彻底结束。</li>
+                    <li><strong>特点：</strong>适合休闲体验，容错率较高。</li>
+                </ul>
 
-        <section>
-            <h2>3. 操作方法</h2>
-            <h3>💻 电脑端</h3>
-            <ul>
-                <li><strong>移动：</strong>使用键盘 <code>W</code> <code>A</code> <code>S</code> <code>D</code> 或 <code>↑</code> <code>↓</code> <code>←</code> <code>→</code>。</li>
-                <li><strong>鼠标操作：</strong>点击地图上的任意位置，角色会自动寻路移动（如果目标点可见且可达）。</li>
-            </ul>
+                <h3>♾️ 死亡循环模式 (Death Loop)</h3>
+                <ul>
+                    <li><strong>机制：</strong>拥有体力值（默认为 100）。每移动一步消耗 1 点体力。</li>
+                    <li><strong>失败：</strong>触碰鬼魂或体力耗尽即视为死亡。</li>
+                    <li><strong>循环：</strong>死亡后可以选择“复活”，这会重置你的位置、物品和体力，但保留你已探索的地图视野。</li>
+                    <li><strong>挑战：</strong>尝试消耗尽可能少的体力通关。</li>
+                </ul>
+            </section>
 
-            <h3>📱 移动端</h3>
-            <ul>
-                <li><strong>虚拟方向键：</strong>屏幕右下角有方向控制盘。</li>
-                <li><strong>拖动调整：</strong>按住方向键中间的圆点可以拖动位置。</li>
-                <li><strong>缩放调整：</strong>双指捏合方向键区域可以放大或缩小按键。</li>
-                <li><strong>点击移动：</strong>同样支持直接点击屏幕上的格子进行移动。</li>
-            </ul>
-        </section>
+            <section>
+                <h2>3. 操作方法</h2>
+                <h3>💻 电脑端</h3>
+                <ul>
+                    <li><strong>移动：</strong>使用键盘 <code>W</code> <code>A</code>
+                        <code>S</code> <code>D</code> 或 <code>↑</code>
+                        <code>↓</code> <code>←</code> <code>→</code>。</li>
+                    <li><strong>鼠标操作：</strong>点击地图上的任意位置，角色会自动寻路移动（如果目标点可见且可达）。</li>
+                </ul>
 
-        <section>
-            <h2>4. 游戏机制详解</h2>
-            
-            <h3>👻 鬼魂 (Ghost)</h3>
-            <p>地图上游荡的<span class="tag ghost-tag">红色敌人</span>。</p>
-            <ul>
-                <li><strong>行动规则：</strong>你动一步，它动一步。</li>
-                <li><strong>视野机制：</strong>如果鬼魂和你在同一直线上且没有墙壁阻挡，它会“看见”你并开始追击。</li>
-                <li><strong>记忆机制：</strong>如果你逃离了鬼魂的视野，它会移动到最后一次看见你的位置进行检查。</li>
-                <li><strong>危险预警：</strong>当屏幕边框变红且显示“周围鬼数”增加时，说明附近有看不见的敌人，请小心！</li>
-            </ul>
+                <h3>📱 移动端</h3>
+                <ul>
+                    <li><strong>虚拟方向键：</strong>屏幕右下角有方向控制盘。</li>
+                    <li><strong>拖动调整：</strong>按住方向键中间的圆点可以拖动位置。</li>
+                    <li><strong>缩放调整：</strong>双指捏合方向键区域可以放大或缩小按键。</li>
+                    <li><strong>点击移动：</strong>同样支持直接点击屏幕上的格子进行移动。</li>
+                </ul>
+            </section>
 
-            <h3>🌫️ 迷雾与视野</h3>
-            <ul>
-                <li>未探索的区域是黑色的。</li>
-                <li><strong>玻璃墙：</strong>阻挡移动，但不阻挡视线。你可以透过玻璃看到鬼，鬼也能透过玻璃看到你！</li>
-            </ul>
+            <section>
+                <h2>4. 游戏机制详解</h2>
 
-            <h3>🔐 机关与门</h3>
-            <ul>
-                <li><strong>普通门：</strong>可以直接通过。</li>
-                <li><strong>数字门：</strong>上方标有数字。你需要收集足够的 <span class="tag key-tag">黄色钥匙</span> 才能通过（不会消耗钥匙，只需持有数量达标）。</li>
-                <li><strong>单向门：</strong>标有箭头的墙壁，只能顺着箭头方向通过，逆向无法通行。</li>
-                <li><strong>字母门与按钮：</strong>标有字母（如 A, B）的门默认为关闭状态。你需要找到对应字母的<strong>按钮</strong>，踩上去（或点击）来切换门的开关状态。</li>
-            </ul>
-        </section>
+                <h3>👻 鬼魂 (Ghost)</h3>
+                <p>地图上游荡的<span class="tag ghost-tag">红色敌人</span>。</p>
+                <ul>
+                    <li><strong>行动规则：</strong>你动一步，它动一步。</li>
+                    <li><strong>视野机制：</strong>如果鬼魂和你在同一直线上且没有墙壁阻挡，它会“看见”你并开始追击。</li>
+                    <li><strong>记忆机制：</strong>如果你刚刚逃离了鬼魂的视野，它也会朝着最后一次看见你的位置移动一步。</li>
+                    <li><strong>危险预警：</strong>当屏幕边框变红且显示“周围鬼数”增加时，说明附近有看不见的敌人，请小心！（仅探索模式）</li>
+                </ul>
 
-        <section>
-            <h2>5. 工具栏功能</h2>
-            <ul>
-                <li><strong>撤回：</strong>退回到上一步操作（由于随机性，不可撤销死亡）。</li>
-                <li><strong>存档/回溯：</strong>可以手动创建一个“存档点”，之后可以随时回溯到该状态。</li>
-                <li><strong>调试视野：</strong>开启上帝视角，看清全图（作弊模式）。</li>
-                <li><strong>分享：</strong>点击“复制分享码”，将当前地图生成一段代码发送给朋友。朋友点击“粘贴并加载”即可游玩同一张地图。</li>
-            </ul>
-        </section>
+                <h3>🌫️ 迷雾与视野</h3>
+                <ul>
+                    <li>未探索的区域是黑色的。</li>
+                    <li><strong>玻璃：</strong>阻挡移动，但不阻挡视线。你可以透过玻璃看到鬼，鬼也能透过玻璃看到你！</li>
+                </ul>
 
-        <section>
-            <h2>6. 地图编辑器</h2>
-            <p>点击主界面的“编辑地图”可进入创作模式。</p>
-            <ul>
-                <li><strong>绘制：</strong>选择工具（墙、门、鬼、钥匙等），在地图上拖动绘制。</li>
-                <li><strong>属性：</strong>放置数字门或字母门时，系统会提示输入所需的钥匙数量或对应字母。</li>
-                <li><strong>橡皮擦：</strong>用于擦除墙壁或物品。</li>
-                <li><strong>游玩：</strong>编辑完成后，点击“游玩地图”即可亲自测试你的设计。</li>
-            </ul>
-        </section>
+                <h3>🔐 机关与门</h3>
+                <ul>
+                    <li><strong>普通门：</strong>你可以直接通过，但是鬼不能通过。</li>
+                    <li><strong>数字门：</strong>上方标有数字。收集足够的 <span
+                            class="tag key-tag">黄色钥匙</span>
+                        就能打开。（不会消耗钥匙，只需持有数量达标）</li>
+                    <li><strong>单向门：</strong>标有箭头的墙壁，你只能顺着箭头方向通过，逆向无法通行，但鬼从任意方向都不能通过单向门。</li>
+                    <li><strong>字母门与按钮：</strong>标有字母（如 A,
+                        B）的门有关闭和开启两种状态。按下对应字母的<strong>按钮</strong>，就能切换门的开关状态。</li>
+                </ul>
+            </section>
 
-        <a href="javascript:window.close();" class="back-btn" onclick="history.back(); return false;">返回游戏</a>
-    </div>
+            <section>
+                <h2>5. 工具栏功能</h2>
+                <ul>
+                    <li><strong>撤回：</strong>退回到上一步操作（不可撤销死亡）。</li>
+                    <li><strong>存档/回溯：</strong>可以手动创建一个“存档点”，之后可以随时多次回溯到该状态。</li>
+                    <li><strong>调试视野：</strong>开启上帝视角，看清全图（作弊模式，不要滥用哦！）。</li>
+                    <li><strong>分享：</strong>点击“复制分享码”，将当前地图生成一段代码发送给朋友。朋友点击“粘贴并加载”即可游玩同一张地图。你也可以直接复制网址分享。</li>
+                </ul>
+            </section>
 
-</body>
+            <section>
+                <h2>6. 地图编辑器</h2>
+                <p>点击主界面的“编辑地图”可进入创作模式，设计你的精妙地图。</p>
+                <ul>
+                    <li><strong>绘制：</strong>选择工具（墙、门、鬼、钥匙等），在地图上拖动绘制。</li>
+                    <li><strong>属性：</strong>放置数字门或字母门时，系统会提示输入所需的钥匙数量或对应字母。</li>
+                    <li><strong>橡皮擦：</strong>用于擦除墙壁或物品。</li>
+                    <li><strong>游玩：</strong>编辑完成后，点击“游玩地图”即可亲自测试你的设计。</li>
+                </ul>
+            </section>
+
+            <h2>🚀 如何游玩</h2>
+            <a href="https://ghostmaze.novic.cc" class="play-button"
+                target="_blank">🎮 点此游玩 (Ghost Maze)</a>
+        </div>
+
+    </body>
 </html>
