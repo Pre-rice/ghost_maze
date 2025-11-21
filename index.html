@@ -869,6 +869,19 @@
             </div>
         </div>
 
+        <!-- 清空地图的三选项确认浮窗 -->
+        <div id="clear-map-confirm-overlay" class="overlay">
+            <div class="overlay-content">
+                <p>你希望？</p>
+                <div class="buttons">
+                    <button id="confirm-clear-entities-btn">清空元件</button>
+                    <button id="confirm-reset-grids-btn" class="danger">重置方格</button>
+                    <button id="confirm-clear-grids-btn" class="danger">清空方格</button>
+                    <button id="confirm-clear-cancel-btn" class="secondary">取消</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Toast Notification -->
         <div id="toast-notification" class="toast"></div>
         <script
@@ -991,6 +1004,12 @@
                 this.confirmMessage = document.getElementById('confirm-message');
                 this.confirmYesBtn = document.getElementById('confirm-yes-btn');
                 this.confirmNoBtn = document.getElementById('confirm-no-btn');
+
+                this.clearMapConfirmOverlay = document.getElementById('clear-map-confirm-overlay');
+                this.clearEntitiesBtn = document.getElementById('confirm-clear-entities-btn');
+                this.resetGridsBtn = document.getElementById('confirm-reset-grids-btn');
+                this.clearGridsBtn = document.getElementById('confirm-clear-grids-btn');
+                this.clearCancelBtn = document.getElementById('confirm-clear-cancel-btn');
                 
                 // 用于管理定时器和动画帧的ID
                 this.toastTimeout = null;
@@ -2752,7 +2771,7 @@
                 this.drawWallOverlays();
                 
                 // 鼠标悬停高亮
-                if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.hoveredWall) {
+                if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.hoveredWall && !this.editor.isDragging) {
                     const {x, y} = this.editor.hoveredWall;
                     if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
                         ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
@@ -3205,12 +3224,19 @@
                 if (this.editor.mode === mode) return;
                 this.showConfirm(`切换编辑模式将清空当前地图，确定吗？`, () => {
                     this.editor.mode = mode;
-                    // 直接创建新地图，跳过 clearEditorMap 的确认
-                    this.createBlankEditorMap();
+
+                    if (mode === 'free') {
+                        // 当切换到自由模式时，执行“重置方格”逻辑
+                        // 这个函数会处理自己的渲染，所以后续不需要再调用 draw
+                        this.resetGridsAndClearEntities();
+                    } else {
+                        // 当切换回常规模式时，保持原有逻辑
+                        this.createBlankEditorMap();
+                        this._renderStaticLayer();
+                        this.drawEditor();
+                    }
+
                     this.updateEditorUIForMode();
-                    // 强制刷新视图
-                    this._renderStaticLayer();
-                    this.drawEditor();
                 });
             }
 
@@ -3235,24 +3261,27 @@
             /**
              * 创建一个带外墙和起始房间的空白地图
              */
+            /**
+             * 创建一个带外墙和起始房间的空白地图
+             */
             createBlankEditorMap() {
-                this.padding = 15; // 新增
-                this.cellSize = (canvas.width - 2 * this.padding) / this.width; // 修改
+                this.padding = 15;
+                this.cellSize = (canvas.width - 2 * this.padding) / this.width;
                 
                 const wall = () => ({ type: WALL_TYPES.SOLID, keys: 0 });
                 const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
                 const door = () => ({ type: WALL_TYPES.DOOR, keys: 0 });
 
-                // 初始化空地
+                // 1. 总是清空墙体和实体
                 this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty));
                 this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty));
-                
-                // 默认全填充
-                this.activeCells = Array(this.height).fill(null).map(() => Array(this.width).fill(true));
                 this.customStartPos = null;
+                
+                // 2. 总是将方格填满
+                this.activeCells = Array(this.height).fill(null).map(() => Array(this.width).fill(true));
 
+                // 3. 如果是常规模式，额外添加外墙和起始房间
                 if (this.editor.mode === 'regular') {
-                    // Regular Mode: 外墙和固定房间
                     for (let x = 0; x < this.width; x++) {
                         this.hWalls[0][x] = wall();
                         this.hWalls[this.height][x] = wall();
@@ -3262,7 +3291,6 @@
                         this.vWalls[y][this.width] = wall();
                     }
                     
-                    // 创建固定的起始房间
                     const roomY = this.height - 3;
                     for (let x = 0; x < 3; x++) this.hWalls[roomY + 3][x] = wall();
                     for (let y = roomY; y < roomY + 3; y++) this.vWalls[y][0] = wall();
@@ -3270,12 +3298,9 @@
                     this.vWalls[roomY][3] = wall(); this.vWalls[roomY+2][3] = wall();
                     this.hWalls[roomY][1] = door();
                     this.vWalls[roomY+1][3] = door();
-                } else {
-                    // Free Mode: 空旷，但初始填满 activeCells (作为可编辑区域)
-                    // 不需要预置墙壁，用户需要自己画
                 }
                 
-                // 重置实体
+                // 4. 重置所有实体
                 this.startPos = { x: 1, y: this.height - 2 };
                 this.endPos = null;
                 this.ghosts = [];
@@ -3356,13 +3381,109 @@
             }
 
             /**
+             * 仅清空编辑器中的元件（墙、实体），保留地图方格形状
+             */
+            clearEntitiesOnly() {
+                const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
+                // 重置所有墙体为空
+                this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty));
+                this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty));
+
+                // 清空所有实体
+                this.endPos = null;
+                this.customStartPos = null;
+                this.ghosts = [];
+                this.items = [];
+                this.buttons = [];
+
+                this.drawEditor();
+            }
+
+            /**
+             * [新增] 清空所有地图方格和元件（自由模式专用）
+             */
+            clearAllGridsAndEntities() {
+                // 1. 将所有方格设置为空（虚空）
+                this.activeCells = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
+
+                // 2. 清空所有元件
+                this.clearEntitiesOnly(); // 复用清空元件的逻辑
+
+                // 3. 【核心修复】重新渲染静态背景层以反映方格变化
+                this._renderStaticLayer();
+
+                // 4. 重绘编辑器
+                this.drawEditor();
+            }
+
+            /**
+             * [新增] 重置所有地图方格为填满状态，并清空所有元件（自由模式专用）
+             */
+            resetGridsAndClearEntities() {
+                // 1. 将所有方格设置为填满
+                this.activeCells = Array(this.height).fill(null).map(() => Array(this.width).fill(true));
+
+                // 2. 清空所有元件
+                this.clearEntitiesOnly(); // 复用清空元件的逻辑
+
+                // 3. 重新渲染静态背景层
+                this._renderStaticLayer();
+
+                // 4. 重绘编辑器
+                this.drawEditor();
+            }
+
+            /**
+             * 显示清空地图的四选项确认框
+             */
+            showClearMapConfirm() {
+                this.clearMapConfirmOverlay.style.display = 'flex';
+
+                const hide = () => {
+                    this.clearMapConfirmOverlay.style.display = 'none';
+                    // 移除事件监听，避免重复绑定
+                    this.clearEntitiesBtn.onclick = null;
+                    this.resetGridsBtn.onclick = null; // 新增
+                    this.clearGridsBtn.onclick = null;
+                    this.clearCancelBtn.onclick = null;
+                };
+
+                // 绑定“清空元件”按钮事件
+                this.clearEntitiesBtn.onclick = () => {
+                    hide();
+                    this.clearEntitiesOnly();
+                };
+
+                // 新增：绑定“重置方格”按钮事件
+                this.resetGridsBtn.onclick = () => {
+                    hide();
+                    this.resetGridsAndClearEntities();
+                };
+
+                // 绑定“清空方格”按钮事件
+                this.clearGridsBtn.onclick = () => {
+                    hide();
+                    this.clearAllGridsAndEntities();
+                };
+
+                // 绑定“取消”按钮事件
+                this.clearCancelBtn.onclick = hide;
+            }
+
+            /**
              * 清空编辑器中的所有内容
              */
             clearEditorMap() {
-                this.showConfirm('你确定要清空所有墙壁、实体和物品吗？', () => {
-                    this.createBlankEditorMap();
-                    this.drawEditor();
-                });
+                if (this.editor.mode === 'free') {
+                    // 自由模式下，显示新的三选项弹窗
+                    this.showClearMapConfirm();
+                } else {
+                    // 常规模式下，保持旧的双选项弹窗
+                    this.showConfirm('你确定要清空所有墙壁、实体和物品吗？', () => {
+                        this.createBlankEditorMap();
+                        this.drawEditor();
+                    });
+                }
             }
             
             /**
@@ -3687,6 +3808,7 @@
                 
                 this.editor.isDragging = true;
                 this.editor.didDrag = false;
+                this.editor.hoveredWall = null; // 新增：开始拖动时立即清除悬停状态
                 const pos = this.getMousePos(e);
 
                 if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.mode === 'free') {
@@ -3731,24 +3853,28 @@
 
                 // Grid Tool Logic
                 if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.mode === 'free') {
-                    // Grid tool highlighting
                     const cellX = Math.floor(pos.x / this.cellSize);
                     const cellY = Math.floor(pos.y / this.cellSize);
-                    // 使用 hoveredWall 作为临时存储单元格坐标的 hack
-                    if (!this.editor.hoveredWall || this.editor.hoveredWall.x !== cellX || this.editor.hoveredWall.y !== cellY) {
-                        this.editor.hoveredWall = {x: cellX, y: cellY};
-                        this.drawEditor();
-                    }
 
                     if (this.editor.isDragging) {
+                        // --- 拖动逻辑 ---
+                        // 正在拖动时，不应该有任何悬停状态
+                        this.editor.hoveredWall = null; 
+                        
                         this.editor.didDrag = true;
                         if (cellX >= 0 && cellX < this.width && cellY >= 0 && cellY < this.height) {
-                            // 仅执行与初始点击相同的动作
                             const currentStatus = this.activeCells[cellY][cellX];
                             if ((this.editor.gridDragAction === 'add' && !currentStatus) ||
                                 (this.editor.gridDragAction === 'remove' && currentStatus)) {
                                 this.toggleActiveCell(cellX, cellY, this.editor.gridDragAction);
                             }
+                        }
+                    } else {
+                        // --- 悬停逻辑 ---
+                        // 只有在没有拖动时，才更新悬停位置并重绘
+                        if (!this.editor.hoveredWall || this.editor.hoveredWall.x !== cellX || this.editor.hoveredWall.y !== cellY) {
+                            this.editor.hoveredWall = {x: cellX, y: cellY};
+                            this.drawEditor();
                         }
                     }
                     return;
@@ -3995,8 +4121,6 @@
                     this.editor.hoveredWall = null;
                     this.drawEditor();
                 }
-                this.editor.isDragging = false;
-                this.editor.didDrag = false;
                 this.editor.dragAxis = null;
                 this.editor.lastDragPos = null;
             }
