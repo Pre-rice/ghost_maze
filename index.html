@@ -2812,6 +2812,7 @@
                 // 从mapData加载数据到编辑器
                 this.width = this.mapData.width;
                 this.height = this.mapData.height;
+                this.startPos = { x: 1, y: this.height - 2 };
                 this.editorMapSizeInput.value = this.width;
                 this.cellSize = canvas.width / this.width;
                 this.hWalls = JSON.parse(JSON.stringify(this.mapData.hWalls));
@@ -4000,6 +4001,7 @@
 
                     this.width = mapData.width;
                     this.height = mapData.height;
+                    this.startPos = { x: 1, y: this.height - 2 };
                     this.editorMapSizeInput.value = this.width;
                     this.cellSize = canvas.width / this.width;
                     this.hWalls = mapData.hWalls;
