@@ -1,0 +1,635 @@
+:root {
+    color-scheme: light;
+
+    --bg-color: #f0f2f5;
+    --danger-bg-color: #680e0e;
+    --container-bg: #ffffff;
+    --text-color: #333;
+    --border-color: #d9d9d9;
+    --primary-color: #1890ff;
+    --primary-hover-color: #40a9ff;
+    --danger-color: #ff4d4f;
+    --danger-hover-color: #ff7875;
+    --success-color: #52c41a;
+    --disabled-color: #f5f5f5;
+    --disabled-text-color: #bfbfbf;
+
+    /* Game Colors */
+    --ground-color: #dfe3e6;
+    --grid-line-color: #dadee1;
+    --unexplored-color: #0b0b0b;
+    --wall-color: #495360;
+    --player-color: #007bff;
+    --ghost-color: #dc3545;
+    --end-point-color: #28a745;
+    --key-color: #ffc107;
+    --start-room-highlight: rgba(173, 216, 230, 0.4);
+    --hover-highlight-color: #ffc107;
+
+    /* 新增：自由编辑模式相关颜色 */
+    --start-point-color: #00c9a7;
+    --void-grid-color: #ccc;
+}
+
+/* ===========================
+系统深色模式自动适配
+（仅在用户未手动切换时生效）
+=========================== */
+@media (prefers-color-scheme: dark) {
+    :root:not(.light):not(.dark) {
+        color-scheme: dark;
+        --bg-color: #1e1e1e;
+        --danger-bg-color: #4b0c0c;
+        --container-bg: #2c2c2c;
+        --text-color: #e6e6e6;
+        --border-color: #444;
+        --primary-color: #177ddc;
+        --primary-hover-color: #3c9ae8;
+        --danger-color: #ff6b6d;
+        --danger-hover-color: #ff8a8d;
+        --success-color: #52c41a;
+        --disabled-color: #3a3a3a;
+        --disabled-text-color: #777;
+
+        --ground-color: #2b2b2b;
+        --grid-line-color: #3a3a3a;
+        --unexplored-color: #000;
+        --wall-color: #666;
+        --player-color: #3c9ae8;
+        --ghost-color: #d9534f;
+        --end-point-color: #3fbf5a;
+        --key-color: #e6c34a;
+        
+        /* 新增 */
+        --start-point-color: #00c9a7;
+        --void-grid-color: #444;
+    }
+}
+
+/* ===========================
+用户强制深色模式覆盖系统设置
+=========================== */
+:root.dark {
+    color-scheme: dark;
+
+    --bg-color: #1e1e1e;
+    --container-bg: #2c2c2c;
+    --text-color: #e6e6e6;
+    --border-color: #444;
+
+    --primary-color: #177ddc;
+    --primary-hover-color: #3c9ae8;
+
+    --danger-color: #ff6b6d;
+    --danger-hover-color: #ff8a8d;
+    --danger-bg-color: #4b0c0c;
+
+    --success-color: #52c41a;
+
+    --disabled-color: #3a3a3a;
+    --disabled-text-color: #777;
+
+    --ground-color: #2b2b2b;
+    --grid-line-color: #3a3a3a;
+    --unexplored-color: #000;
+    --wall-color: #666;
+    --player-color: #3c9ae8;
+    --ghost-color: #d9534f;
+    --end-point-color: #3fbf5a;
+    --key-color: #e6c34a;
+    
+    /* 新增 */
+    --start-point-color: #00c9a7;
+    --void-grid-color: #444;
+}
+
+/* ===========================
+用户强制浅色模式覆盖系统设置
+=========================== */
+:root.light {
+    color-scheme: light;
+}
+
+/* ... 现有的 .theme-toggle 样式上方或下方 ... */
+
+/* 新增：右上角操作区容器 */
+.header-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 10px; /* 按钮之间的间距 */
+    align-items: center;
+    z-index: 10;
+}
+
+/* 重写：重置原有的主题开关定位，让它服从 Flex 布局 */
+.header-controls .theme-toggle {
+    position: relative;
+    top: auto;
+    right: auto;
+    margin: 0;
+}
+
+/* 新增：帮助按钮样式（复用主题按钮的风格） */
+.help-btn, .home-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background-color: var(--border-color); /* 与主题按钮背景一致 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none; /* 去除链接下划线 */
+    transition: background 0.25s;
+    cursor: pointer; /* 新增：确保 div 也有手型光标 */
+}
+
+.help-btn:hover, .home-btn:hover {
+    background-color: #c0c0c0; /* 简单的悬停效果，适配浅色 */
+}
+/* 深色模式下的悬停微调 */
+@media (prefers-color-scheme: dark) {
+     .help-btn:hover, .home-btn:hover { background-color: #555; }
+}
+:root.dark .help-btn:hover, :root.dark .home-btn:hover { background-color: #555; }
+
+.help-btn svg, .home-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: var(--text-color);
+    stroke: var(--text-color);
+}
+
+.theme-toggle {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+}
+
+.theme-toggle-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background-color: var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.25s;
+}
+
+.theme-toggle-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: var(--text-color);
+    stroke: var(--text-color);
+    transition: transform 0.4s ease;
+}
+
+.theme-toggle-btn.active svg {
+    transform: rotate(180deg);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    margin: 0;
+    padding: 20px;
+    min-height: 100vh;
+    box-sizing: border-box;
+    transition: background-color 0.25s ease; /* Faster transition */
+}
+
+body.danger-bg {
+    background-color: var(--danger-bg-color);
+}
+
+.main-container {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+#game-canvas {
+    border: none; /* 默认无边框，由JS控制 */
+    /* 背景设为透明，以便在虚空区域显示body背景（如红色警示） */
+    background-color: transparent; 
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.controls-panel {
+    width: 280px;
+    padding:15px;
+    background-color: var(--container-bg);
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: 6px;
+    position: relative;
+}
+
+.control-group h3 {
+    margin: 0;
+    font-size: 16px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.control-group .status-bar {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.control-group label, .control-group .label {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+#ghost-proximity-display.warning {
+    color: var(--danger-color);
+    font-weight: bold;
+}
+
+.control-group input[type="number"], .control-group input[type="text"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+button, .button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    text-align: center;
+}
+
+button:hover, .button:hover {
+    background-color: var(--primary-hover-color);
+}
+
+button.secondary {
+    background-color: #6c757d;
+}
+button.secondary:hover {
+    background-color: #5a6268;
+}
+
+button.danger {
+    background-color: var(--danger-color);
+}
+button.danger:hover {
+    background-color: var(--danger-hover-color);
+}
+
+button:disabled {
+    background-color: var(--disabled-color);
+    color: var(--disabled-text-color);
+    cursor: not-allowed;
+}
+
+.toggle-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.toggle-switch input[type="checkbox"] {
+    height: 0;
+    width: 0;
+    visibility: hidden;
+}
+
+.toggle-switch label {
+    cursor: pointer;
+    text-indent: -9999px;
+    width: 50px;
+    height: 25px;
+    background: grey;
+    display: block;
+    border-radius: 100px;
+    position: relative;
+}
+
+.toggle-switch label:after {
+    content: '';
+    position: absolute;
+    top: 2.5px;
+    left: 2.5px;
+    width: 20px;
+    height: 20px;
+    background: #fff;
+    border-radius: 90px;
+    transition: 0.3s;
+}
+
+.toggle-switch input:checked + label {
+    background: var(--primary-color);
+}
+
+.toggle-switch input:checked + label:after {
+    left: calc(100% - 2.5px);
+    transform: translateX(-100%);
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: none; /* Initially hidden */
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.overlay-content {
+    background-color: var(--container-bg);
+    padding: 30px 40px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.overlay-content h2, .overlay-content p {
+    margin-top: 0;
+    margin-bottom: 1em;
+}
+
+.overlay-content .buttons {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.editor-toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    /* 微调：左对齐以便新按钮排版 */
+    justify-content: flex-start;
+}
+
+.share-buttons-container {
+    display: flex;
+    gap: 10px;
+}
+.share-buttons-container button {
+    flex: 1; /* 让两个按钮平分宽度 */
+}
+
+.editor-toolbar button.active {
+    background-color: var(--primary-hover-color);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* === Toast Notification Styles === */
+.toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translate(-50%, -100px);
+    padding: 12px 20px;
+    border-radius: 6px;
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 15px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 2000;
+    opacity: 0;
+    visibility: hidden;
+    transition: transform 0.4s ease, opacity 0.4s ease, visibility 0.4s;
+}
+.toast.show {
+    transform: translate(-50%, 0);
+    opacity: 1;
+    visibility: visible;
+}
+.toast.success {
+    background-color: var(--success-color);
+}
+.toast.error {
+    background-color: var(--danger-color);
+}
+/* === 新增：用于将标签和输入框放在一行的样式 === */
+.inline-control-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px; /* 在标签和输入框之间增加一点间距 */
+}
+/* === 新增：限制行内输入框的宽度，使其不再占满剩余空间 === */
+.inline-control-group input[type="number"] {
+    width: 50%; /* 设置输入框宽度为父容器的一半 */
+}
+#game-canvas {
+ -webkit-tap-highlight-color: transparent; /* 核心改动：移除移动端点击时的蓝色高亮效果 */
+}
+
+/* === 新增：模式选择器样式 === */
+.mode-selector {
+    display: flex;
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.mode-btn {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    background-color: var(--container-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+    border-radius: 0;
+}
+.mode-btn:not(:last-child) {
+    border-right: 1px solid var(--border-color);
+}
+.mode-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+    font-weight: bold;
+}
+.mode-btn:not(.active):hover {
+    background-color: #f0f0f0;
+}
+
+/* === 移动端适配媒体查询 === */
+/* 当屏幕宽度小于等于 768px 时，应用以下样式 */
+@media (max-width: 768px) {
+    body {
+        padding: 10px; /* 为小屏幕调整内边距，避免内容紧贴边缘 */
+        align-items: flex-start; /* 恢复默认的顶部对齐 */
+    }
+
+    .main-container {
+        flex-direction: column; /* 核心改动：将主容器的布局从水平并排变为垂直堆叠 */
+        gap: 15px; /* 调整画布和控制面板垂直堆叠时的间距 */
+        width: 100%;
+    }
+
+    #game-canvas {
+        width: 100%; /* 让画布宽度占满容器宽度 */
+        height: auto; /* 高度自动调整，以保持其原始的1:1宽高比 */
+        order: 1; /* 视觉上确保画布在控制面板的上方 */
+    }
+
+    .controls-panel {
+        width: 100%; /* 控制面板也占满容器宽度 */
+        order: 2; /* 视觉上确保控制面板在画布的下方 */
+        padding: 15px; /* 可以在小屏幕上稍微减少一点内边距 */
+        box-sizing: border-box; /* 确保padding不会撑大宽度 */
+    }
+
+    /* 调整游戏结束、胜利等浮窗在小屏幕上的表现 */
+    .overlay-content {
+        padding: 20px 15px;
+        width: 90%; /* 避免浮窗宽度紧贴屏幕边缘 */
+        box-sizing: border-box;
+    }
+
+    .overlay-content h2 {
+        font-size: 1.5rem; /* 适当调整标题字体大小 */
+    }
+
+    /* 在小屏幕上，浮窗里的按钮也垂直堆叠，更易于点击 */
+    .overlay-content .buttons {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .overlay-content .buttons button {
+        width: 100%; /* 让每个按钮都更容易点击 */
+    }
+    
+    /* 调整编辑器工具栏，允许其在空间不足时换行并居中 */
+    .editor-toolbar {
+        justify-content: center;
+    }
+
+@media (max-width: 768px) {
+    #dpad-controls {
+        display: grid !important;
+        grid-template-columns: 60px 60px 60px;
+        grid-template-rows: 60px 60px 60px;
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        opacity: 0.7;
+        z-index: 100;
+        background-color: transparent;
+        touch-action: none;
+        transform-origin: center center;
+    }
+
+    .dpad-btn {
+        background-color: #333;
+        color: white;
+        border: 2px solid #555;
+        border-radius: 10px;
+        font-size: 24px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        user-select: none;
+        -webkit-user-select: none;
+        cursor: pointer;
+    }
+
+    #dpad-up { grid-column: 2; grid-row: 1; }
+    #dpad-down { grid-column: 2; grid-row: 3; }
+    #dpad-left { grid-column: 1; grid-row: 2; }
+    #dpad-right { grid-column: 3; grid-row: 2; }
+    
+    /* === 新增: 拖动把手的样式 === */
+    #dpad-grip {
+        grid-column: 2;
+        grid-row: 2;
+        background-color: rgba(85, 85, 85, 0.8);
+        border-radius: 50%;
+        cursor: move;
+        border: 2px solid #333;
+    }
+
+    .dpad-btn:active {
+        background-color: #555;
+        transform: scale(0.95);
+    }
+}
+}
+
+/* 1. 开关父容器的基础布局 */
+.toggle-controls-wrapper {
+display: flex;
+align-items: center;
+gap: 15px; /* 仅在移动端两个开关并存时生效 */
+/* 默认靠左对齐，适用于电脑端只有一个开关的情况 */
+justify-content: flex-start; 
+}
+
+/* 2. 每个开关的基础样式 */
+.toggle-controls-wrapper .toggle-switch {
+display: flex;
+align-items: center;
+justify-content: space-between;
+width: 100%; /* 默认让开关占满父容器宽度 */
+}
+
+/* 3. 默认隐藏方向键开关 */
+#dpad-toggle-container {
+display: none;
+}
+
+/* 4. 仅在移动端 (屏幕宽度 <= 768px) 应用特殊布局 */
+@media (max-width: 768px) {
+/* 在移动端，让父容器的对齐方式变为 space-between */
+.toggle-controls-wrapper {
+    justify-content: space-between;
+}
+
+/* 在移动端，让每个开关只占大约一半的宽度 */
+.toggle-controls-wrapper .toggle-switch {
+    width: 48%;
+}
+
+/* 在移动端，显示方向键开关 */
+#dpad-toggle-container {
+    display: flex;
+}
+}
+
+/* 用于通过JS来强制隐藏方向键的类 */
+#dpad-controls.hidden {
+display: none !important;
+}
