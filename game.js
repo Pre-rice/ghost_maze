@@ -828,14 +828,36 @@
 
                 let minX = this.width, maxX = 0, minY = this.height, maxY = 0;
                 let hasActive = false;
-                for(let y=0; y<this.height; y++) {
-                    for(let x=0; x<this.width; x++) {
-                        if(this.activeCells[y][x]) {
-                            hasActive = true;
-                            if(x < minX) minX = x;
-                            if(x > maxX) maxX = x;
-                            if(y < minY) minY = y;
-                            if(y > maxY) maxY = y;
+                
+                // Fix 12: 计算所有图层的边界
+                if (this.multiLayerMode && this.layers.length > 0) {
+                    for (let layer = 0; layer < this.layerCount; layer++) {
+                        const layerData = this.layers[layer];
+                        if (!layerData || !layerData.activeCells) continue;
+                        
+                        for(let y = 0; y < this.height; y++) {
+                            for(let x = 0; x < this.width; x++) {
+                                if(layerData.activeCells[y][x]) {
+                                    hasActive = true;
+                                    if(x < minX) minX = x;
+                                    if(x > maxX) maxX = x;
+                                    if(y < minY) minY = y;
+                                    if(y > maxY) maxY = y;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // 单层模式
+                    for(let y=0; y<this.height; y++) {
+                        for(let x=0; x<this.width; x++) {
+                            if(this.activeCells[y][x]) {
+                                hasActive = true;
+                                if(x < minX) minX = x;
+                                if(x > maxX) maxX = x;
+                                if(y < minY) minY = y;
+                                if(y > maxY) maxY = y;
+                            }
                         }
                     }
                 }
@@ -2396,7 +2418,8 @@
                 const stepWidth = innerSize / 3;
                 
                 // Fix 7: Add extra length to smooth the corner
-                const cornerExtend = stepHeight * 0.1;
+                // Ensure cornerExtend doesn't exceed available space
+                const cornerExtend = Math.min(stepHeight * 0.1, padding * 0.5);
                 
                 ctx.save();
                 ctx.globalAlpha = alpha;
