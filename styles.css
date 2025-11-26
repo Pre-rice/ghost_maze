@@ -573,21 +573,19 @@ button:disabled {
     #dpad-left { grid-column: 1; grid-row: 2; }
     #dpad-right { grid-column: 3; grid-row: 2; }
     
-    /* === 新增: 拖动把手的样式 === */
-    #dpad-grip {
+    /* Fix 8: 中键样式 - 与空格键绑定 */
+    #dpad-center {
         grid-column: 2;
         grid-row: 2;
-        background-color: rgba(85, 85, 85, 0.8);
+        background-color: rgba(85, 85, 85, 0.9);
         border-radius: 50%;
-        cursor: move;
-        border: 2px solid #333;
+        font-size: 18px;
     }
 
     .dpad-btn:active {
         background-color: #555;
         transform: scale(0.95);
     }
-}
 }
 
 /* 1. 开关父容器的基础布局 */
@@ -638,17 +636,16 @@ display: none !important;
 /* ===========================
    图层切换面板样式
    =========================== */
-/* Fix 3: Canvas wrapper to contain the layer panel */
+/* Fix 1: Canvas wrapper to position layer panel to the RIGHT of canvas (outside, not covering) */
 .canvas-wrapper {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
 }
 
 .layer-panel {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
+    position: relative;
+    margin-left: 10px;
     display: flex;
     flex-direction: column;
     gap: 5px;

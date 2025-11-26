@@ -203,7 +203,7 @@
                 // 移动端虚拟方向键(D-pad)状态
                 this.dpad = {
                     element: document.getElementById('dpad-controls'),
-                    grip: document.getElementById('dpad-grip'),
+                    grip: document.getElementById('dpad-center'), // Fix 8: 中键替代grip
                     isDragging: false,
                     isResizing: false,
                     startX: 0,
@@ -562,6 +562,7 @@
                 const downBtn = document.getElementById('dpad-down');
                 const leftBtn = document.getElementById('dpad-left');
                 const rightBtn = document.getElementById('dpad-right');
+                const centerBtn = document.getElementById('dpad-center'); // Fix 8: 中键
 
                 // 按下按钮时的处理函数，支持长按连续移动
                 const handleDpadPress = (dx, dy) => {
@@ -578,6 +579,12 @@
                 const handleDpadRelease = () => {
                     clearInterval(this.dpadInterval);
                 };
+                
+                // Fix 8: 中键按下时触发空格键功能
+                const handleCenterPress = () => {
+                    if (this.state !== GAME_STATES.PLAYING) return;
+                    this.useStair();
+                };
 
                 // 辅助函数，为按钮添加事件监听
                 const addListeners = (element, dx, dy) => {
@@ -592,6 +599,15 @@
                 addListeners(downBtn, 0, 1);
                 addListeners(leftBtn, -1, 0);
                 addListeners(rightBtn, 1, 0);
+                
+                // Fix 8: 绑定中键
+                if (centerBtn) {
+                    centerBtn.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        handleCenterPress();
+                    });
+                    centerBtn.addEventListener('mousedown', handleCenterPress);
+                }
 
                 // 监听全局的释放事件
                 document.addEventListener('touchend', handleDpadRelease);
@@ -1211,6 +1227,12 @@
                 this._switchToLayer(targetLayer);
                 this.currentLayer = targetLayer;
                 
+                // Fix 9: 切换seenCells到新层并更新视野
+                if (this.seenCellsPerLayer && this.seenCellsPerLayer[targetLayer]) {
+                    this.seenCells = this.seenCellsPerLayer[targetLayer];
+                }
+                this.updateVisibility();
+                
                 // Fix 4: 检查对面楼梯位置上是否有鬼要跟随玩家上下楼
                 this.handleGhostStairFollow(playerPrevPos, prevLayer, targetLayer);
                 
@@ -1507,11 +1529,21 @@
                 for (const ghost of this.ghosts) {
                     const sawBefore = this.canGhostSeePlayer(ghost, playerPrevPos);
                     const seesAfter = this.canGhostSeePlayer(ghost, this.player);
+                    
+                    // Fix 2: 检查鬼是否在与玩家配对的楼梯上（可以互相看见）
+                    const ghostOnPairedStair = this.isGhostOnPairedStairWithPlayer(ghost, playerPrevPos);
 
                     let target = null;
                     if (!sawBefore && seesAfter) target = this.player; // 玩家进入视野
                     if (sawBefore && !seesAfter) target = playerPrevPos; // 玩家离开视野
                     if (sawBefore && seesAfter) target = this.player; // 玩家在视野内移动
+                    
+                    // Fix 2: 如果鬼在配对楼梯上，它会上下楼梯追向玩家之前的位置
+                    if (ghostOnPairedStair) {
+                        // 鬼需要上下楼梯来追赶玩家
+                        this._moveGhostThroughStair(ghost, playerPrevPos);
+                        continue; // 这个鬼已经处理完毕，跳过常规移动
+                    }
                     
                     if (target) {
                         const path = this.findShortestPath(ghost, target);
@@ -1581,6 +1613,78 @@
              */
             isCellOccupiedByGhost(x, y, selfId = -1) {
                 return this.ghosts.some(g => g.id !== selfId && g.x === x && g.y === y);
+            }
+            
+            /**
+             * Fix 2: 检查鬼是否在与玩家配对的楼梯上
+             * @param {object} ghost - 鬼的位置
+             * @param {object} playerPos - 玩家的位置
+             * @returns {boolean} 是否在配对楼梯上
+             */
+            isGhostOnPairedStairWithPlayer(ghost, playerPos) {
+                if (!this.multiLayerMode || !playerPos) return false;
+                
+                // 检查玩家是否在楼梯上
+                const playerStair = this.stairs.find(s => 
+                    s.x === playerPos.x && s.y === playerPos.y && s.layer === this.playerLayer
+                );
+                if (!playerStair) return false;
+                
+                // 计算配对楼梯所在的层
+                const pairedLayer = playerStair.direction === 'up' ? this.playerLayer + 1 : this.playerLayer - 1;
+                if (pairedLayer < 0 || pairedLayer >= this.layerCount) return false;
+                
+                // 检查鬼是否在配对楼梯位置
+                // 鬼在当前层，需要检查它是否在配对楼梯对应的位置
+                const ghostOnSamePos = ghost.x === playerPos.x && ghost.y === playerPos.y;
+                
+                // 检查配对层是否有对应楼梯
+                const pairedStair = this.stairs.find(s =>
+                    s.x === playerPos.x && s.y === playerPos.y && s.layer === pairedLayer
+                );
+                
+                // 如果鬼在同一位置且存在配对楼梯，且鬼所在层是配对层
+                // 但由于鬼在this.ghosts中，它们在currentLayer，我们需要检查layers数据
+                if (ghostOnSamePos && pairedStair) {
+                    // 检查当前层是否是配对层
+                    if (this.currentLayer === pairedLayer) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            
+            /**
+             * Fix 2: 将鬼通过楼梯移动到玩家之前的位置
+             * @param {object} ghost - 要移动的鬼
+             * @param {object} playerPrevPos - 玩家之前的位置
+             */
+            _moveGhostThroughStair(ghost, playerPrevPos) {
+                // 找到鬼所在位置的楼梯
+                const ghostStair = this.stairs.find(s =>
+                    s.x === ghost.x && s.y === ghost.y && s.layer === this.currentLayer
+                );
+                if (!ghostStair) return;
+                
+                // 计算目标层（玩家之前所在的层）
+                const targetLayer = ghostStair.direction === 'up' ? this.currentLayer + 1 : this.currentLayer - 1;
+                if (targetLayer < 0 || targetLayer >= this.layerCount) return;
+                
+                // 检查目标层是否是玩家层
+                if (targetLayer !== this.playerLayer) return;
+                
+                // 从当前层移除鬼
+                const idx = this.ghosts.indexOf(ghost);
+                if (idx > -1) {
+                    this.ghosts.splice(idx, 1);
+                }
+                
+                // 将鬼添加到玩家所在层（通过layers数组）
+                ghost.trail = [];
+                if (this.layers[targetLayer]) {
+                    this.layers[targetLayer].ghosts.push(ghost);
+                }
             }
 
             // ==================================================
@@ -2412,14 +2516,11 @@
                 const stairSize = cs * scale;
                 const x = centerX - stairSize / 2;
                 const y = centerY - stairSize / 2;
-                const padding = stairSize * 0.05; // Smaller padding for scaled stair
-                const innerSize = stairSize - 2 * padding;
-                const stepHeight = innerSize / 3;
-                const stepWidth = innerSize / 3;
-                
-                // Fix 7: Add extra length to smooth the corner
-                // Ensure cornerExtend doesn't exceed available space
-                const cornerExtend = Math.min(stepHeight * 0.1, padding * 0.5);
+                const padding = stairSize * 0.08; // Padding for the stair
+                const innerWidth = stairSize - 2 * padding;
+                const innerHeight = stairSize - 2 * padding;
+                const stepWidth = innerWidth / 3;
+                const stepHeight = innerHeight / 3;
                 
                 ctx.save();
                 ctx.globalAlpha = alpha;
@@ -2429,37 +2530,54 @@
                 
                 if (stair.direction === 'up') {
                     // 向上楼梯：左低右高（三级台阶）
-                    // 左边框
-                    ctx.moveTo(x + padding, y + stairSize - padding);
-                    ctx.lineTo(x + padding, y + stairSize - padding - stepHeight);
-                    // 第一级台阶
-                    ctx.lineTo(x + padding + stepWidth, y + stairSize - padding - stepHeight);
-                    ctx.lineTo(x + padding + stepWidth, y + stairSize - padding - 2 * stepHeight);
-                    // 第二级台阶
-                    ctx.lineTo(x + padding + 2 * stepWidth, y + stairSize - padding - 2 * stepHeight);
-                    ctx.lineTo(x + padding + 2 * stepWidth, y + stairSize - padding - 3 * stepHeight);
-                    // 第三级台阶顶部 - smooth the corner by extending the vertical line
-                    ctx.lineTo(x + stairSize - padding, y + padding - cornerExtend);
-                    // 右边框 - slightly extend at top for smoother corner
-                    ctx.lineTo(x + stairSize - padding, y + stairSize - padding);
-                    // 底部
-                    ctx.lineTo(x + padding, y + stairSize - padding);
+                    // 从左下角开始，顺时针绘制
+                    const left = x + padding;
+                    const right = x + stairSize - padding;
+                    const bottom = y + stairSize - padding;
+                    const top = y + padding;
+                    
+                    ctx.moveTo(left, bottom);
+                    // 左边框（第一步高度）
+                    ctx.lineTo(left, bottom - stepHeight);
+                    // 第一级台阶水平
+                    ctx.lineTo(left + stepWidth, bottom - stepHeight);
+                    // 第二步高度
+                    ctx.lineTo(left + stepWidth, bottom - 2 * stepHeight);
+                    // 第二级台阶水平
+                    ctx.lineTo(left + 2 * stepWidth, bottom - 2 * stepHeight);
+                    // 第三步高度
+                    ctx.lineTo(left + 2 * stepWidth, top);
+                    // 顶部水平线（确保横平竖直）
+                    ctx.lineTo(right, top);
+                    // 右边框
+                    ctx.lineTo(right, bottom);
+                    // 底部水平线
+                    ctx.lineTo(left, bottom);
                 } else {
                     // 向下楼梯：左高右低（三级台阶）
-                    // 左边框 - extend at top for smoother corner
-                    ctx.moveTo(x + padding, y + stairSize - padding);
-                    ctx.lineTo(x + padding, y + padding - cornerExtend);
-                    // 顶部到第一级台阶
-                    ctx.lineTo(x + padding + stepWidth, y + padding);
-                    ctx.lineTo(x + padding + stepWidth, y + padding + stepHeight);
-                    // 第二级台阶
-                    ctx.lineTo(x + padding + 2 * stepWidth, y + padding + stepHeight);
-                    ctx.lineTo(x + padding + 2 * stepWidth, y + padding + 2 * stepHeight);
-                    // 第三级台阶
-                    ctx.lineTo(x + stairSize - padding, y + padding + 2 * stepHeight);
-                    ctx.lineTo(x + stairSize - padding, y + stairSize - padding);
-                    // 底部
-                    ctx.lineTo(x + padding, y + stairSize - padding);
+                    // 从左下角开始，顺时针绘制
+                    const left = x + padding;
+                    const right = x + stairSize - padding;
+                    const bottom = y + stairSize - padding;
+                    const top = y + padding;
+                    
+                    ctx.moveTo(left, bottom);
+                    // 左边框（到顶部）
+                    ctx.lineTo(left, top);
+                    // 顶部水平线（确保横平竖直）
+                    ctx.lineTo(left + stepWidth, top);
+                    // 第一级台阶下降
+                    ctx.lineTo(left + stepWidth, top + stepHeight);
+                    // 第二级台阶水平
+                    ctx.lineTo(left + 2 * stepWidth, top + stepHeight);
+                    // 第二级台阶下降
+                    ctx.lineTo(left + 2 * stepWidth, top + 2 * stepHeight);
+                    // 第三级台阶水平
+                    ctx.lineTo(right, top + 2 * stepHeight);
+                    // 右边框
+                    ctx.lineTo(right, bottom);
+                    // 底部水平线
+                    ctx.lineTo(left, bottom);
                 }
                 
                 ctx.stroke();
@@ -2725,14 +2843,15 @@
             setLayerMode(isMultiLayer) {
                 if (this.multiLayerMode === isMultiLayer) return;
                 
+                // Fix 5: 如果多层模式只有1层，切换到单层模式不需要确认
                 if (!isMultiLayer && this.layerCount > 1) {
                     // 从多层切到单层，需要确认
                     this.showConfirm('地图只会保留第一层的内容，确定吗？', () => {
                         this._applyLayerMode(false);
                     });
                 } else {
-                    // 从单层切到多层，无需确认
-                    this._applyLayerMode(true);
+                    // 从单层切到多层，或多层只有1层时切到单层，无需确认
+                    this._applyLayerMode(isMultiLayer);
                 }
             }
 
@@ -3047,6 +3166,21 @@
             }
 
             /**
+             * Fix 6: 创建空的墙体数组
+             * @param {string} type - 'h' 水平墙或 'v' 垂直墙
+             * @param {number} width - 地图宽度
+             * @param {number} height - 地图高度
+             */
+            _createEmptyWalls(type, width, height) {
+                const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
+                if (type === 'h') {
+                    return Array(height + 1).fill(null).map(() => Array(width).fill(null).map(empty));
+                } else {
+                    return Array(height).fill(null).map(() => Array(width + 1).fill(null).map(empty));
+                }
+            }
+
+            /**
              * 在编辑器中调整地图大小并清空地图
              */
             resizeAndClearEditor() {
@@ -3056,10 +3190,52 @@
                     this.editorMapSizeInput.value = this.width;
                     return;
                 }
+                
+                // Fix 6: 保存原来的层数，在多层模式下需要重置所有层
+                const savedLayerCount = this.multiLayerMode ? this.layerCount : 1;
+                const wasMultiLayer = this.multiLayerMode;
+                
                 this.width = size;
                 this.height = size;
                 // createBlankEditorMap 会重新计算 cellSize，所以这里不需要手动计算
                 this.createBlankEditorMap();
+                
+                // Fix 6: 如果之前是多层模式，恢复层数并重置每层为初始状态
+                if (wasMultiLayer && savedLayerCount > 1) {
+                    this.multiLayerMode = true;
+                    this.layerCount = savedLayerCount;
+                    this.currentLayer = 0;
+                    this.playerLayer = 0;
+                    this.stairs = [];
+                    
+                    // 为每一层创建空白地图数据
+                    this.layers = [];
+                    for (let i = 0; i < savedLayerCount; i++) {
+                        this.layers.push({
+                            hWalls: this._createEmptyWalls('h', size, size),
+                            vWalls: this._createEmptyWalls('v', size, size),
+                            activeCells: Array(size).fill(null).map(() => Array(size).fill(true)),
+                            ghosts: [],
+                            items: [],
+                            buttons: [],
+                            stairs: [],
+                            endPos: null,
+                            customStartPos: null
+                        });
+                    }
+                    
+                    // 加载第一层数据到当前状态
+                    const firstLayer = this.layers[0];
+                    this.hWalls = firstLayer.hWalls;
+                    this.vWalls = firstLayer.vWalls;
+                    this.activeCells = firstLayer.activeCells;
+                    this.ghosts = firstLayer.ghosts;
+                    this.items = firstLayer.items;
+                    this.buttons = firstLayer.buttons;
+                    
+                    this.updateLayerPanel();
+                }
+                
                 this._renderStaticLayer(); // 尺寸变化，重新渲染静态层
                 this.drawEditor();
             }
@@ -3634,10 +3810,24 @@
                             this.eraseStairAt(cellX, cellY, this.currentLayer);
                             this.drawEditor();
                         } else {
-                            // 开始放置新楼梯
+                            // 开始放置新楼梯 - Fix 3: Use smart direction selection
                             const localY = pos.y - cellY * this.cellSize;
-                            const direction = localY < this.cellSize / 2 ? 'up' : 'down';
-                            this.editor.stairPlacement = { x: cellX, y: cellY, direction, layer: this.currentLayer };
+                            let direction = localY < this.cellSize / 2 ? 'up' : 'down';
+                            
+                            // Fix 3: If preferred direction is invalid, try the other direction
+                            if (!this.isValidStairPlacement(cellX, cellY, direction)) {
+                                const otherDirection = direction === 'up' ? 'down' : 'up';
+                                if (this.isValidStairPlacement(cellX, cellY, otherDirection)) {
+                                    direction = otherDirection;
+                                }
+                            }
+                            
+                            // Only start placement if valid
+                            if (this.isValidStairPlacement(cellX, cellY, direction)) {
+                                this.editor.stairPlacement = { x: cellX, y: cellY, direction, layer: this.currentLayer };
+                            } else {
+                                this.showToast('无效放置', 1500, 'error');
+                            }
                             this.drawEditor();
                         }
                     }
