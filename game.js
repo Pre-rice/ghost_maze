@@ -763,7 +763,17 @@
                 
                 // 仅在全新开始或探索模式下重置视野
                 if (this.gameMode === 'exploration' || this.loopCount === 0) {
-                    this.seenCells = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
+                    // Fix 2: Per-layer fog of war - seenCells is now per-layer
+                    if (this.multiLayerMode) {
+                        this.seenCellsPerLayer = [];
+                        for (let i = 0; i < this.layerCount; i++) {
+                            this.seenCellsPerLayer[i] = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
+                        }
+                        this.seenCells = this.seenCellsPerLayer[this.playerLayer];
+                    } else {
+                        this.seenCells = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
+                        this.seenCellsPerLayer = null;
+                    }
                 }
                 this.updateVisibility();
                 
@@ -1688,6 +1698,20 @@
                     if (wall.type > 0 && wall.type !== WALL_TYPES.GLASS) break;
                     this.seenCells[i][x] = true;
                 }
+                
+                // Fix 2: When player is on a stair, reveal the paired stair position on the other layer
+                if (this.multiLayerMode && this.seenCellsPerLayer) {
+                    const playerStair = this.stairs.find(s => 
+                        s.x === this.player.x && s.y === this.player.y && s.layer === this.playerLayer
+                    );
+                    if (playerStair) {
+                        const targetLayer = playerStair.direction === 'up' ? this.playerLayer + 1 : this.playerLayer - 1;
+                        if (targetLayer >= 0 && targetLayer < this.layerCount && this.seenCellsPerLayer[targetLayer]) {
+                            // Reveal only the stair position on the other layer
+                            this.seenCellsPerLayer[targetLayer][this.player.y][this.player.x] = true;
+                        }
+                    }
+                }
             }
 
             // ==================================================
@@ -1738,15 +1762,17 @@
 
                 ctx.fillStyle = this.colors.wall;
 
-                // 辅助函数：判断某点(x,y)在指定方向是否应该有视觉上的线条（实体墙 或 虚空边界）
-                const hasVisualLine = (type, wx, wy) => {
-                    // 1. 检查是否有实体墙
+                // Fix 8: 辅助函数：判断某点(x,y)在指定方向是否有需要填充角的实体墙
+                // 只有SOLID类型墙体才需要填充角，GLASS和其他类型不需要
+                const hasSolidWall = (type, wx, wy) => {
                     if (type === 'h') {
                         if (wx < 0 || wx >= this.width) return false;
-                        if (this.hWalls[wy][wx].type > 0) return true;
+                        // Fix 8: 只有SOLID墙才返回true
+                        if (this.hWalls[wy][wx].type === WALL_TYPES.SOLID) return true;
                     } else { // type === 'v'
                         if (wy < 0 || wy >= this.height) return false;
-                        if (this.vWalls[wy][wx].type > 0) return true;
+                        // Fix 8: 只有SOLID墙才返回true
+                        if (this.vWalls[wy][wx].type === WALL_TYPES.SOLID) return true;
                     }
                     
                     // 2. 检查是否是虚空边界 (Active vs Void)
@@ -1770,10 +1796,10 @@
                 for (let y = 0; y <= this.height; y++) {
                     for (let x = 0; x <= this.width; x++) {
                         // 检查四个方向是否有“视觉线条”连接到该点
-                        const hasHLeft = hasVisualLine('h', x - 1, y);
-                        const hasHRight = hasVisualLine('h', x, y);
-                        const hasVUp = hasVisualLine('v', x, y - 1);
-                        const hasVDown = hasVisualLine('v', x, y);
+                        const hasHLeft = hasSolidWall('h', x - 1, y);
+                        const hasHRight = hasSolidWall('h', x, y);
+                        const hasVUp = hasSolidWall('v', x, y - 1);
+                        const hasVDown = hasSolidWall('v', x, y);
 
                         const connectedCount = (hasHLeft ? 1 : 0) + (hasHRight ? 1 : 0) + (hasVUp ? 1 : 0) + (hasVDown ? 1 : 0);
                         if (connectedCount < 2) continue;
@@ -1783,11 +1809,11 @@
                             // 简单的视野检查：如果拐角所在的四个格子没有一个被探索过，且不是边缘，则隐藏
                             // 但根据需求“边缘墙必须全部显示”，我们需要放宽条件
                             
-                            // 重新使用 hasVisualLine 判断该点是否连接着“边界”，如果是边界连接点，强制显示
-                            const isBoundaryPoint = hasVisualLine('h', x - 1, y) || hasVisualLine('h', x, y) || hasVisualLine('v', x, y - 1) || hasVisualLine('v', x, y);
+                            // 重新使用 hasSolidWall 判断该点是否连接着“边界”，如果是边界连接点，强制显示
+                            const isBoundaryPoint = hasSolidWall('h', x - 1, y) || hasSolidWall('h', x, y) || hasSolidWall('v', x, y - 1) || hasSolidWall('v', x, y);
                             
                             // 如果不是强制显示的边界点，再检查Fog
-                            // 这里简化处理：因为上面的 hasVisualLine 已经包含了边界判断，
+                            // 这里简化处理：因为上面的 hasSolidWall 已经包含了边界判断，
                             // 如果 connectedCount >= 2 且包含了边界线，它自然应该显示。
                             // 我们只需要过滤掉那些“纯内部墙且未探索”的拐角。
                             
@@ -1925,7 +1951,10 @@
                         this.drawCircle(ghost.x, ghost.y, this.colors.ghost);
                     }
                 });
-                this.drawCircle(this.player.x, this.player.y, this.colors.player);
+                // Fix 1: Only render player when viewing the player's layer
+                if (!this.multiLayerMode || this.currentLayer === this.playerLayer) {
+                    this.drawCircle(this.player.x, this.player.y, this.colors.player);
+                }
                 this.items.forEach(item => {
                     if (this.seenCells[item.y][item.x] || this.debugVision) {
                         this.drawItem(item);
@@ -2324,11 +2353,21 @@
              */
             drawStair(stair, isHighlight = false, alpha = 1.0) {
                 const cs = this.cellSize;
-                const x = stair.x * cs;
-                const y = stair.y * cs;
-                const padding = cs * 0.1;
-                const stepHeight = (cs - 2 * padding) / 3;
-                const stepWidth = (cs - 2 * padding) / 3;
+                const centerX = stair.x * cs + cs / 2;
+                const centerY = stair.y * cs + cs / 2;
+                
+                // Fix 7: Reduce stair size to 80%
+                const scale = 0.8;
+                const stairSize = cs * scale;
+                const x = centerX - stairSize / 2;
+                const y = centerY - stairSize / 2;
+                const padding = stairSize * 0.05; // Smaller padding for scaled stair
+                const innerSize = stairSize - 2 * padding;
+                const stepHeight = innerSize / 3;
+                const stepWidth = innerSize / 3;
+                
+                // Fix 7: Add extra length to smooth the corner
+                const cornerExtend = stepHeight * 0.1;
                 
                 ctx.save();
                 ctx.globalAlpha = alpha;
@@ -2339,25 +2378,25 @@
                 if (stair.direction === 'up') {
                     // 向上楼梯：左低右高（三级台阶）
                     // 左边框
-                    ctx.moveTo(x + padding, y + cs - padding);
-                    ctx.lineTo(x + padding, y + cs - padding - stepHeight);
+                    ctx.moveTo(x + padding, y + stairSize - padding);
+                    ctx.lineTo(x + padding, y + stairSize - padding - stepHeight);
                     // 第一级台阶
-                    ctx.lineTo(x + padding + stepWidth, y + cs - padding - stepHeight);
-                    ctx.lineTo(x + padding + stepWidth, y + cs - padding - 2 * stepHeight);
+                    ctx.lineTo(x + padding + stepWidth, y + stairSize - padding - stepHeight);
+                    ctx.lineTo(x + padding + stepWidth, y + stairSize - padding - 2 * stepHeight);
                     // 第二级台阶
-                    ctx.lineTo(x + padding + 2 * stepWidth, y + cs - padding - 2 * stepHeight);
-                    ctx.lineTo(x + padding + 2 * stepWidth, y + cs - padding - 3 * stepHeight);
-                    // 第三级台阶顶部
-                    ctx.lineTo(x + cs - padding, y + padding);
-                    // 右边框
-                    ctx.lineTo(x + cs - padding, y + cs - padding);
+                    ctx.lineTo(x + padding + 2 * stepWidth, y + stairSize - padding - 2 * stepHeight);
+                    ctx.lineTo(x + padding + 2 * stepWidth, y + stairSize - padding - 3 * stepHeight);
+                    // 第三级台阶顶部 - smooth the corner by extending the vertical line
+                    ctx.lineTo(x + stairSize - padding, y + padding - cornerExtend);
+                    // 右边框 - slightly extend at top for smoother corner
+                    ctx.lineTo(x + stairSize - padding, y + stairSize - padding);
                     // 底部
-                    ctx.lineTo(x + padding, y + cs - padding);
+                    ctx.lineTo(x + padding, y + stairSize - padding);
                 } else {
                     // 向下楼梯：左高右低（三级台阶）
-                    // 左边框
-                    ctx.moveTo(x + padding, y + cs - padding);
-                    ctx.lineTo(x + padding, y + padding);
+                    // 左边框 - extend at top for smoother corner
+                    ctx.moveTo(x + padding, y + stairSize - padding);
+                    ctx.lineTo(x + padding, y + padding - cornerExtend);
                     // 顶部到第一级台阶
                     ctx.lineTo(x + padding + stepWidth, y + padding);
                     ctx.lineTo(x + padding + stepWidth, y + padding + stepHeight);
@@ -2365,10 +2404,10 @@
                     ctx.lineTo(x + padding + 2 * stepWidth, y + padding + stepHeight);
                     ctx.lineTo(x + padding + 2 * stepWidth, y + padding + 2 * stepHeight);
                     // 第三级台阶
-                    ctx.lineTo(x + cs - padding, y + padding + 2 * stepHeight);
-                    ctx.lineTo(x + cs - padding, y + cs - padding);
+                    ctx.lineTo(x + stairSize - padding, y + padding + 2 * stepHeight);
+                    ctx.lineTo(x + stairSize - padding, y + stairSize - padding);
                     // 底部
-                    ctx.lineTo(x + padding, y + cs - padding);
+                    ctx.lineTo(x + padding, y + stairSize - padding);
                 }
                 
                 ctx.stroke();
@@ -2780,6 +2819,11 @@
                 // 切换到新层
                 this._switchToLayer(layerIndex);
                 
+                // Fix 2: Switch to the per-layer seenCells
+                if (this.multiLayerMode && this.seenCellsPerLayer && this.seenCellsPerLayer[layerIndex]) {
+                    this.seenCells = this.seenCellsPerLayer[layerIndex];
+                }
+                
                 this.updateLayerPanel();
                 this._renderStaticLayer();
                 this.draw();
@@ -2869,31 +2913,20 @@
             }
 
             /**
-             * 定位图层面板到Canvas右侧
+             * 定位图层面板 - Fix 3: 面板现在通过CSS绝对定位在canvas内右侧居中
+             * 这个函数现在只用于确保面板可见时正确显示
              */
             _positionLayerPanel() {
-                const panel = document.getElementById('layer-panel');
-                const canvasEl = document.getElementById('game-canvas');
-                if (!panel || !canvasEl) return;
-                
-                const canvasRect = canvasEl.getBoundingClientRect();
-                
-                panel.style.left = (canvasRect.right + 10) + 'px';
-                panel.style.top = canvasRect.top + 'px';
+                // 面板现在通过CSS相对定位，不需要JS计算位置
+                // 保留此函数以维持兼容性
             }
 
             /**
              * 初始化窗口大小变化监听器
              */
             _initResizeListener() {
-                if (!this._resizeListenerAdded) {
-                    window.addEventListener('resize', () => {
-                        if (this.multiLayerMode) {
-                            this._positionLayerPanel();
-                        }
-                    });
-                    this._resizeListenerAdded = true;
-                }
+                // Fix 3: 面板使用CSS定位，不再需要resize监听器来重新定位
+                // 保留空函数以维持兼容性
             }
             
             /**

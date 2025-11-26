@@ -9,7 +9,20 @@
     <body>
 
         <div class="main-container">
-            <canvas id="game-canvas" width="600" height="600"></canvas>
+            <!-- Canvas wrapper for layer panel positioning inside canvas -->
+            <div class="canvas-wrapper">
+                <canvas id="game-canvas" width="600" height="600"></canvas>
+                <!-- Fix 3: 图层切换按钮面板（显示在Canvas内，右侧居中） -->
+                <div id="layer-panel" class="layer-panel" style="display: none;">
+                    <div id="layer-buttons-container">
+                        <!-- 动态生成图层按钮 -->
+                    </div>
+                    <div id="layer-edit-controls" style="display: none;">
+                        <button id="layer-add-btn" class="layer-control-btn">+</button>
+                        <button id="layer-remove-btn" class="layer-control-btn">−</button>
+                    </div>
+                </div>
+            </div>
 
             <div class="controls-panel">
                 <!-- Game Mode UI -->
@@ -268,17 +281,6 @@
             <div id="dpad-grip"></div> <!-- 新增的拖动把手 -->
             <div id="dpad-right" class="dpad-btn">▶</div>
             <div id="dpad-down" class="dpad-btn">▼</div>
-        </div>
-
-        <!-- 新增：图层切换按钮面板（显示在Canvas右侧） -->
-        <div id="layer-panel" class="layer-panel" style="display: none;">
-            <div id="layer-buttons-container">
-                <!-- 动态生成图层按钮 -->
-            </div>
-            <div id="layer-edit-controls" style="display: none;">
-                <button id="layer-add-btn" class="layer-control-btn">+</button>
-                <button id="layer-remove-btn" class="layer-control-btn">−</button>
-            </div>
         </div>
     </body>
 </html>

@@ -638,8 +638,17 @@ display: none !important;
 /* ===========================
    图层切换面板样式
    =========================== */
+/* Fix 3: Canvas wrapper to contain the layer panel */
+.canvas-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
 .layer-panel {
-    position: fixed;
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     flex-direction: column;
     gap: 5px;
