@@ -152,7 +152,7 @@
 @media (prefers-color-scheme: dark) {
      .help-btn:hover, .home-btn:hover { background-color: #555; }
 }
-:root.dark .help-btn:hover, .root.dark .home-btn:hover { background-color: #555; }
+:root.dark .help-btn:hover, :root.dark .home-btn:hover { background-color: #555; }
 
 .help-btn svg, .home-btn svg {
     width: 18px;
