@@ -1812,7 +1812,7 @@
              * 根据玩家当前位置更新可见的单元格
              */
             updateVisibility() {
-                // 新增：自由模式下，没有固定起始房间，只显示起点
+                // Fix 4: Only reveal spawn room/start in regular mode, not the default startPos
                 if (this.editor.mode === 'regular') {
                     const roomY = this.height - 3;
                     for (let y = roomY; y < roomY + 3; y++) {
@@ -1821,8 +1821,12 @@
                         }
                     }
                 } else {
-                     const start = this.customStartPos || this.startPos;
-                     if(start) this.seenCells[start.y][start.x] = true;
+                    // In free mode, only reveal the actual custom start position
+                    // Don't reveal the default startPos which could cause issues
+                    const start = this.customStartPos;
+                    if (start && this.seenCells) {
+                        this.seenCells[start.y][start.x] = true;
+                    }
                 }
 
                 const { x, y } = this.player;
@@ -2728,7 +2732,20 @@
                 this.width = this.mapData.width;
                 this.height = this.mapData.height;
                 this.startPos = { x: 1, y: this.height - 2 }; // 默认起点
-                this.customStartPos = this.mapData.customStartPos || null; // 加载自定义起点
+                
+                // Fix 2: 正确加载自定义起点（从layers中获取多层模式的起点）
+                if (this.mapData.multiLayerMode && this.mapData.layers) {
+                    // 在多层模式下，从正确的层加载起点
+                    this.customStartPos = null;
+                    for (let i = 0; i < this.mapData.layers.length; i++) {
+                        if (this.mapData.layers[i] && this.mapData.layers[i].customStartPos) {
+                            this.customStartPos = this.mapData.layers[i].customStartPos;
+                            break;
+                        }
+                    }
+                } else {
+                    this.customStartPos = this.mapData.customStartPos || null;
+                }
                 this.activeCells = this.mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
                 this.editor.mode = this.mapData.editorMode || 'regular';
                 
@@ -4557,6 +4574,10 @@
                     // 1. 收集数据
                     let sourceData;
                     if (isEditor) {
+                        // Fix 6: 保存当前层数据
+                        if (this.multiLayerMode) {
+                            this._saveCurrentLayerData();
+                        }
                         sourceData = {
                             width: this.width, height: this.height,
                             hWalls: this.hWalls, vWalls: this.vWalls,
@@ -4567,7 +4588,12 @@
                             initialStamina: parseInt(document.getElementById('editor-initial-stamina').value) || 100,
                             activeCells: this.activeCells,
                             editorMode: this.editor.mode,
-                            customStartPos: this.customStartPos
+                            customStartPos: this.customStartPos,
+                            // Fix 6: 多层地图数据
+                            multiLayerMode: this.multiLayerMode,
+                            layerCount: this.layerCount,
+                            layers: this.layers,
+                            stairs: this.stairs
                         };
                     } else {
                         if (!this.mapData) return null;
@@ -4579,7 +4605,12 @@
                             gameMode: this.gameMode, initialHealth: this.initialHealth, initialStamina: this.initialStamina,
                             activeCells: this.mapData.activeCells || Array(this.mapData.height).fill(null).map(()=>Array(this.mapData.width).fill(true)),
                             editorMode: this.mapData.editorMode || 'regular',
-                            customStartPos: this.mapData.customStartPos
+                            customStartPos: this.mapData.customStartPos,
+                            // Fix 6: 多层地图数据
+                            multiLayerMode: this.mapData.multiLayerMode || false,
+                            layerCount: this.mapData.layerCount || 1,
+                            layers: this.mapData.layers || [],
+                            stairs: this.mapData.stairs || []
                         };
                     }
 
@@ -4589,9 +4620,10 @@
                     buffer.push(sourceData.width);
                     buffer.push(sourceData.height);
                     
-                    // Mode Byte: Bit 0: 0=Exploration, 1=Loop; Bit 1: 0=Regular, 1=Free
+                    // Mode Byte: Bit 0: 0=Exploration, 1=Loop; Bit 1: 0=Regular, 1=Free; Bit 2: 0=Single, 1=Multi-layer
                     let modeByte = (sourceData.gameMode === 'exploration' ? 0 : 1);
                     if (sourceData.editorMode === 'free') modeByte |= 2;
+                    if (sourceData.multiLayerMode) modeByte |= 4; // Fix 6: 多层标志
                     buffer.push(modeByte);
                     
                     buffer.push(sourceData.initialHealth);
@@ -4685,6 +4717,96 @@
 
                     // 6. 追加参数数据
                     paramsQueue.forEach(p => buffer.push(p));
+                    
+                    // Fix 6: 多层地图数据序列化
+                    if (sourceData.multiLayerMode && sourceData.layers && sourceData.layers.length > 0) {
+                        buffer.push(sourceData.layerCount);
+                        
+                        // 序列化楼梯
+                        const stairs = sourceData.stairs || [];
+                        buffer.push(stairs.length);
+                        stairs.forEach(s => {
+                            buffer.push(s.x, s.y, s.layer);
+                            buffer.push(s.direction === 'up' ? 0 : 1);
+                        });
+                        
+                        // 序列化每层的数据（除了第0层，因为它已经作为主数据序列化了）
+                        for (let layerIdx = 1; layerIdx < sourceData.layerCount; layerIdx++) {
+                            const layer = sourceData.layers[layerIdx];
+                            if (!layer) continue;
+                            
+                            // 序列化该层的activeCells
+                            let bits = 0, bitCount = 0;
+                            for(let y = 0; y < sourceData.height; y++) {
+                                for(let x = 0; x < sourceData.width; x++) {
+                                    const active = layer.activeCells && layer.activeCells[y] ? layer.activeCells[y][x] : true;
+                                    if (active) bits |= (1 << bitCount);
+                                    bitCount++;
+                                    if (bitCount === 8) {
+                                        buffer.push(bits);
+                                        bits = 0;
+                                        bitCount = 0;
+                                    }
+                                }
+                            }
+                            if (bitCount > 0) buffer.push(bits);
+                            
+                            // 序列化该层的customStartPos
+                            if (layer.customStartPos) {
+                                buffer.push(layer.customStartPos.x, layer.customStartPos.y);
+                            } else {
+                                buffer.push(0xFF, 0xFF);
+                            }
+                            
+                            // 序列化该层的ghosts
+                            const layerGhosts = layer.ghosts || [];
+                            buffer.push(layerGhosts.length);
+                            layerGhosts.forEach(g => buffer.push(g.x, g.y));
+                            
+                            // 序列化该层的items
+                            const layerItems = layer.items || [];
+                            buffer.push(layerItems.length);
+                            layerItems.forEach(i => buffer.push(i.x, i.y));
+                            
+                            // 序列化该层的墙体
+                            const layerTypeNibbles = [];
+                            const layerParamsQueue = [];
+                            
+                            const processLayerWall = (wall) => {
+                                layerTypeNibbles.push(wall.type);
+                                if (wall.type === 3) layerParamsQueue.push(wall.keys);
+                                else if (wall.type === 4) {
+                                    let dir = 0;
+                                    if (wall.direction.dy === -1) dir = 0;
+                                    else if (wall.direction.dy === 1) dir = 1;
+                                    else if (wall.direction.dx === -1) dir = 2;
+                                    else dir = 3;
+                                    layerParamsQueue.push(dir);
+                                } else if (wall.type === 6) {
+                                    layerParamsQueue.push(wall.letter.charCodeAt(0));
+                                    layerParamsQueue.push(wall.initialState === 'open' ? 1 : 0);
+                                }
+                            };
+                            
+                            for (let y = 0; y <= sourceData.height; y++) {
+                                for (let x = 0; x < sourceData.width; x++) {
+                                    processLayerWall(layer.hWalls[y][x]);
+                                }
+                            }
+                            for (let y = 0; y < sourceData.height; y++) {
+                                for (let x = 0; x <= sourceData.width; x++) {
+                                    processLayerWall(layer.vWalls[y][x]);
+                                }
+                            }
+                            
+                            for (let i = 0; i < layerTypeNibbles.length; i += 2) {
+                                const t1 = layerTypeNibbles[i];
+                                const t2 = (i + 1 < layerTypeNibbles.length) ? layerTypeNibbles[i + 1] : 0;
+                                buffer.push((t1 << 4) | t2);
+                            }
+                            layerParamsQueue.forEach(p => buffer.push(p));
+                        }
+                    }
 
                     // 7. 【核心优化】DeflateRaw + URL-Safe Base64
                     const uint8Data = new Uint8Array(buffer);
@@ -4790,6 +4912,7 @@
                     const modeByte = read();
                     const gameMode = (modeByte & 1) === 0 ? 'exploration' : 'death-loop';
                     const editorMode = (modeByte & 2) === 0 ? 'regular' : 'free';
+                    const multiLayerMode = (modeByte & 4) !== 0; // Fix 6: 多层标志
                     
                     const initialHealth = read();
                     const staminaHigh = read();
@@ -4903,12 +5026,143 @@
                         for(let x=0; x<=width; x++) row.push(readNextWall());
                         vWalls.push(row);
                     }
+                    
+                    // Fix 6: 读取多层地图数据
+                    let layerCount = 1;
+                    let stairs = [];
+                    let layers = [];
+                    
+                    if (multiLayerMode && ptr < inflated.length) {
+                        layerCount = read();
+                        
+                        // 读取楼梯
+                        const stairCount = read();
+                        for (let i = 0; i < stairCount; i++) {
+                            const sx = read();
+                            const sy = read();
+                            const slayer = read();
+                            const sdir = read() === 0 ? 'up' : 'down';
+                            stairs.push({ x: sx, y: sy, layer: slayer, direction: sdir });
+                        }
+                        
+                        // 第0层的数据已经作为主数据读取了
+                        layers.push({
+                            hWalls: hWalls,
+                            vWalls: vWalls,
+                            activeCells: activeCells || Array(height).fill(null).map(() => Array(width).fill(true)),
+                            ghosts: initialGhosts,
+                            items: items,
+                            buttons: buttons,
+                            stairs: stairs.filter(s => s.layer === 0),
+                            endPos: endPos,
+                            customStartPos: customStartPos
+                        });
+                        
+                        // 读取其他层
+                        for (let layerIdx = 1; layerIdx < layerCount; layerIdx++) {
+                            // 读取该层的activeCells
+                            const layerActiveCells = [];
+                            let bits = 0, bc = 0;
+                            for(let y = 0; y < height; y++) {
+                                const row = [];
+                                for(let x = 0; x < width; x++) {
+                                    if (bc === 0) { bits = read(); }
+                                    const val = (bits & (1 << bc)) !== 0;
+                                    row.push(val);
+                                    bc++; if (bc === 8) bc = 0;
+                                }
+                                layerActiveCells.push(row);
+                            }
+                            
+                            // 读取该层的customStartPos
+                            const lcsx = read();
+                            const lcsy = read();
+                            const layerCustomStartPos = lcsx !== 0xFF ? { x: lcsx, y: lcsy } : null;
+                            
+                            // 读取该层的ghosts
+                            const layerGhostCount = read();
+                            const layerGhosts = [];
+                            for (let i = 0; i < layerGhostCount; i++) {
+                                layerGhosts.push({ x: read(), y: read() });
+                            }
+                            
+                            // 读取该层的items
+                            const layerItemCount = read();
+                            const layerItems = [];
+                            for (let i = 0; i < layerItemCount; i++) {
+                                layerItems.push({ x: read(), y: read(), type: 'key' });
+                            }
+                            
+                            // 读取该层的墙体
+                            const layerPackedBytesLen = Math.ceil(totalWalls / 2);
+                            const layerPackedTypes = inflated.subarray(ptr, ptr + layerPackedBytesLen);
+                            ptr += layerPackedBytesLen;
+                            
+                            let layerWallCounter = 0;
+                            const getLayerWallType = (index) => {
+                                const byteIndex = Math.floor(index / 2);
+                                const byte = layerPackedTypes[byteIndex];
+                                if (index % 2 === 0) return (byte >> 4) & 0x0F;
+                                else return byte & 0x0F;
+                            };
+                            
+                            const readNextLayerWall = () => {
+                                const type = getLayerWallType(layerWallCounter++);
+                                const wall = { type: type, keys: 0 };
+                                if (type === 3) wall.keys = read();
+                                else if (type === 4) {
+                                    const d = read();
+                                    if (d === 0) wall.direction = {dx:0, dy:-1};
+                                    else if (d === 1) wall.direction = {dx:0, dy:1};
+                                    else if (d === 2) wall.direction = {dx:-1, dy:0};
+                                    else wall.direction = {dx:1, dy:0};
+                                } else if (type === 6) {
+                                    wall.letter = String.fromCharCode(read());
+                                    const s = read();
+                                    wall.initialState = s === 1 ? 'open' : 'closed';
+                                    wall.currentState = wall.initialState;
+                                }
+                                return wall;
+                            };
+                            
+                            const layerHWalls = [];
+                            for(let y = 0; y <= height; y++) {
+                                const row = [];
+                                for(let x = 0; x < width; x++) row.push(readNextLayerWall());
+                                layerHWalls.push(row);
+                            }
+                            
+                            const layerVWalls = [];
+                            for(let y = 0; y < height; y++) {
+                                const row = [];
+                                for(let x = 0; x <= width; x++) row.push(readNextLayerWall());
+                                layerVWalls.push(row);
+                            }
+                            
+                            layers.push({
+                                hWalls: layerHWalls,
+                                vWalls: layerVWalls,
+                                activeCells: layerActiveCells,
+                                ghosts: layerGhosts,
+                                items: layerItems,
+                                buttons: [],
+                                stairs: stairs.filter(s => s.layer === layerIdx),
+                                endPos: null,
+                                customStartPos: layerCustomStartPos
+                            });
+                        }
+                    }
 
                     const mapData = {
                         width, height, hWalls, vWalls, endPos, initialGhosts, items, buttons,
                         editorMode: editorMode,
                         customStartPos: customStartPos,
-                        activeCells: activeCells
+                        activeCells: activeCells,
+                        // Fix 6: 多层数据
+                        multiLayerMode: multiLayerMode,
+                        layerCount: layerCount,
+                        layers: layers,
+                        stairs: stairs
                     };
 
                     this._applyLoadedData(mapData, gameMode, initialHealth, initialStamina, isEditor);
@@ -4944,6 +5198,13 @@
                     this.activeCells = mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
                     this.editor.mode = mapData.editorMode || 'regular';
                     this.customStartPos = mapData.customStartPos;
+                    
+                    // Fix 6: 多层数据加载
+                    this.multiLayerMode = mapData.multiLayerMode || false;
+                    this.layerCount = mapData.layerCount || 1;
+                    this.currentLayer = 0;
+                    this.stairs = JSON.parse(JSON.stringify(mapData.stairs || []));
+                    this.layers = JSON.parse(JSON.stringify(mapData.layers || []));
 
                     this.mapData = { // 更新当前的 mapData，确保 reset/play 正确
                         ...mapData,
@@ -4952,6 +5213,8 @@
                     };
 
                     this.updateEditorUIForMode(); // 更新UI状态
+                    this.updateLayerModeUI(); // Fix 6: 更新图层模式UI
+                    this.updateLayerPanel(); // Fix 6: 更新图层面板
                     this._renderStaticLayer();
                     this.drawEditor();
                 } else {
