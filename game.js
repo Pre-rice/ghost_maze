@@ -1207,6 +1207,32 @@
                 
                 if (!targetStair) return;
                 
+                // Fix 3: 检查配对楼梯上是否有鬼，如果有玩家会死亡
+                if (this.checkGhostOnPairedStair()) {
+                    // 执行上下楼（来到鬼的位置）
+                    this.playerLayer = targetLayer;
+                    this.player.steps++;
+                    
+                    if (this.gameMode === 'death-loop') {
+                        this.player.stamina--;
+                    }
+                    
+                    // 切换到新层
+                    this._saveCurrentLayerData();
+                    this._switchToLayer(targetLayer);
+                    this.currentLayer = targetLayer;
+                    
+                    // 更新显示
+                    this.updateUIDisplays();
+                    this.updateLayerPanel();
+                    this._renderStaticLayer();
+                    this.draw();
+                    
+                    // 玩家来到鬼的位置，死亡
+                    this.handlePlayerDeath('ghost');
+                    return;
+                }
+                
                 // 记录玩家之前位置用于鬼追踪
                 const playerPrevPos = { x: this.player.x, y: this.player.y };
                 const prevLayer = this.playerLayer;
@@ -1529,21 +1555,11 @@
                 for (const ghost of this.ghosts) {
                     const sawBefore = this.canGhostSeePlayer(ghost, playerPrevPos);
                     const seesAfter = this.canGhostSeePlayer(ghost, this.player);
-                    
-                    // Fix 2: 检查鬼是否在与玩家配对的楼梯上（可以互相看见）
-                    const ghostOnPairedStair = this.isGhostOnPairedStairWithPlayer(ghost, playerPrevPos);
 
                     let target = null;
                     if (!sawBefore && seesAfter) target = this.player; // 玩家进入视野
                     if (sawBefore && !seesAfter) target = playerPrevPos; // 玩家离开视野
                     if (sawBefore && seesAfter) target = this.player; // 玩家在视野内移动
-                    
-                    // Fix 2: 如果鬼在配对楼梯上，它会上下楼梯追向玩家之前的位置
-                    if (ghostOnPairedStair) {
-                        // 鬼需要上下楼梯来追赶玩家
-                        this._moveGhostThroughStair(ghost, playerPrevPos);
-                        continue; // 这个鬼已经处理完毕，跳过常规移动
-                    }
                     
                     if (target) {
                         const path = this.findShortestPath(ghost, target);
@@ -1552,6 +1568,9 @@
                         }
                     }
                 }
+                
+                // Fix 3: 处理配对楼梯上的鬼追击
+                this.handleGhostsOnPairedStairs(playerPrevPos);
 
                 if (moveIntents.length === 0) return;
 
@@ -1616,17 +1635,59 @@
             }
             
             /**
-             * Fix 2: 检查鬼是否在与玩家配对的楼梯上
-             * @param {object} ghost - 鬼的位置
-             * @param {object} playerPos - 玩家的位置
-             * @returns {boolean} 是否在配对楼梯上
+             * Fix 3: 检查并处理配对楼梯上鬼的追击
+             * 玩家和鬼分别处于一对楼梯的两个位置时，鬼和玩家可以互相看见，
+             * 此时玩家移动一步（上下左右移动），鬼会上下楼梯来到玩家移动前的位置
+             * @param {object} playerPrevPos - 玩家移动前的位置
              */
-            isGhostOnPairedStairWithPlayer(ghost, playerPos) {
-                if (!this.multiLayerMode || !playerPos) return false;
+            handleGhostsOnPairedStairs(playerPrevPos) {
+                if (!this.multiLayerMode || !this.layers) return;
                 
-                // 检查玩家是否在楼梯上
+                // 找到玩家移动前位置的楼梯（在玩家层）
                 const playerStair = this.stairs.find(s => 
-                    s.x === playerPos.x && s.y === playerPos.y && s.layer === this.playerLayer
+                    s.x === playerPrevPos.x && s.y === playerPrevPos.y && s.layer === this.playerLayer
+                );
+                if (!playerStair) return;
+                
+                // 计算配对楼梯所在的层
+                const pairedLayer = playerStair.direction === 'up' ? this.playerLayer + 1 : this.playerLayer - 1;
+                if (pairedLayer < 0 || pairedLayer >= this.layerCount) return;
+                
+                // 检查配对层的该位置是否有楼梯
+                const pairedStair = this.stairs.find(s =>
+                    s.x === playerPrevPos.x && s.y === playerPrevPos.y && s.layer === pairedLayer
+                );
+                if (!pairedStair) return;
+                
+                // 找到配对层楼梯位置上的鬼
+                const pairedLayerGhosts = this.layers[pairedLayer]?.ghosts || [];
+                const ghostsOnPairedStair = pairedLayerGhosts.filter(g =>
+                    g.x === playerPrevPos.x && g.y === playerPrevPos.y
+                );
+                
+                // 这些鬼会上下楼梯来到玩家移动前的位置（现在与玩家同层）
+                for (const ghost of ghostsOnPairedStair) {
+                    // 从配对层移除
+                    const idx = pairedLayerGhosts.indexOf(ghost);
+                    if (idx > -1) {
+                        pairedLayerGhosts.splice(idx, 1);
+                    }
+                    // 添加到玩家所在层（玩家移动前的位置）
+                    ghost.trail = [];
+                    this.ghosts.push(ghost);
+                }
+            }
+            
+            /**
+             * Fix 3: 检查玩家使用楼梯时是否会撞到配对楼梯上的鬼
+             * @returns {boolean} 是否会撞到鬼
+             */
+            checkGhostOnPairedStair() {
+                if (!this.multiLayerMode || !this.layers) return false;
+                
+                // 找到玩家当前位置的楼梯
+                const playerStair = this.stairs.find(s => 
+                    s.x === this.player.x && s.y === this.player.y && s.layer === this.playerLayer
                 );
                 if (!playerStair) return false;
                 
@@ -1634,57 +1695,11 @@
                 const pairedLayer = playerStair.direction === 'up' ? this.playerLayer + 1 : this.playerLayer - 1;
                 if (pairedLayer < 0 || pairedLayer >= this.layerCount) return false;
                 
-                // 检查鬼是否在配对楼梯位置
-                // 鬼在当前层，需要检查它是否在配对楼梯对应的位置
-                const ghostOnSamePos = ghost.x === playerPos.x && ghost.y === playerPos.y;
-                
-                // 检查配对层是否有对应楼梯
-                const pairedStair = this.stairs.find(s =>
-                    s.x === playerPos.x && s.y === playerPos.y && s.layer === pairedLayer
+                // 检查配对层的该位置是否有鬼
+                const pairedLayerGhosts = this.layers[pairedLayer]?.ghosts || [];
+                return pairedLayerGhosts.some(g =>
+                    g.x === this.player.x && g.y === this.player.y
                 );
-                
-                // 如果鬼在同一位置且存在配对楼梯，且鬼所在层是配对层
-                // 但由于鬼在this.ghosts中，它们在currentLayer，我们需要检查layers数据
-                if (ghostOnSamePos && pairedStair) {
-                    // 检查当前层是否是配对层
-                    if (this.currentLayer === pairedLayer) {
-                        return true;
-                    }
-                }
-                
-                return false;
-            }
-            
-            /**
-             * Fix 2: 将鬼通过楼梯移动到玩家之前的位置
-             * @param {object} ghost - 要移动的鬼
-             * @param {object} playerPrevPos - 玩家之前的位置
-             */
-            _moveGhostThroughStair(ghost, playerPrevPos) {
-                // 找到鬼所在位置的楼梯
-                const ghostStair = this.stairs.find(s =>
-                    s.x === ghost.x && s.y === ghost.y && s.layer === this.currentLayer
-                );
-                if (!ghostStair) return;
-                
-                // 计算目标层（玩家之前所在的层）
-                const targetLayer = ghostStair.direction === 'up' ? this.currentLayer + 1 : this.currentLayer - 1;
-                if (targetLayer < 0 || targetLayer >= this.layerCount) return;
-                
-                // 检查目标层是否是玩家层
-                if (targetLayer !== this.playerLayer) return;
-                
-                // 从当前层移除鬼
-                const idx = this.ghosts.indexOf(ghost);
-                if (idx > -1) {
-                    this.ghosts.splice(idx, 1);
-                }
-                
-                // 将鬼添加到玩家所在层（通过layers数组）
-                ghost.trail = [];
-                if (this.layers[targetLayer]) {
-                    this.layers[targetLayer].ghosts.push(ghost);
-                }
             }
 
             // ==================================================
