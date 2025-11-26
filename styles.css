@@ -538,6 +538,7 @@ button:disabled {
     .editor-toolbar {
         justify-content: center;
     }
+}
 
 @media (max-width: 768px) {
     #dpad-controls {
@@ -644,16 +645,21 @@ display: none !important;
 }
 
 .layer-panel {
-    position: relative;
-    margin-left: 10px;
+    /* 固定在画布右侧，垂直居中（对宽 / 窄屏均生效） */
+    position: absolute;
+    /* 向左微调，避免遮挡（原为 calc(100% + 10px)） */
+    left: calc(100% - 12px);
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    padding: 8px;
+    gap: 6px;
+    padding: 6px;
     background-color: var(--container-bg);
     border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-    z-index: 50;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.16);
+    z-index: 60;
+    min-width: 44px;
 }
 
 #layer-buttons-container {
@@ -663,33 +669,43 @@ display: none !important;
 }
 
 .layer-btn {
-    width: 40px;
-    height: 40px;
-    border: 2px solid transparent;
-    border-radius: 6px;
-    background-color: transparent;
+
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--container-bg);
     color: var(--text-color);
     font-size: 16px;
-    font-weight: bold;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .layer-btn:hover {
-    background-color: rgba(0, 123, 255, 0.1);
+    /* 与编辑器工具的高亮效果一致：主色悬停 + 内凹阴影 */
+    background-color: var(--primary-hover-color);
+    color: white;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.12);
+    transform: none;
 }
 
 .layer-btn.active {
     background-color: var(--primary-color);
     color: white;
+    border-color: rgba(0,0,0,0.06);
 }
 
 .layer-btn.player-layer {
     border-color: var(--player-layer-color);
-    box-shadow: 0 0 0 2px var(--player-layer-color);
+    border-width: 2px;
+    border-style: solid;
+    /* 稍微加宽黄色高亮：更明显的外扩阴影与更高不透明度 */
+    box-shadow: 0 0 0 5px rgba(255,193,7,0.12);
 }
 
 #layer-edit-controls {
