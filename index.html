@@ -134,6 +134,8 @@
                             <!-- 新增起点工具 (自由模式显示) -->
                             <button id="tool-start" class="tool-btn" style="display:none;">起点</button>
                             <button id="tool-end" class="tool-btn">终点</button>
+                            <!-- 新增楼梯工具 (仅多层地图模式显示) -->
+                            <button id="tool-stair" class="tool-btn" style="display:none;">楼梯</button>
                             <button id="tool-eraser" class="tool-btn">橡皮擦</button>
                             <!-- 新增地图方格工具 (自由模式显示) -->
                             <button id="tool-grid" class="tool-btn" style="display:none;">地图方格</button>
@@ -158,6 +160,16 @@
                                 class="mode-btn active">探索模式</button>
                             <button id="editor-mode-death-loop-btn"
                                 class="mode-btn">死亡循环</button>
+                        </div>
+                        <!-- 新增：地图层数选择（仅自由编辑模式显示） -->
+                        <div id="layer-mode-container" style="display: none;">
+                            <label class="label">地图层数</label>
+                            <div class="mode-selector">
+                                <button id="layer-mode-single-btn"
+                                    class="mode-btn active">单层地图</button>
+                                <button id="layer-mode-multi-btn"
+                                    class="mode-btn">多层地图</button>
+                            </div>
                         </div>
                         <div class="inline-control-group">
                             <label for="editor-map-size-input">地图大小
@@ -256,6 +268,17 @@
             <div id="dpad-grip"></div> <!-- 新增的拖动把手 -->
             <div id="dpad-right" class="dpad-btn">▶</div>
             <div id="dpad-down" class="dpad-btn">▼</div>
+        </div>
+
+        <!-- 新增：图层切换按钮面板（显示在Canvas右侧） -->
+        <div id="layer-panel" class="layer-panel" style="display: none;">
+            <div id="layer-buttons-container">
+                <!-- 动态生成图层按钮 -->
+            </div>
+            <div id="layer-edit-controls" style="display: none;">
+                <button id="layer-add-btn" class="layer-control-btn">+</button>
+                <button id="layer-remove-btn" class="layer-control-btn">−</button>
+            </div>
         </div>
     </body>
 </html>

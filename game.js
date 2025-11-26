@@ -31,6 +31,7 @@
         KEY: 'key',
         START: 'start', // 新增起点工具
         END: 'end',
+        STAIR: 'stair', // 新增楼梯工具
         ERASER: 'eraser',
         GRID: 'grid' // 新增地图方格工具
     };
@@ -166,6 +167,14 @@
                 this.endPos = { x: 0, y: 0 };
                 this.customStartPos = null; // 新增：自定义起点
                 this.activeCells = []; // 新增：有效地图方格位图
+                this.stairs = []; // 新增：楼梯数据 [{x, y, layer, direction: 'up'|'down'}]
+                
+                // 多层地图相关状态
+                this.multiLayerMode = false; // 是否为多层地图模式
+                this.layerCount = 1; // 当前图层数量
+                this.currentLayer = 0; // 当前显示/编辑的图层（0-based索引，0是最底层）
+                this.playerLayer = 0; // 玩家当前所在图层
+                this.layers = []; // 存储所有图层数据的数组，每层包含 {hWalls, vWalls, activeCells, ghosts, items, buttons, stairs, endPos}
                 
                 // 视野系统
                 this.seenCells = [];
@@ -182,7 +191,8 @@
                     lastDragPos: null,
                     hoveredWall: null,
                     hoveredButtonHotspot: null,
-                    gridDragAction: null // 'add' or 'remove'
+                    gridDragAction: null, // 'add' or 'remove'
+                    stairPlacement: null // 楼梯放置状态 {x, y, direction: 'up'|'down'}
                 };
 
                 // 历史记录系统状态
@@ -385,6 +395,14 @@
                 // 新增：编辑模式切换
                 document.getElementById('edit-type-regular-btn').addEventListener('click', () => this.attemptSetEditorMode('regular'));
                 document.getElementById('edit-type-free-btn').addEventListener('click', () => this.attemptSetEditorMode('free'));
+
+                // 新增：图层模式切换
+                document.getElementById('layer-mode-single-btn').addEventListener('click', () => this.setLayerMode(false));
+                document.getElementById('layer-mode-multi-btn').addEventListener('click', () => this.setLayerMode(true));
+                
+                // 新增：图层管理按钮
+                document.getElementById('layer-add-btn').addEventListener('click', () => this.addLayer());
+                document.getElementById('layer-remove-btn').addEventListener('click', () => this.removeLayer());
             }
 
             /**
@@ -696,7 +714,15 @@
                 this.activeCells = mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
                 this.customStartPos = mapData.customStartPos || null;
 
-                // 计算视口偏移以居中地图
+                // 加载多层地图数据
+                this.multiLayerMode = mapData.multiLayerMode || false;
+                this.layerCount = mapData.layerCount || 1;
+                this.currentLayer = 0;
+                this.playerLayer = 0;
+                this.stairs = JSON.parse(JSON.stringify(mapData.stairs || []));
+                this.layers = JSON.parse(JSON.stringify(mapData.layers || []));
+
+                // 计算视口偏移以居中地图（考虑所有图层）
                 this.calculateDrawOffset();
 
                 this._renderStaticLayer(); // 渲染静态背景层
@@ -743,6 +769,7 @@
                 // 更新UI，隐藏浮窗，并开始游戏循环
                 this.updateUIDisplays();
                 this.hideAllOverlays();
+                this.updateLayerPanel(); // 更新图层面板
                 this.startAnimationLoop();
 
                 // 记录游戏的初始状态
@@ -1053,6 +1080,11 @@
             handleKeyPress(e) {
                 if (this.state !== GAME_STATES.PLAYING) return;
                 this.stopAutoMove();
+                
+                // 多层模式下，任何移动键都强制切换到玩家所在层
+                if (this.multiLayerMode && this.currentLayer !== this.playerLayer) {
+                    this.switchToLayer(this.playerLayer);
+                }
 
                 let dx = 0, dy = 0;
                 switch (e.key) {
@@ -1060,10 +1092,122 @@
                     case 'ArrowDown': case 's': dy = 1; break;
                     case 'ArrowLeft': case 'a': dx = -1; break;
                     case 'ArrowRight': case 'd': dx = 1; break;
+                    case ' ': // 空格键：使用楼梯
+                        e.preventDefault();
+                        this.useStair();
+                        return;
                     default: return;
                 }
                 e.preventDefault();
                 this.movePlayer(dx, dy);
+            }
+
+            /**
+             * 使用楼梯上下楼
+             */
+            useStair() {
+                if (!this.multiLayerMode) return;
+                
+                // 检查玩家当前位置是否有楼梯
+                const stair = this.stairs.find(s => 
+                    s.x === this.player.x && 
+                    s.y === this.player.y && 
+                    s.layer === this.playerLayer
+                );
+                
+                if (!stair) return;
+                
+                // 计算目标层
+                const targetLayer = stair.direction === 'up' ? this.playerLayer + 1 : this.playerLayer - 1;
+                
+                // 验证目标层有效
+                if (targetLayer < 0 || targetLayer >= this.layerCount) return;
+                
+                // 检查目标层对应位置是否有对应楼梯
+                const targetStair = this.stairs.find(s =>
+                    s.x === this.player.x &&
+                    s.y === this.player.y &&
+                    s.layer === targetLayer &&
+                    s.direction === (stair.direction === 'up' ? 'down' : 'up')
+                );
+                
+                if (!targetStair) return;
+                
+                // 记录玩家之前位置用于鬼追踪
+                const playerPrevPos = { x: this.player.x, y: this.player.y };
+                const prevLayer = this.playerLayer;
+                
+                // 执行上下楼
+                this.playerLayer = targetLayer;
+                this.player.steps++;
+                
+                if (this.gameMode === 'death-loop') {
+                    this.player.stamina--;
+                }
+                
+                // 保存当前层数据，切换到新层
+                this._saveCurrentLayerData();
+                this._switchToLayer(targetLayer);
+                this.currentLayer = targetLayer;
+                
+                // 检查鬼是否跟随上下楼
+                this.handleGhostStairFollow(playerPrevPos, prevLayer, targetLayer);
+                
+                // 更新显示
+                this.updateUIDisplays();
+                this.updateLayerPanel();
+                this._renderStaticLayer();
+                this.draw();
+                
+                // 检查胜利/死亡
+                if (this.endPos && this.player.x === this.endPos.x && this.player.y === this.endPos.y) {
+                    this.handleWin();
+                    return;
+                }
+                
+                if (this.gameMode === 'death-loop' && this.player.stamina <= 0) {
+                    this.handlePlayerDeath('stamina_depleted');
+                    return;
+                }
+                
+                if (this.checkCollisionWithGhosts()) {
+                    this.handlePlayerDeath('ghost');
+                    return;
+                }
+                
+                this.recordHistory();
+            }
+
+            /**
+             * 处理鬼跟随玩家上下楼梯
+             */
+            handleGhostStairFollow(playerPrevPos, prevLayer, targetLayer) {
+                // 找到在前一层与玩家同位置的鬼（即在楼梯位置）
+                // 这些鬼应该跟随玩家上下楼
+                const ghostsToMove = this.ghosts.filter(g => 
+                    g.x === playerPrevPos.x && g.y === playerPrevPos.y
+                );
+                
+                // 由于我们切换到了新层，这里的ghosts是新层的鬼
+                // 我们需要找到并移动前一层的鬼
+                if (this.layers[prevLayer]) {
+                    const prevLayerGhosts = this.layers[prevLayer].ghosts;
+                    const ghostsOnStair = prevLayerGhosts.filter(g =>
+                        g.x === playerPrevPos.x && g.y === playerPrevPos.y
+                    );
+                    
+                    // 将这些鬼移动到新层
+                    for (const ghost of ghostsOnStair) {
+                        // 从旧层移除
+                        const idx = prevLayerGhosts.indexOf(ghost);
+                        if (idx > -1) {
+                            prevLayerGhosts.splice(idx, 1);
+                        }
+                        // 添加到新层
+                        ghost.trail = []; // 清空拖尾
+                        this.ghosts.push(ghost);
+                    }
+                }
             }
 
             /**
@@ -1770,6 +1914,13 @@
                 // 5. 绘制墙角填充
                 this.drawCorners(false);
 
+                // 5.5 绘制楼梯（在其他实体之前，最底层）
+                this.stairs.filter(s => s.layer === this.currentLayer).forEach(stair => {
+                    if (this.seenCells[stair.y][stair.x] || this.debugVision) {
+                        this.drawStair(stair);
+                    }
+                });
+
                 // 6. Entities
                 if (this.endPos && (this.seenCells[this.endPos.y][this.endPos.x] || this.debugVision)) {
                     this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
@@ -2171,6 +2322,65 @@
             }
 
             /**
+             * 绘制楼梯
+             * @param {object} stair - 楼梯对象 {x, y, direction: 'up'|'down'}
+             * @param {boolean} isHighlight - 是否高亮显示
+             * @param {number} alpha - 透明度
+             */
+            drawStair(stair, isHighlight = false, alpha = 1.0) {
+                const cs = this.cellSize;
+                const x = stair.x * cs;
+                const y = stair.y * cs;
+                const padding = cs * 0.1;
+                const stepHeight = (cs - 2 * padding) / 3;
+                const stepWidth = (cs - 2 * padding) / 3;
+                
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.strokeStyle = isHighlight ? this.colors.hoverHighlight : this.colors.wall;
+                ctx.lineWidth = Math.max(2, cs / 15);
+                ctx.beginPath();
+                
+                if (stair.direction === 'up') {
+                    // 向上楼梯：左低右高（三级台阶）
+                    // 左边框
+                    ctx.moveTo(x + padding, y + cs - padding);
+                    ctx.lineTo(x + padding, y + cs - padding - stepHeight);
+                    // 第一级台阶
+                    ctx.lineTo(x + padding + stepWidth, y + cs - padding - stepHeight);
+                    ctx.lineTo(x + padding + stepWidth, y + cs - padding - 2 * stepHeight);
+                    // 第二级台阶
+                    ctx.lineTo(x + padding + 2 * stepWidth, y + cs - padding - 2 * stepHeight);
+                    ctx.lineTo(x + padding + 2 * stepWidth, y + cs - padding - 3 * stepHeight);
+                    // 第三级台阶顶部
+                    ctx.lineTo(x + cs - padding, y + padding);
+                    // 右边框
+                    ctx.lineTo(x + cs - padding, y + cs - padding);
+                    // 底部
+                    ctx.lineTo(x + padding, y + cs - padding);
+                } else {
+                    // 向下楼梯：左高右低（三级台阶）
+                    // 左边框
+                    ctx.moveTo(x + padding, y + cs - padding);
+                    ctx.lineTo(x + padding, y + padding);
+                    // 顶部到第一级台阶
+                    ctx.lineTo(x + padding + stepWidth, y + padding);
+                    ctx.lineTo(x + padding + stepWidth, y + padding + stepHeight);
+                    // 第二级台阶
+                    ctx.lineTo(x + padding + 2 * stepWidth, y + padding + stepHeight);
+                    ctx.lineTo(x + padding + 2 * stepWidth, y + padding + 2 * stepHeight);
+                    // 第三级台阶
+                    ctx.lineTo(x + cs - padding, y + padding + 2 * stepHeight);
+                    ctx.lineTo(x + cs - padding, y + cs - padding);
+                    // 底部
+                    ctx.lineTo(x + padding, y + cs - padding);
+                }
+                
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            /**
              * 绘制一个按钮
              * @param {object} button - 按钮对象
              * @param {boolean} isHighlight - 是否为高亮预览模式
@@ -2281,6 +2491,10 @@
                     this.height = 10;
                     // 默认为常规模式
                     this.editor.mode = 'regular';
+                    this.multiLayerMode = false;
+                    this.layerCount = 1;
+                    this.currentLayer = 0;
+                    this.stairs = [];
                     this.createBlankEditorMap();
                     this.mapData = {
                         width: this.width, height: this.height,
@@ -2290,7 +2504,11 @@
                         initialGhosts: [],
                         items: [],
                         activeCells: this.activeCells,
-                        editorMode: 'regular'
+                        editorMode: 'regular',
+                        multiLayerMode: false,
+                        layerCount: 1,
+                        layers: [],
+                        stairs: []
                     };
                 }
 
@@ -2309,6 +2527,13 @@
                 this.customStartPos = this.mapData.customStartPos || null; // 加载自定义起点
                 this.activeCells = this.mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
                 this.editor.mode = this.mapData.editorMode || 'regular';
+                
+                // 加载多层地图相关状态
+                this.multiLayerMode = this.mapData.multiLayerMode || false;
+                this.layerCount = this.mapData.layerCount || 1;
+                this.currentLayer = 0;
+                this.stairs = JSON.parse(JSON.stringify(this.mapData.stairs || []));
+                this.layers = JSON.parse(JSON.stringify(this.mapData.layers || []));
 
                 this.editorMapSizeInput.value = this.width;
                 this.padding = 15; // 新增
@@ -2322,10 +2547,20 @@
                 
                 // 更新编辑器UI状态
                 this.updateEditorUIForMode();
+                this.updateLayerModeUI();
+                this.updateLayerPanel();
 
                 this._renderStaticLayer(); // 为编辑器渲染静态背景
                 this.drawEditor();
                 this.updateDpadVisibility();
+            }
+
+            /**
+             * 更新图层模式UI按钮状态
+             */
+            updateLayerModeUI() {
+                document.getElementById('layer-mode-single-btn').classList.toggle('active', !this.multiLayerMode);
+                document.getElementById('layer-mode-multi-btn').classList.toggle('active', this.multiLayerMode);
             }
 
             /**
@@ -2363,15 +2598,292 @@
                 document.getElementById('tool-start').style.display = isRegular ? 'none' : 'block';
                 document.getElementById('tool-grid').style.display = isRegular ? 'none' : 'block';
                 
+                // 显示/隐藏图层模式选择器（仅自由模式可用）
+                document.getElementById('layer-mode-container').style.display = isRegular ? 'none' : 'block';
+                
+                // 如果切换到常规模式，重置为单层地图
+                if (isRegular && this.multiLayerMode) {
+                    this.multiLayerMode = false;
+                    this.layerCount = 1;
+                    this.currentLayer = 0;
+                    this.updateLayerPanel();
+                }
+                
                 // 如果当前工具在当前模式下不可用，重置为墙壁
-                if (isRegular && (this.editor.tool === EDITOR_TOOLS.GRID || this.editor.tool === EDITOR_TOOLS.START)) {
+                if (isRegular && (this.editor.tool === EDITOR_TOOLS.GRID || this.editor.tool === EDITOR_TOOLS.START || this.editor.tool === EDITOR_TOOLS.STAIR)) {
+                    this.setEditorTool(EDITOR_TOOLS.WALL);
+                }
+                
+                // 更新楼梯工具显示（仅多层地图模式）
+                this.updateStairToolVisibility();
+            }
+
+            /**
+             * 更新楼梯工具的显示状态
+             */
+            updateStairToolVisibility() {
+                const stairBtn = document.getElementById('tool-stair');
+                const shouldShow = this.editor.mode === 'free' && this.multiLayerMode;
+                stairBtn.style.display = shouldShow ? 'block' : 'none';
+                
+                // 如果当前选中楼梯工具但模式不支持，切换到墙壁
+                if (!shouldShow && this.editor.tool === EDITOR_TOOLS.STAIR) {
                     this.setEditorTool(EDITOR_TOOLS.WALL);
                 }
             }
-            
+
             /**
-             * 创建一个带外墙和起始房间的空白地图
+             * 设置图层模式（单层/多层）
+             * @param {boolean} isMultiLayer - 是否为多层模式
              */
+            setLayerMode(isMultiLayer) {
+                if (this.multiLayerMode === isMultiLayer) return;
+                
+                if (!isMultiLayer && this.layerCount > 1) {
+                    // 从多层切到单层，需要确认
+                    this.showConfirm('地图只会保留第一层的内容，确定吗？', () => {
+                        this._applyLayerMode(false);
+                    });
+                } else {
+                    // 从单层切到多层，无需确认
+                    this._applyLayerMode(true);
+                }
+            }
+
+            /**
+             * 应用图层模式设置
+             */
+            _applyLayerMode(isMultiLayer) {
+                this.multiLayerMode = isMultiLayer;
+                
+                document.getElementById('layer-mode-single-btn').classList.toggle('active', !isMultiLayer);
+                document.getElementById('layer-mode-multi-btn').classList.toggle('active', isMultiLayer);
+                
+                if (isMultiLayer) {
+                    // 初始化为1层，继承当前地图
+                    this.layerCount = 1;
+                    this.currentLayer = 0;
+                    this.playerLayer = 0;
+                    this.stairs = [];
+                    
+                    // 初始化layers数组，将当前数据放入第0层
+                    this.layers = [{
+                        hWalls: this.hWalls,
+                        vWalls: this.vWalls,
+                        activeCells: this.activeCells,
+                        ghosts: this.ghosts,
+                        items: this.items,
+                        buttons: this.buttons,
+                        stairs: [],
+                        endPos: this.endPos,
+                        customStartPos: this.customStartPos
+                    }];
+                } else {
+                    // 重置为单层
+                    if (this.layers.length > 0) {
+                        // 保留第一层数据
+                        const firstLayer = this.layers[0];
+                        this.hWalls = firstLayer.hWalls;
+                        this.vWalls = firstLayer.vWalls;
+                        this.activeCells = firstLayer.activeCells;
+                        this.ghosts = firstLayer.ghosts;
+                        this.items = firstLayer.items;
+                        this.buttons = firstLayer.buttons;
+                        this.endPos = firstLayer.endPos;
+                        this.customStartPos = firstLayer.customStartPos;
+                    }
+                    this.layerCount = 1;
+                    this.currentLayer = 0;
+                    this.playerLayer = 0;
+                    this.stairs = [];
+                    this.layers = [];
+                }
+                
+                this.updateLayerPanel();
+                this.updateStairToolVisibility();
+                this._renderStaticLayer();
+                this.drawEditor();
+            }
+
+            /**
+             * 添加新图层
+             */
+            addLayer() {
+                if (this.layerCount >= 10) {
+                    this.showToast('最多只能添加10层地图！', 3000, 'error');
+                    return;
+                }
+                
+                // 创建新的空白图层
+                const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
+                const newLayer = {
+                    hWalls: Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty)),
+                    vWalls: Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty)),
+                    activeCells: Array(this.height).fill(null).map(() => Array(this.width).fill(true)),
+                    ghosts: [],
+                    items: [],
+                    buttons: [],
+                    stairs: [],
+                    endPos: null,
+                    customStartPos: null
+                };
+                
+                this.layers.push(newLayer);
+                this.layerCount++;
+                
+                this.updateLayerPanel();
+                this.showToast(`已添加第 ${this.layerCount} 层`, 2000, 'success');
+            }
+
+            /**
+             * 删除最上层
+             */
+            removeLayer() {
+                if (this.layerCount <= 1) {
+                    this.showToast('初始的1层不可删除！', 3000, 'error');
+                    return;
+                }
+                
+                this.showConfirm(`确定要删除第 ${this.layerCount} 层吗？`, () => {
+                    // 删除最上层
+                    const removedLayer = this.layers.pop();
+                    this.layerCount--;
+                    
+                    // 清除相关楼梯（所有连接到被删除层的楼梯）
+                    const removedLayerIndex = this.layerCount; // 被删除层的索引
+                    for (let i = 0; i < this.layers.length; i++) {
+                        this.layers[i].stairs = this.layers[i].stairs.filter(s => {
+                            // 删除向上指向被删除层的楼梯
+                            if (s.direction === 'up' && i === removedLayerIndex - 1) {
+                                return false;
+                            }
+                            return true;
+                        });
+                    }
+                    
+                    // 如果当前层被删除了，切换到最高层
+                    if (this.currentLayer >= this.layerCount) {
+                        this.currentLayer = this.layerCount - 1;
+                        this._switchToLayer(this.currentLayer);
+                    }
+                    
+                    this.updateLayerPanel();
+                    this.showToast(`已删除第 ${this.layerCount + 1} 层`, 2000, 'success');
+                });
+            }
+
+            /**
+             * 切换到指定图层
+             */
+            switchToLayer(layerIndex) {
+                if (layerIndex < 0 || layerIndex >= this.layerCount) return;
+                if (layerIndex === this.currentLayer) return;
+                
+                // 保存当前层数据
+                this._saveCurrentLayerData();
+                
+                // 切换到新层
+                this._switchToLayer(layerIndex);
+                
+                this.updateLayerPanel();
+                this._renderStaticLayer();
+                this.draw();
+            }
+
+            /**
+             * 保存当前图层数据到layers数组
+             */
+            _saveCurrentLayerData() {
+                if (!this.multiLayerMode || this.layers.length === 0) return;
+                
+                this.layers[this.currentLayer] = {
+                    hWalls: this.hWalls,
+                    vWalls: this.vWalls,
+                    activeCells: this.activeCells,
+                    ghosts: this.ghosts,
+                    items: this.items,
+                    buttons: this.buttons,
+                    stairs: this.stairs.filter(s => s.layer === this.currentLayer),
+                    endPos: this.endPos,
+                    customStartPos: this.customStartPos
+                };
+            }
+
+            /**
+             * 从layers数组加载指定图层数据
+             */
+            _switchToLayer(layerIndex) {
+                this.currentLayer = layerIndex;
+                
+                if (this.layers[layerIndex]) {
+                    const layer = this.layers[layerIndex];
+                    this.hWalls = layer.hWalls;
+                    this.vWalls = layer.vWalls;
+                    this.activeCells = layer.activeCells;
+                    this.ghosts = layer.ghosts;
+                    this.items = layer.items;
+                    this.buttons = layer.buttons;
+                    this.endPos = layer.endPos;
+                    this.customStartPos = layer.customStartPos;
+                }
+            }
+
+            /**
+             * 更新图层面板UI
+             */
+            updateLayerPanel() {
+                const panel = document.getElementById('layer-panel');
+                const container = document.getElementById('layer-buttons-container');
+                const editControls = document.getElementById('layer-edit-controls');
+                
+                if (!this.multiLayerMode) {
+                    panel.style.display = 'none';
+                    return;
+                }
+                
+                // 显示面板
+                panel.style.display = 'flex';
+                
+                // 定位面板到Canvas右侧
+                this._positionLayerPanel();
+                
+                // 清空并重新生成按钮
+                container.innerHTML = '';
+                
+                for (let i = this.layerCount - 1; i >= 0; i--) {
+                    const btn = document.createElement('button');
+                    btn.className = 'layer-btn';
+                    btn.textContent = (i + 1).toString();
+                    
+                    // 当前显示层为蓝色
+                    if (i === this.currentLayer) {
+                        btn.classList.add('active');
+                    }
+                    
+                    // 玩家所在层（或起点所在层）用黄色边框
+                    if (i === this.playerLayer) {
+                        btn.classList.add('player-layer');
+                    }
+                    
+                    btn.addEventListener('click', () => this.switchToLayer(i));
+                    container.appendChild(btn);
+                }
+                
+                // 显示/隐藏编辑控制（仅编辑器模式）
+                editControls.style.display = this.editor.active ? 'flex' : 'none';
+            }
+
+            /**
+             * 定位图层面板到Canvas右侧
+             */
+            _positionLayerPanel() {
+                const panel = document.getElementById('layer-panel');
+                const canvasRect = canvas.getBoundingClientRect();
+                
+                panel.style.left = (canvasRect.right + 10) + 'px';
+                panel.style.top = canvasRect.top + 'px';
+            }
+            
             /**
              * 创建一个带外墙和起始房间的空白地图
              */
@@ -2417,6 +2929,24 @@
                 this.ghosts = [];
                 this.items = [];
                 this.buttons = [];
+                this.stairs = []; // 清空楼梯
+                
+                // 5. 重置多层相关
+                if (this.multiLayerMode) {
+                    this.layers = [{
+                        hWalls: this.hWalls,
+                        vWalls: this.vWalls,
+                        activeCells: this.activeCells,
+                        ghosts: [],
+                        items: [],
+                        buttons: [],
+                        stairs: [],
+                        endPos: null,
+                        customStartPos: null
+                    }];
+                    this.layerCount = 1;
+                    this.currentLayer = 0;
+                }
             }
 
             /**
@@ -2457,6 +2987,11 @@
                 this.initialHealth = parseInt(document.getElementById('editor-initial-health').value) || 5;
                 this.initialStamina = parseInt(document.getElementById('editor-initial-stamina').value) || 100;
 
+                // 保存当前层数据到layers
+                if (this.multiLayerMode) {
+                    this._saveCurrentLayerData();
+                }
+
                 // 组装地图数据
                 const editedMapData = {
                     width: this.width, height: this.height,
@@ -2467,7 +3002,12 @@
                     buttons: this.buttons,
                     activeCells: this.activeCells, 
                     editorMode: this.editor.mode, 
-                    customStartPos: this.customStartPos
+                    customStartPos: this.customStartPos,
+                    // 多层地图数据
+                    multiLayerMode: this.multiLayerMode,
+                    layerCount: this.layerCount,
+                    layers: JSON.parse(JSON.stringify(this.layers)),
+                    stairs: JSON.parse(JSON.stringify(this.stairs))
                 };
                 
                 // 只需要调用 startGame，它内部会自动更新 URL
@@ -2726,7 +3266,15 @@
                     }
                 }
 
-               // 10. 绘制所有实体
+               // 10. 绘制所有楼梯（在其他实体之前，即最底层）
+                this.stairs.filter(s => s.layer === this.currentLayer).forEach(s => this.drawStair(s));
+                
+                // 绘制楼梯工具的悬停预览
+                if (this.editor.tool === EDITOR_TOOLS.STAIR && this.editor.stairPlacement && !this.editor.isDragging) {
+                    this.drawStair(this.editor.stairPlacement, true);
+                }
+
+               // 11. 绘制所有实体
                 this.items.forEach(item => this.drawItem(item));
                 if (this.endPos) this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
                 if (this.customStartPos) this.drawCircle(this.customStartPos.x, this.customStartPos.y, this.colors.player); 
@@ -2734,7 +3282,7 @@
                 this.buttons.forEach(b => this.drawButton(b));
                 if (this.editor.mode === 'regular') this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
 
-                // 11. 绘制按钮热点预览
+                // 12. 绘制按钮热点预览
                 if (this.editor.hoveredButtonHotspot) {
                     const virtualButton = {
                         x: this.editor.hoveredButtonHotspot.x,
@@ -2744,7 +3292,7 @@
                     this.drawButton(virtualButton, true);
                 }
                 
-                // 12. 恢复画布状态
+                // 13. 恢复画布状态
                 ctx.restore();
             }
             
@@ -2847,8 +3395,29 @@
                     }
                     this.ghosts = this.ghosts.filter(g => g.x !== cellX || g.y !== cellY);
                     this.items = this.items.filter(i => i.x !== cellX || i.y !== cellY);
+                    
+                    // 清除楼梯（包括对应层的配对楼梯）
+                    this.eraseStairAt(cellX, cellY, this.currentLayer);
                 }
                 this.drawEditor();
+            }
+
+            /**
+             * 清除指定位置的楼梯及其配对楼梯
+             */
+            eraseStairAt(x, y, layer) {
+                const stair = this.stairs.find(s => s.x === x && s.y === y && s.layer === layer);
+                if (!stair) return;
+                
+                // 找到配对楼梯
+                const pairedLayer = stair.direction === 'up' ? layer + 1 : layer - 1;
+                const pairedDirection = stair.direction === 'up' ? 'down' : 'up';
+                
+                // 移除两个楼梯
+                this.stairs = this.stairs.filter(s => 
+                    !(s.x === x && s.y === y && s.layer === layer) &&
+                    !(s.x === x && s.y === y && s.layer === pairedLayer && s.direction === pairedDirection)
+                );
             }
 
             /**
@@ -2930,6 +3499,25 @@
                         this.editor.gridDragAction = this.activeCells[cellY][cellX] ? 'remove' : 'add';
                         this.toggleActiveCell(cellX, cellY, this.editor.gridDragAction);
                     }
+                } else if (this.editor.tool === EDITOR_TOOLS.STAIR && this.multiLayerMode) {
+                    // 楼梯工具：开始放置楼梯
+                    const cellX = Math.floor(pos.x / this.cellSize);
+                    const cellY = Math.floor(pos.y / this.cellSize);
+                    if (cellX >= 0 && cellX < this.width && cellY >= 0 && cellY < this.height) {
+                        // 检查是否已有楼梯
+                        const existingStair = this.stairs.find(s => s.x === cellX && s.y === cellY && s.layer === this.currentLayer);
+                        if (existingStair) {
+                            // 点击已有楼梯，清除它
+                            this.eraseStairAt(cellX, cellY, this.currentLayer);
+                            this.drawEditor();
+                        } else {
+                            // 开始放置新楼梯
+                            const localY = pos.y - cellY * this.cellSize;
+                            const direction = localY < this.cellSize / 2 ? 'up' : 'down';
+                            this.editor.stairPlacement = { x: cellX, y: cellY, direction, layer: this.currentLayer };
+                            this.drawEditor();
+                        }
+                    }
                 } else if (this.editor.tool === EDITOR_TOOLS.WALL || this.editor.tool === EDITOR_TOOLS.GLASS) { 
                     const wall = this.getWallAtPos(pos.x, pos.y);
                     if (wall && this.isWallEditable(wall)) {
@@ -2985,6 +3573,56 @@
                         // 只有在没有拖动时，才更新悬停位置并重绘
                         if (!this.editor.hoveredWall || this.editor.hoveredWall.x !== cellX || this.editor.hoveredWall.y !== cellY) {
                             this.editor.hoveredWall = {x: cellX, y: cellY};
+                            this.drawEditor();
+                        }
+                    }
+                    return;
+                }
+
+                // Stair Tool Logic
+                if (this.editor.tool === EDITOR_TOOLS.STAIR && this.multiLayerMode) {
+                    if (this.editor.stairPlacement && this.editor.isDragging) {
+                        // 拖动时更新楼梯方向
+                        const cellX = this.editor.stairPlacement.x;
+                        const cellY = this.editor.stairPlacement.y;
+                        const localY = pos.y - cellY * this.cellSize;
+                        const direction = localY < this.cellSize / 2 ? 'up' : 'down';
+                        
+                        if (this.editor.stairPlacement.direction !== direction) {
+                            this.editor.stairPlacement.direction = direction;
+                            this.editor.didDrag = true;
+                            this.drawEditor();
+                        }
+                    } else if (!this.editor.isDragging) {
+                        // 悬停预览
+                        const cellX = Math.floor(pos.x / this.cellSize);
+                        const cellY = Math.floor(pos.y / this.cellSize);
+                        if (cellX >= 0 && cellX < this.width && cellY >= 0 && cellY < this.height && this.activeCells[cellY][cellX]) {
+                            const existingStair = this.stairs.find(s => s.x === cellX && s.y === cellY && s.layer === this.currentLayer);
+                            if (!existingStair) {
+                                const localY = pos.y - cellY * this.cellSize;
+                                const direction = localY < this.cellSize / 2 ? 'up' : 'down';
+                                const valid = this.isValidStairPlacement(cellX, cellY, direction);
+                                
+                                if (valid) {
+                                    const newPlacement = { x: cellX, y: cellY, direction, layer: this.currentLayer };
+                                    if (!this.editor.stairPlacement || 
+                                        this.editor.stairPlacement.x !== newPlacement.x ||
+                                        this.editor.stairPlacement.y !== newPlacement.y ||
+                                        this.editor.stairPlacement.direction !== newPlacement.direction) {
+                                        this.editor.stairPlacement = newPlacement;
+                                        this.drawEditor();
+                                    }
+                                } else if (this.editor.stairPlacement) {
+                                    this.editor.stairPlacement = null;
+                                    this.drawEditor();
+                                }
+                            } else if (this.editor.stairPlacement) {
+                                this.editor.stairPlacement = null;
+                                this.drawEditor();
+                            }
+                        } else if (this.editor.stairPlacement) {
+                            this.editor.stairPlacement = null;
                             this.drawEditor();
                         }
                     }
@@ -3100,6 +3738,8 @@
                     this.ghosts = this.ghosts.filter(g => g.x !== x || g.y !== y);
                     this.items = this.items.filter(i => i.x !== x || i.y !== y);
                     this.buttons = this.buttons.filter(b => b.x !== x || b.y !== y);
+                    // 清除楼梯
+                    this.eraseStairAt(x, y, this.currentLayer);
                     // 清除内部墙数据 (设为 Empty，避免渲染混淆)
                     this.hWalls[y][x] = {type:0}; this.hWalls[y+1][x] = {type:0};
                     this.vWalls[y][x] = {type:0}; this.vWalls[y][x+1] = {type:0};
@@ -3108,6 +3748,47 @@
                 this._renderStaticLayer(); // Re-render grid/void
                 this.drawEditor();
             }
+
+            /**
+             * 检查楼梯放置是否有效
+             */
+            isValidStairPlacement(x, y, direction) {
+                // 检查当前位置是否是有效方格
+                if (!this.activeCells[y][x]) return false;
+                
+                // 检查目标层是否存在
+                const targetLayer = direction === 'up' ? this.currentLayer + 1 : this.currentLayer - 1;
+                if (targetLayer < 0 || targetLayer >= this.layerCount) return false;
+                
+                // 检查目标层的对应位置是否是有效方格（不是虚空）
+                if (this.layers[targetLayer]) {
+                    const targetActiveCells = this.layers[targetLayer].activeCells;
+                    if (!targetActiveCells[y][x]) return false;
+                }
+                
+                return true;
+            }
+
+            /**
+             * 放置楼梯
+             */
+            placeStair(x, y, direction) {
+                if (!this.isValidStairPlacement(x, y, direction)) {
+                    this.showToast('无效放置', 2000, 'error');
+                    return false;
+                }
+                
+                const targetLayer = direction === 'up' ? this.currentLayer + 1 : this.currentLayer - 1;
+                const pairedDirection = direction === 'up' ? 'down' : 'up';
+                
+                // 在当前层添加楼梯
+                this.stairs.push({ x, y, direction, layer: this.currentLayer });
+                
+                // 在目标层添加配对楼梯
+                this.stairs.push({ x, y, direction: pairedDirection, layer: targetLayer });
+                
+                return true;
+            }
             
             /**
              * 处理编辑器模式下的鼠标松开事件
@@ -3115,6 +3796,17 @@
             handleCanvasMouseUp(e) {
                 if (!this.editor.active) return;
                 this.editor.gridDragAction = null; // Reset grid action
+
+                // 处理楼梯放置完成
+                if (this.editor.tool === EDITOR_TOOLS.STAIR && this.editor.stairPlacement) {
+                    const { x, y, direction } = this.editor.stairPlacement;
+                    this.placeStair(x, y, direction);
+                    this.editor.stairPlacement = null;
+                    this.drawEditor();
+                    this.editor.isDragging = false;
+                    this.editor.didDrag = false;
+                    return;
+                }
 
                 // 如果没有发生拖动，则视为单击事件
                 if (this.editor.isDragging && !this.editor.didDrag) {
