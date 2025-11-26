@@ -25,6 +25,7 @@
     --key-color: #ffc107;
     --start-room-highlight: rgba(173, 216, 230, 0.4);
     --hover-highlight-color: #ffc107;
+    --player-layer-color: #ffc107;
 
     /* 新增：自由编辑模式相关颜色 */
     --start-point-color: #00c9a7;
@@ -681,8 +682,8 @@ display: none !important;
 }
 
 .layer-btn.player-layer {
-    border-color: #ffc107;
-    box-shadow: 0 0 0 2px #ffc107;
+    border-color: var(--player-layer-color);
+    box-shadow: 0 0 0 2px var(--player-layer-color);
 }
 
 #layer-edit-controls {

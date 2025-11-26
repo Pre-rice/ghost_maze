@@ -216,6 +216,7 @@
 
                 // 绑定所有UI事件并显示初始欢迎信息
                 this.bindUI();
+                this._initResizeListener();
                 this.showInitialMessage();
                 // 页面加载时尝试从 URL 查询参数或 hash 读取分享码
             this.loadShareCodeFromURL();
@@ -1182,12 +1183,6 @@
              * 处理鬼跟随玩家上下楼梯
              */
             handleGhostStairFollow(playerPrevPos, prevLayer, targetLayer) {
-                // 找到在前一层与玩家同位置的鬼（即在楼梯位置）
-                // 这些鬼应该跟随玩家上下楼
-                const ghostsToMove = this.ghosts.filter(g => 
-                    g.x === playerPrevPos.x && g.y === playerPrevPos.y
-                );
-                
                 // 由于我们切换到了新层，这里的ghosts是新层的鬼
                 // 我们需要找到并移动前一层的鬼
                 if (this.layers[prevLayer]) {
@@ -2878,10 +2873,27 @@
              */
             _positionLayerPanel() {
                 const panel = document.getElementById('layer-panel');
-                const canvasRect = canvas.getBoundingClientRect();
+                const canvasEl = document.getElementById('game-canvas');
+                if (!panel || !canvasEl) return;
+                
+                const canvasRect = canvasEl.getBoundingClientRect();
                 
                 panel.style.left = (canvasRect.right + 10) + 'px';
                 panel.style.top = canvasRect.top + 'px';
+            }
+
+            /**
+             * 初始化窗口大小变化监听器
+             */
+            _initResizeListener() {
+                if (!this._resizeListenerAdded) {
+                    window.addEventListener('resize', () => {
+                        if (this.multiLayerMode) {
+                            this._positionLayerPanel();
+                        }
+                    });
+                    this._resizeListenerAdded = true;
+                }
             }
             
             /**
