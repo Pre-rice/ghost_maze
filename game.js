@@ -719,21 +719,46 @@
                 this.multiLayerMode = mapData.multiLayerMode || false;
                 this.layerCount = mapData.layerCount || 1;
                 this.currentLayer = 0;
-                this.playerLayer = 0;
                 this.stairs = JSON.parse(JSON.stringify(mapData.stairs || []));
                 this.layers = JSON.parse(JSON.stringify(mapData.layers || []));
+
+                // Fix 9, 11: 查找起点所在的图层
+                this.playerLayer = 0;
+                if (this.multiLayerMode) {
+                    for (let i = 0; i < this.layerCount; i++) {
+                        if (this.layers[i] && this.layers[i].customStartPos) {
+                            this.playerLayer = i;
+                            break;
+                        }
+                    }
+                    // 切换到玩家出生层
+                    this.currentLayer = this.playerLayer;
+                    if (this.layers[this.playerLayer]) {
+                        const layer = this.layers[this.playerLayer];
+                        this.hWalls = layer.hWalls;
+                        this.vWalls = layer.vWalls;
+                        this.activeCells = layer.activeCells;
+                        this.ghosts = layer.ghosts;
+                        this.items = layer.items;
+                        this.buttons = layer.buttons;
+                        this.endPos = layer.endPos;
+                        this.customStartPos = layer.customStartPos;
+                    }
+                }
 
                 // 计算视口偏移以居中地图（考虑所有图层）
                 this.calculateDrawOffset();
 
                 this._renderStaticLayer(); // 渲染静态背景层
                 
-                // 加载地图结构
-                this.hWalls = JSON.parse(JSON.stringify(mapData.hWalls)); // 使用深拷贝
-                this.vWalls = JSON.parse(JSON.stringify(mapData.vWalls)); // 使用深拷贝
-                this.endPos = mapData.endPos;
-                this.items = mapData.items || [];
-                this.buttons = mapData.buttons || []; // 加载按钮
+                // 加载地图结构（仅在非多层模式或作为后备时使用）
+                if (!this.multiLayerMode) {
+                    this.hWalls = JSON.parse(JSON.stringify(mapData.hWalls)); // 使用深拷贝
+                    this.vWalls = JSON.parse(JSON.stringify(mapData.vWalls)); // 使用深拷贝
+                    this.endPos = mapData.endPos;
+                    this.items = mapData.items || [];
+                    this.buttons = mapData.buttons || []; // 加载按钮
+                }
 
                 // 初始化所有字母门的当前状态
                 this.hWalls.forEach(row => row.forEach(wall => {
@@ -1148,6 +1173,9 @@
                 const playerPrevPos = { x: this.player.x, y: this.player.y };
                 const prevLayer = this.playerLayer;
                 
+                // Fix 4: 让前一层的鬼朝着玩家上楼梯前的位置移动
+                this.moveGhosts(playerPrevPos);
+                
                 // 执行上下楼
                 this.playerLayer = targetLayer;
                 this.player.steps++;
@@ -1161,7 +1189,7 @@
                 this._switchToLayer(targetLayer);
                 this.currentLayer = targetLayer;
                 
-                // 检查鬼是否跟随上下楼
+                // Fix 4: 检查对面楼梯位置上是否有鬼要跟随玩家上下楼
                 this.handleGhostStairFollow(playerPrevPos, prevLayer, targetLayer);
                 
                 // 更新显示
@@ -1191,26 +1219,27 @@
 
             /**
              * 处理鬼跟随玩家上下楼梯
+             * Fix 4: 玩家和鬼分别处于一对楼梯的两个位置时，鬼和玩家可以互相看见，
+             * 此时玩家移动一步，鬼会上下楼梯来到玩家移动前的位置
              */
             handleGhostStairFollow(playerPrevPos, prevLayer, targetLayer) {
-                // 由于我们切换到了新层，这里的ghosts是新层的鬼
-                // 我们需要找到并移动前一层的鬼
-                if (this.layers[prevLayer]) {
-                    const prevLayerGhosts = this.layers[prevLayer].ghosts;
-                    const ghostsOnStair = prevLayerGhosts.filter(g =>
-                        g.x === playerPrevPos.x && g.y === playerPrevPos.y
-                    );
-                    
-                    // 将这些鬼移动到新层
-                    for (const ghost of ghostsOnStair) {
-                        // 从旧层移除
-                        const idx = prevLayerGhosts.indexOf(ghost);
-                        if (idx > -1) {
-                            prevLayerGhosts.splice(idx, 1);
-                        }
-                        // 添加到新层
-                        ghost.trail = []; // 清空拖尾
-                        this.ghosts.push(ghost);
+                // 检查目标层楼梯位置上是否有鬼
+                // 如果有，这些鬼会"看到"玩家，跟随玩家上下楼梯到达玩家之前的位置
+                const ghostsOnTargetStair = this.ghosts.filter(g =>
+                    g.x === playerPrevPos.x && g.y === playerPrevPos.y
+                );
+                
+                // 将这些鬼移动到玩家之前所在的层的玩家之前的位置
+                for (const ghost of ghostsOnTargetStair) {
+                    // 从新层移除
+                    const idx = this.ghosts.indexOf(ghost);
+                    if (idx > -1) {
+                        this.ghosts.splice(idx, 1);
+                    }
+                    // 添加到玩家之前的层
+                    ghost.trail = [];
+                    if (this.layers[prevLayer]) {
+                        this.layers[prevLayer].ghosts.push(ghost);
                     }
                 }
             }
@@ -3016,12 +3045,37 @@
              * 退出编辑器，并使用当前编辑的地图开始游戏
              */
             playEditedMap() {
-                // 校验逻辑
+                // 保存当前层数据先
+                if (this.multiLayerMode) {
+                    this._saveCurrentLayerData();
+                }
+                
+                // Fix 9: 校验逻辑 - 检查所有图层中是否有起点
                 if (this.editor.mode === 'free') {
-                    if (!this.customStartPos) { 
+                    let hasStartPoint = false;
+                    let startLayer = 0;
+                    
+                    if (this.multiLayerMode) {
+                        // 多层模式：检查所有层
+                        for (let i = 0; i < this.layerCount; i++) {
+                            if (this.layers[i] && this.layers[i].customStartPos) {
+                                hasStartPoint = true;
+                                startLayer = i;
+                                break;
+                            }
+                        }
+                    } else {
+                        // 单层模式
+                        hasStartPoint = !!this.customStartPos;
+                    }
+                    
+                    if (!hasStartPoint) { 
                         this.showToast('自由模式必须设置起点！', 3000, 'error'); 
                         return; 
                     }
+                    
+                    // Fix 11: 设置玩家出生层为起点所在层
+                    this.playerLayer = startLayer;
                 }
 
                 this.editor.active = false;
@@ -3314,9 +3368,10 @@
                // 10. 绘制所有楼梯（在其他实体之前，即最底层）
                 this.stairs.filter(s => s.layer === this.currentLayer).forEach(s => this.drawStair(s));
                 
-                // 绘制楼梯工具的悬停预览
-                if (this.editor.tool === EDITOR_TOOLS.STAIR && this.editor.stairPlacement && !this.editor.isDragging) {
-                    this.drawStair(this.editor.stairPlacement, true);
+                // Fix 6: 绘制楼梯工具的预览（包括拖动时和悬停时都显示）
+                if (this.editor.tool === EDITOR_TOOLS.STAIR && this.editor.stairPlacement) {
+                    // 拖动时显示实际楼梯，悬停时显示高亮预览
+                    this.drawStair(this.editor.stairPlacement, !this.editor.isDragging);
                 }
 
                // 11. 绘制所有实体
@@ -3631,7 +3686,15 @@
                         const cellX = this.editor.stairPlacement.x;
                         const cellY = this.editor.stairPlacement.y;
                         const localY = pos.y - cellY * this.cellSize;
-                        const direction = localY < this.cellSize / 2 ? 'up' : 'down';
+                        let direction = localY < this.cellSize / 2 ? 'up' : 'down';
+                        
+                        // Fix 5: If preferred direction is invalid, try the other direction
+                        if (!this.isValidStairPlacement(cellX, cellY, direction)) {
+                            const otherDirection = direction === 'up' ? 'down' : 'up';
+                            if (this.isValidStairPlacement(cellX, cellY, otherDirection)) {
+                                direction = otherDirection;
+                            }
+                        }
                         
                         if (this.editor.stairPlacement.direction !== direction) {
                             this.editor.stairPlacement.direction = direction;
@@ -3646,8 +3709,17 @@
                             const existingStair = this.stairs.find(s => s.x === cellX && s.y === cellY && s.layer === this.currentLayer);
                             if (!existingStair) {
                                 const localY = pos.y - cellY * this.cellSize;
-                                const direction = localY < this.cellSize / 2 ? 'up' : 'down';
-                                const valid = this.isValidStairPlacement(cellX, cellY, direction);
+                                let direction = localY < this.cellSize / 2 ? 'up' : 'down';
+                                
+                                // Fix 5: If preferred direction is invalid, try the other direction
+                                let valid = this.isValidStairPlacement(cellX, cellY, direction);
+                                if (!valid) {
+                                    const otherDirection = direction === 'up' ? 'down' : 'up';
+                                    if (this.isValidStairPlacement(cellX, cellY, otherDirection)) {
+                                        direction = otherDirection;
+                                        valid = true;
+                                    }
+                                }
                                 
                                 if (valid) {
                                     const newPlacement = { x: cellX, y: cellY, direction, layer: this.currentLayer };
@@ -3936,7 +4008,19 @@
                                 case EDITOR_TOOLS.START: 
                                     if (this.editor.mode === 'free') {
                                         if (!isOccupied || (this.customStartPos && this.customStartPos.x === cx && this.customStartPos.y === cy)) {
+                                            // Fix 10: Clear start point from other layers when placing new start
+                                            if (this.multiLayerMode) {
+                                                this._saveCurrentLayerData();
+                                                for (let i = 0; i < this.layerCount; i++) {
+                                                    if (this.layers[i]) {
+                                                        this.layers[i].customStartPos = null;
+                                                    }
+                                                }
+                                            }
                                             this.customStartPos = { x: cx, y: cy };
+                                            // Update player layer to current layer
+                                            this.playerLayer = this.currentLayer;
+                                            this.updateLayerPanel();
                                         }
                                     }
                                     break;
