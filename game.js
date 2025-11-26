@@ -2013,6 +2013,11 @@
                 
                 const cs = this.cellSize;
                 const now = Date.now();
+                
+                // Fix 5: 半透明渲染低层图层（未被上层遮挡的部分）
+                if (this.multiLayerMode && this.layers && this.currentLayer > 0) {
+                    this._renderLowerLayersSemiTransparent();
+                }
 
                 // 1. Static Layer (Ground & Grid)
                 ctx.drawImage(this.staticLayerCanvas, 0, 0);
