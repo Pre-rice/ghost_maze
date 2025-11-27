@@ -5527,17 +5527,43 @@ const GameLogic = {
                         if (this.multiLayerMode) {
                             this._saveCurrentLayerData();
                         }
+                        
+                        // 多层模式下，主数据应该使用layer 0的数据，而不是当前层
+                        let layer0Data = {
+                            hWalls: this.hWalls,
+                            vWalls: this.vWalls,
+                            endPos: this.endPos,
+                            ghosts: this.ghosts,
+                            items: this.items,
+                            buttons: this.buttons || [],
+                            activeCells: this.activeCells,
+                            customStartPos: this.customStartPos
+                        };
+                        
+                        if (this.multiLayerMode && this.layers && this.layers[0]) {
+                            layer0Data = {
+                                hWalls: this.layers[0].hWalls,
+                                vWalls: this.layers[0].vWalls,
+                                endPos: this.layers[0].endPos,
+                                ghosts: this.layers[0].ghosts,
+                                items: this.layers[0].items,
+                                buttons: this.layers[0].buttons || [],
+                                activeCells: this.layers[0].activeCells,
+                                customStartPos: this.layers[0].customStartPos
+                            };
+                        }
+                        
                         sourceData = {
                             width: this.width, height: this.height,
-                            hWalls: this.hWalls, vWalls: this.vWalls,
-                            endPos: this.endPos, initialGhosts: this.ghosts, items: this.items,
-                            buttons: this.buttons,
+                            hWalls: layer0Data.hWalls, vWalls: layer0Data.vWalls,
+                            endPos: layer0Data.endPos, initialGhosts: layer0Data.ghosts, items: layer0Data.items,
+                            buttons: layer0Data.buttons,
                             gameMode: this.gameMode,
                             initialHealth: parseInt(document.getElementById('editor-initial-health').value) || 5,
                             initialStamina: parseInt(document.getElementById('editor-initial-stamina').value) || 100,
-                            activeCells: this.activeCells,
+                            activeCells: layer0Data.activeCells,
                             editorMode: this.editor.mode,
-                            customStartPos: this.customStartPos,
+                            customStartPos: layer0Data.customStartPos,
                             startPos: this.startPos,
                             playerStartLayer: this.playerLayer,
                             // Fix 6: 多层地图数据
