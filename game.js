@@ -659,20 +659,26 @@ const GameLogic = {
     moveGhostsWithStairChase(state, originalPlayerPos, mapDef) {
         const playerLayer = state.player.layer;
         
-        // 首先处理可能通过楼梯追踪的鬼
+        // 首先处理可能通过楼梯追踪的鬼，获取已经通过楼梯移动的鬼列表
+        let ghostsMovedViaStair = new Set();
         if (mapDef.multiLayerMode) {
-            this._handleGhostStairChase(state, originalPlayerPos, mapDef);
+            ghostsMovedViaStair = this._handleGhostStairChase(state, originalPlayerPos, mapDef);
         }
         
-        // 然后处理当前层的正常鬼移动
+        // 然后处理当前层的正常鬼移动（排除已经通过楼梯移动的鬼）
         const ghosts = state.layerStates[playerLayer].ghosts;
         const layerDef = mapDef.layers[playerLayer];
         const layerState = state.layerStates[playerLayer];
 
         let moveIntents = [];
 
-        // 收集移动意图
+        // 收集移动意图（排除已通过楼梯移动的鬼）
         for (const ghost of ghosts) {
+            // 跳过已经通过楼梯移动的鬼
+            if (ghostsMovedViaStair.has(ghost)) {
+                continue;
+            }
+            
             const sawBefore = this._canGhostSeePlayer(ghost, originalPlayerPos, layerDef, layerState);
             const seesAfter = this._canGhostSeePlayer(ghost, state.player, layerDef, layerState);
 
@@ -741,8 +747,10 @@ const GameLogic = {
     /**
      * 处理鬼通过楼梯追踪玩家
      * 当玩家和鬼处于配对楼梯的两端时，鬼会穿过楼梯追击
+     * @returns {Set} 已经通过楼梯移动的鬼的集合
      */
     _handleGhostStairChase(state, originalPlayerPos, mapDef) {
+        const movedGhosts = new Set();
         const playerLayer = state.player.layer;
         const stairs = mapDef.stairs;
         
@@ -753,11 +761,11 @@ const GameLogic = {
             s.layer === originalPlayerPos.layer
         );
         
-        if (!playerStair) return;
+        if (!playerStair) return movedGhosts;
         
         // 找到配对的楼梯（另一层）
         const pairedLayer = playerStair.direction === 'up' ? originalPlayerPos.layer + 1 : originalPlayerPos.layer - 1;
-        if (pairedLayer < 0 || pairedLayer >= mapDef.layerCount) return;
+        if (pairedLayer < 0 || pairedLayer >= mapDef.layerCount) return movedGhosts;
         
         const pairedStair = stairs.find(s =>
             s.x === originalPlayerPos.x &&
@@ -766,7 +774,7 @@ const GameLogic = {
             s.direction === (playerStair.direction === 'up' ? 'down' : 'up')
         );
         
-        if (!pairedStair) return;
+        if (!pairedStair) return movedGhosts;
         
         // 检查配对层是否有鬼在楼梯位置上
         const pairedLayerGhosts = state.layerStates[pairedLayer].ghosts;
@@ -787,7 +795,12 @@ const GameLogic = {
             ghost.y = originalPlayerPos.y;
             ghost.trail = [];
             state.layerStates[originalPlayerPos.layer].ghosts.push(ghost);
+            
+            // 标记这个鬼已经移动过了
+            movedGhosts.add(ghost);
         }
+        
+        return movedGhosts;
     },
 
     /**
