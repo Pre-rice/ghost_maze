@@ -2804,19 +2804,53 @@
                 // 加载多层地图相关状态
                 this.multiLayerMode = this.mapData.multiLayerMode || false;
                 this.layerCount = this.mapData.layerCount || 1;
-                this.currentLayer = 0;
+                this.currentLayer = 0; // 默认到第0层
                 this.stairs = JSON.parse(JSON.stringify(this.mapData.stairs || []));
                 this.layers = JSON.parse(JSON.stringify(this.mapData.layers || []));
+
+                // 如果是多层模式，找到起点所在层并切换过去
+                if (this.multiLayerMode && this.layers.length > 0) {
+                    let startLayerIndex = 0;
+                    // 优先使用 mapData 中记录的玩家出生层
+                    if (typeof this.mapData.playerStartLayer === 'number' && this.mapData.playerStartLayer < this.layerCount) {
+                        startLayerIndex = this.mapData.playerStartLayer;
+                    } else {
+                        // 否则，遍历查找第一个带自定义起点的层
+                        for (let i = 0; i < this.layers.length; i++) {
+                            if (this.layers[i] && this.layers[i].customStartPos) {
+                                startLayerIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                    this.currentLayer = startLayerIndex;
+                    this.playerLayer = startLayerIndex; // 同步玩家层
+                    
+                    // 加载该层的数据
+                    const layerData = this.layers[this.currentLayer];
+                    if (layerData) {
+                        this.hWalls = layerData.hWalls;
+                        this.vWalls = layerData.vWalls;
+                        this.endPos = layerData.endPos;
+                        this.ghosts = layerData.ghosts;
+                        this.items = layerData.items;
+                        this.buttons = layerData.buttons;
+                        this.activeCells = layerData.activeCells;
+                        this.customStartPos = layerData.customStartPos;
+                    }
+                } else {
+                    // 单层模式或无层数据时，加载主数据
+                    this.hWalls = JSON.parse(JSON.stringify(this.mapData.hWalls));
+                    this.vWalls = JSON.parse(JSON.stringify(this.mapData.vWalls));
+                    this.endPos = this.mapData.endPos ? {...this.mapData.endPos} : null;
+                    this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts || []));
+                    this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
+                    this.buttons = JSON.parse(JSON.stringify(this.mapData.buttons || []));
+                }
 
                 this.editorMapSizeInput.value = this.width;
                 this.padding = 15; // 新增
                 this.cellSize = (canvas.width - 2 * this.padding) / this.width; // 修改
-                this.hWalls = JSON.parse(JSON.stringify(this.mapData.hWalls));
-                this.vWalls = JSON.parse(JSON.stringify(this.mapData.vWalls));
-                this.endPos = this.mapData.endPos ? {...this.mapData.endPos} : null;
-                this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts || []));
-                this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
-                this.buttons = JSON.parse(JSON.stringify(this.mapData.buttons || []));
                 
                 // 更新编辑器UI状态
                 this.updateEditorUIForMode();
@@ -5385,6 +5419,10 @@
                             this.hWalls = layer.hWalls;
                             this.vWalls = layer.vWalls;
                             this.activeCells = layer.activeCells;
+                            this.ghosts = layer.ghosts;
+                            this.items = layer.items;
+                            this.buttons = layer.buttons;
+                            this.endPos = layer.endPos;
                             this.customStartPos = layer.customStartPos || mapData.mapStartPos || null;
                         }
                     }
@@ -5392,7 +5430,13 @@
                     this.mapData = { // 更新当前的 mapData，确保 reset/play 正确
                         ...mapData,
                         hWalls: JSON.parse(JSON.stringify(this.hWalls)),
-                        vWalls: JSON.parse(JSON.stringify(this.vWalls))
+                        vWalls: JSON.parse(JSON.stringify(this.vWalls)),
+                        initialGhosts: JSON.parse(JSON.stringify(this.ghosts)),
+                        items: JSON.parse(JSON.stringify(this.items)),
+                        buttons: JSON.parse(JSON.stringify(this.buttons)),
+                        endPos: this.endPos,
+                        customStartPos: this.customStartPos,
+                        activeCells: JSON.parse(JSON.stringify(this.activeCells))
                     };
 
                     this.updateEditorUIForMode(); // 更新UI状态
