@@ -567,6 +567,12 @@
                 // 按下按钮时的处理函数，支持长按连续移动
                 const handleDpadPress = (dx, dy) => {
                     if (this.state !== GAME_STATES.PLAYING) return;
+
+                    // 多层模式下，按下任意方向键也应切换到玩家所在层（与键盘行为一致）
+                    if (this.multiLayerMode && this.currentLayer !== this.playerLayer) {
+                        this.switchToLayer(this.playerLayer);
+                    }
+
                     clearInterval(this.autoMoveInterval);
                     clearInterval(this.dpadInterval);
                     this.movePlayer(dx, dy); // 立即移动一次
@@ -583,6 +589,12 @@
                 // Fix 8: 中键按下时触发空格键功能
                 const handleCenterPress = () => {
                     if (this.state !== GAME_STATES.PLAYING) return;
+
+                    // 多层模式下，按下中键也应切换到玩家所在层（与键盘空格键行为一致）
+                    if (this.multiLayerMode && this.currentLayer !== this.playerLayer) {
+                        this.switchToLayer(this.playerLayer);
+                    }
+
                     this.useStair();
                 };
 
@@ -729,7 +741,7 @@
                 // 新增：加载自由模式数据
                 this.editor.mode = mapData.editorMode || 'regular';
                 this.activeCells = mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
-                this.customStartPos = mapData.customStartPos || null;
+                this.customStartPos = mapData.customStartPos || mapData.mapStartPos || null;
 
                 // 加载多层地图数据
                 this.multiLayerMode = mapData.multiLayerMode || false;
@@ -741,12 +753,19 @@
                 // Fix 9, 11: 查找起点所在的图层
                 this.playerLayer = 0;
                 if (this.multiLayerMode) {
-                    for (let i = 0; i < this.layerCount; i++) {
-                        if (this.layers[i] && this.layers[i].customStartPos) {
-                            this.playerLayer = i;
-                            break;
+                    // 优先使用 mapData 中声明的 playerStartLayer（如果存在且有效）
+                    if (typeof mapData.playerStartLayer === 'number' && mapData.playerStartLayer >= 0 && mapData.playerStartLayer < this.layerCount) {
+                        this.playerLayer = mapData.playerStartLayer;
+                    } else {
+                        // 否则回退到通过 layer.customStartPos 自动检测
+                        for (let i = 0; i < this.layerCount; i++) {
+                            if (this.layers[i] && this.layers[i].customStartPos) {
+                                this.playerLayer = i;
+                                break;
+                            }
                         }
                     }
+
                     // 切换到玩家出生层
                     this.currentLayer = this.playerLayer;
                     if (this.layers[this.playerLayer]) {
@@ -758,7 +777,7 @@
                         this.items = layer.items;
                         this.buttons = layer.buttons;
                         this.endPos = layer.endPos;
-                        this.customStartPos = layer.customStartPos;
+                        this.customStartPos = layer.customStartPos || mapData.mapStartPos || null;
                     }
                 }
 
@@ -1259,6 +1278,39 @@
                 }
                 
                 this.recordHistory();
+            }
+
+            /**
+             * [私有] 保存当前图层的数据到 this.layers 数组
+             */
+            _saveCurrentLayerData() {
+                if (!this.multiLayerMode || !this.layers[this.currentLayer]) return;
+                
+                const currentMapData = this._getCurrentMapDataAsLayer();
+                this.layers[this.currentLayer] = JSON.parse(JSON.stringify(currentMapData));
+            }
+
+            /**
+             * [私有] 从 this.layers 数组加载指定图层的数据到主游戏对象
+             * @param {number} layerIndex - 要切换到的图层索引
+             */
+            _switchToLayer(layerIndex) {
+                if (layerIndex < 0 || layerIndex >= this.layerCount) return;
+                
+                const layerData = this.layers[layerIndex];
+                if (!layerData) return;
+
+                this.hWalls = layerData.hWalls || [];
+                this.vWalls = layerData.vWalls || [];
+                this.activeCells = layerData.activeCells || Array(this.height).fill(null).map(() => Array(this.width).fill(true));
+                this.ghosts = layerData.ghosts || [];
+                this.items = layerData.items || [];
+                this.buttons = layerData.buttons || [];
+                this.stairs = layerData.stairs || [];
+                this.endPos = layerData.endPos || null;
+                this.customStartPos = layerData.customStartPos || null;
+                
+                this.currentLayer = layerIndex;
             }
 
             /**
@@ -2955,6 +3007,7 @@
                 
                 this.updateLayerPanel();
                 this.showToast(`已添加第 ${this.layerCount} 层`, 2000, 'success');
+                // 不在此处自动更新分享码（仅在开始游戏或用户手动复制时更新）
             }
 
             /**
@@ -2991,30 +3044,56 @@
                     
                     this.updateLayerPanel();
                     this.showToast(`已删除第 ${this.layerCount + 1} 层`, 2000, 'success');
+                    // 不在此处自动更新分享码（仅在开始游戏或用户手动复制时更新）
                 });
             }
 
             /**
              * 切换到指定图层
+             * @param {number} layerIndex - 要切换到的图层索引
              */
             switchToLayer(layerIndex) {
-                if (layerIndex < 0 || layerIndex >= this.layerCount) return;
                 if (layerIndex === this.currentLayer) return;
-                
-                // 保存当前层数据
-                this._saveCurrentLayerData();
-                
-                // 切换到新层
-                this._switchToLayer(layerIndex);
-                
-                // Fix 2: Switch to the per-layer seenCells
-                if (this.multiLayerMode && this.seenCellsPerLayer && this.seenCellsPerLayer[layerIndex]) {
-                    this.seenCells = this.seenCellsPerLayer[layerIndex];
+
+                if (this.state === GAME_STATES.EDITOR) {
+                    // 编辑器模式下，保存当前层，加载新层
+                    this._saveCurrentLayerData();
+                    this._switchToLayer(layerIndex);
+                    this.currentLayer = layerIndex;
+                    
+                    this._renderStaticLayer();
+                    this.drawEditor();
+                } else if (this.state === GAME_STATES.PLAYING) {
+                    // 游戏模式下，只切换视图，不改变游戏逻辑状态
+                    this._switchToLayer(layerIndex);
+                    this.currentLayer = layerIndex;
+                    
+                    this._renderStaticLayer();
+                    this.draw();
+                }
+    
+                /**
+                 * 查找所有图层中的起点
+                 * @param {Array} maps - 包含所有图层数据的数组
+                 * @returns {object|null} - 返回 {x, y, layer} 或 null
+                 */
+                function findStartPosInMaps(maps) {
+                    if (!maps || !Array.isArray(maps)) return null;
+                    for (let i = 0; i < maps.length; i++) {
+                        const map = maps[i];
+                        if (map && map.customStartPos) {
+                            return { ...map.customStartPos, layer: i };
+                        }
+                        // 兼容旧的或单层数据结构
+                        if (map && map.entities) {
+                             const start = map.entities.find(e => e.type === 'start');
+                             if (start) return { ...start, layer: i };
+                        }
+                    }
+                    return null;
                 }
                 
                 this.updateLayerPanel();
-                this._renderStaticLayer();
-                this.draw();
             }
 
             /**
@@ -3034,6 +3113,7 @@
                     endPos: this.endPos,
                     customStartPos: this.customStartPos
                 };
+                // 不在每次保存当前层时自动刷新分享码。分享码只在开始游戏或用户点击“复制分享码”时生成。
             }
 
             /**
@@ -4589,6 +4669,8 @@
                             activeCells: this.activeCells,
                             editorMode: this.editor.mode,
                             customStartPos: this.customStartPos,
+                            startPos: this.startPos,
+                            playerStartLayer: this.playerLayer,
                             // Fix 6: 多层地图数据
                             multiLayerMode: this.multiLayerMode,
                             layerCount: this.layerCount,
@@ -4606,6 +4688,8 @@
                             activeCells: this.mapData.activeCells || Array(this.mapData.height).fill(null).map(()=>Array(this.mapData.width).fill(true)),
                             editorMode: this.mapData.editorMode || 'regular',
                             customStartPos: this.mapData.customStartPos,
+                            startPos: this.mapData.startPos || this.startPos,
+                            playerStartLayer: typeof this.mapData.playerStartLayer === 'number' ? this.mapData.playerStartLayer : (this.playerLayer || 0),
                             // Fix 6: 多层地图数据
                             multiLayerMode: this.mapData.multiLayerMode || false,
                             layerCount: this.mapData.layerCount || 1,
@@ -4614,7 +4698,52 @@
                         };
                     }
 
-                    const buffer = [];
+                        // 早期检测：确保压缩库 pako 已加载
+                        if (typeof pako === 'undefined') {
+                            console.error('generateShareCode: pako is not defined. The pako compression library failed to load.');
+                            this.showToast('无法生成分享码：压缩库未加载（pako）。请检查 index.html 中的 pako 引用。', 5000, 'error');
+                            return null;
+                        }
+
+                        // 防御性校验与默认填充，避免后续序列化时出现未定义访问
+                        if (!Number.isInteger(sourceData.width) || !Number.isInteger(sourceData.height)) {
+                            console.error('generateShareCode: invalid dimensions', sourceData.width, sourceData.height, { sourceData });
+                            this.showToast('无法生成分享码：地图尺寸无效。', 3000, 'error');
+                            return null;
+                        }
+
+                        // 确保墙体数组存在且结构完整，避免在序列化中读取 undefined
+                        const ensureHWalls = () => {
+                            if (!Array.isArray(sourceData.hWalls)) {
+                                sourceData.hWalls = Array(sourceData.height + 1).fill(null).map(() => Array(sourceData.width).fill(null));
+                            } else {
+                                // normalize inner arrays
+                                for (let y = 0; y <= sourceData.height; y++) {
+                                    if (!Array.isArray(sourceData.hWalls[y])) sourceData.hWalls[y] = Array(sourceData.width).fill(null);
+                                }
+                            }
+                        };
+                        const ensureVWalls = () => {
+                            if (!Array.isArray(sourceData.vWalls)) {
+                                sourceData.vWalls = Array(sourceData.height).fill(null).map(() => Array(sourceData.width + 1).fill(null));
+                            } else {
+                                for (let y = 0; y < sourceData.height; y++) {
+                                    if (!Array.isArray(sourceData.vWalls[y])) sourceData.vWalls[y] = Array(sourceData.width + 1).fill(null);
+                                }
+                            }
+                        };
+                        ensureHWalls();
+                        ensureVWalls();
+
+                        // layers 防护（多层模式）
+                        if (sourceData.multiLayerMode) {
+                            if (!Array.isArray(sourceData.layers)) sourceData.layers = [];
+                            for (let li = 0; li < (sourceData.layerCount || 1); li++) {
+                                if (!sourceData.layers[li]) sourceData.layers[li] = { hWalls: [], vWalls: [], activeCells: [], ghosts: [], items: [], customStartPos: null };
+                            }
+                        }
+
+                        const buffer = [];
                     
                     // 2. 写入头部
                     buffer.push(sourceData.width);
@@ -4635,6 +4764,15 @@
                     } else {
                         buffer.push(0xFF, 0xFF);
                     }
+
+                    // 写入地图默认起点与起始图层（方便多层地图和非自由模式）
+                    // startPos: 优先使用 customStartPos（如果存在），否则使用 sourceData.startPos 或默认
+                    const mapStart = sourceData.customStartPos || sourceData.startPos || { x: 1, y: (sourceData.height - 2) };
+                    buffer.push((mapStart && typeof mapStart.x === 'number') ? mapStart.x : 0xFF);
+                    buffer.push((mapStart && typeof mapStart.y === 'number') ? mapStart.y : 0xFF);
+                    // playerStartLayer: 单字节，0 表示第0层
+                    const playerStartLayer = (typeof sourceData.playerStartLayer === 'number') ? sourceData.playerStartLayer : (sourceData.playerLayer || 0);
+                    buffer.push(playerStartLayer & 0xFF);
 
                     // 新增：自由模式特有数据 (Custom Start + Active Cells Bitmask)
                     if (sourceData.editorMode === 'free') {
@@ -4682,30 +4820,33 @@
                     const paramsQueue = []; // 存储额外参数
 
                     const processWall = (wall) => {
-                        typeNibbles.push(wall.type);
-                        
+                        // 防御性：如果 wall 未定义，则当作 EMPTY
+                        if (!wall) wall = { type: WALL_TYPES.EMPTY };
+                        const wt = (typeof wall.type === 'number') ? wall.type : WALL_TYPES.EMPTY;
+                        typeNibbles.push(wt);
+
                         // 如果墙体有额外参数，推入参数队列
-                        if (wall.type === 3) { // LOCKED
-                            paramsQueue.push(wall.keys); 
-                        } else if (wall.type === 4) { // ONE_WAY
+                        if (wt === WALL_TYPES.LOCKED) { // LOCKED
+                            paramsQueue.push(wall.keys || 0);
+                        } else if (wt === WALL_TYPES.ONE_WAY) { // ONE_WAY
                             let dir = 0;
-                            if (wall.direction.dy === -1) dir = 0;
-                            else if (wall.direction.dy === 1) dir = 1;
-                            else if (wall.direction.dx === -1) dir = 2;
+                            if (wall.direction && wall.direction.dy === -1) dir = 0;
+                            else if (wall.direction && wall.direction.dy === 1) dir = 1;
+                            else if (wall.direction && wall.direction.dx === -1) dir = 2;
                             else dir = 3;
                             paramsQueue.push(dir);
-                        } else if (wall.type === 6) { // LETTER_DOOR
-                            paramsQueue.push(wall.letter.charCodeAt(0));
+                        } else if (wt === WALL_TYPES.LETTER_DOOR) { // LETTER_DOOR
+                            paramsQueue.push(wall.letter ? wall.letter.charCodeAt(0) : 0);
                             paramsQueue.push(wall.initialState === 'open' ? 1 : 0);
                         }
                     };
 
                     // 遍历顺序必须严格一致：先横后竖，先左后右
                     for (let y = 0; y <= sourceData.height; y++) {
-                        for (let x = 0; x < sourceData.width; x++) processWall(sourceData.hWalls[y][x]);
+                        for (let x = 0; x < sourceData.width; x++) processWall((sourceData.hWalls && sourceData.hWalls[y]) ? sourceData.hWalls[y][x] : null);
                     }
                     for (let y = 0; y < sourceData.height; y++) {
-                        for (let x = 0; x <= sourceData.width; x++) processWall(sourceData.vWalls[y][x]);
+                        for (let x = 0; x <= sourceData.width; x++) processWall((sourceData.vWalls && sourceData.vWalls[y]) ? sourceData.vWalls[y][x] : null);
                     }
 
                     // 5. 【核心优化】Bit-Packing：将两个 4-bit 类型合并为一个字节
@@ -4773,29 +4914,31 @@
                             const layerParamsQueue = [];
                             
                             const processLayerWall = (wall) => {
-                                layerTypeNibbles.push(wall.type);
-                                if (wall.type === 3) layerParamsQueue.push(wall.keys);
-                                else if (wall.type === 4) {
+                                if (!wall) wall = { type: WALL_TYPES.EMPTY };
+                                const wt = (typeof wall.type === 'number') ? wall.type : WALL_TYPES.EMPTY;
+                                layerTypeNibbles.push(wt);
+                                if (wt === WALL_TYPES.LOCKED) layerParamsQueue.push(wall.keys || 0);
+                                else if (wt === WALL_TYPES.ONE_WAY) {
                                     let dir = 0;
-                                    if (wall.direction.dy === -1) dir = 0;
-                                    else if (wall.direction.dy === 1) dir = 1;
-                                    else if (wall.direction.dx === -1) dir = 2;
+                                    if (wall.direction && wall.direction.dy === -1) dir = 0;
+                                    else if (wall.direction && wall.direction.dy === 1) dir = 1;
+                                    else if (wall.direction && wall.direction.dx === -1) dir = 2;
                                     else dir = 3;
                                     layerParamsQueue.push(dir);
-                                } else if (wall.type === 6) {
-                                    layerParamsQueue.push(wall.letter.charCodeAt(0));
+                                } else if (wt === WALL_TYPES.LETTER_DOOR) {
+                                    layerParamsQueue.push(wall.letter ? wall.letter.charCodeAt(0) : 0);
                                     layerParamsQueue.push(wall.initialState === 'open' ? 1 : 0);
                                 }
                             };
                             
                             for (let y = 0; y <= sourceData.height; y++) {
                                 for (let x = 0; x < sourceData.width; x++) {
-                                    processLayerWall(layer.hWalls[y][x]);
+                                    processLayerWall((layer.hWalls && layer.hWalls[y]) ? layer.hWalls[y][x] : null);
                                 }
                             }
                             for (let y = 0; y < sourceData.height; y++) {
                                 for (let x = 0; x <= sourceData.width; x++) {
-                                    processLayerWall(layer.vWalls[y][x]);
+                                    processLayerWall((layer.vWalls && layer.vWalls[y]) ? layer.vWalls[y][x] : null);
                                 }
                             }
                             
@@ -4809,27 +4952,37 @@
                     }
 
                     // 7. 【核心优化】DeflateRaw + URL-Safe Base64
-                    const uint8Data = new Uint8Array(buffer);
-                    // 使用 deflateRaw 去除 zlib 头 (节省约 6 字节)
-                    const compressed = pako.deflateRaw(uint8Data);
-                    
-                    let binaryString = '';
-                    const len = compressed.byteLength;
-                    for (let i = 0; i < len; i++) {
-                        binaryString += String.fromCharCode(compressed[i]);
+                    try {
+                        const uint8Data = new Uint8Array(buffer);
+                        // 使用 deflateRaw 去除 zlib 头 (节省约 6 字节)
+                        const compressed = pako.deflateRaw(uint8Data);
+
+                        let binaryString = '';
+                        const len = compressed.byteLength;
+                        for (let i = 0; i < len; i++) {
+                            binaryString += String.fromCharCode(compressed[i]);
+                        }
+
+                        // URL Safe 替换: +->- , /->_ , 去掉 =
+                        const base64 = btoa(binaryString)
+                            .replace(/\+/g, '-')
+                            .replace(/\//g, '_')
+                            .replace(/=+$/, '');
+
+                        // 额外日志：帮助定位在何种数据下生成失败
+                        console.log('generateShareCode: ok', { width: sourceData.width, height: sourceData.height, modeByte, multiLayer: !!sourceData.multiLayerMode, bufferLen: buffer.length, layerCount: sourceData.layerCount });
+
+                        return base64;
+                    } catch (encErr) {
+                        console.error('generateShareCode: compression/encoding failed', encErr, { bufferSample: buffer.slice(0, 50), bufferLen: buffer.length, sourceDataSummary: { width: sourceData.width, height: sourceData.height, multiLayer: sourceData.multiLayerMode } });
+                        this.showToast('生成分享码失败（压缩/编码错误），请查看控制台。', 3000, 'error');
+                        return null;
                     }
-                    
-                    // URL Safe 替换: +->- , /->_ , 去掉 =
-                    const base64 = btoa(binaryString)
-                        .replace(/\+/g, '-')
-                        .replace(/\//g, '_')
-                        .replace(/=+$/, '');
-                    
-                    return base64;
 
                 } catch (e) {
-                    console.error("Share code gen failed", e);
-                    this.showToast('生成分享码失败', 3000, 'error');
+                    console.error("generateShareCode: unexpected error", e);
+                    // 展示更具描述性的提示，建议打开控制台查看
+                    this.showToast('生成分享码失败（请查看浏览器控制台以获取详细信息）', 4000, 'error');
                     return null;
                 }
             }
@@ -4923,6 +5076,18 @@
                     const ex = read();
                     const ey = read();
                     if (ex !== 0xFF) endPos = { x: ex, y: ey };
+
+                    // 读取地图默认起点与玩家起始层（兼容新版）
+                    let mapStartPos = null;
+                    let playerStartLayer = 0;
+                    // 只有当缓冲区还有足够字节时才读取这三个可选字段（向后兼容旧版）
+                    if (ptr + 3 <= inflated.length) {
+                        const msx = read();
+                        const msy = read();
+                        const mplayer = read();
+                        if (msx !== 0xFF) mapStartPos = { x: msx, y: msy };
+                        playerStartLayer = typeof mplayer === 'number' ? mplayer : 0;
+                    }
 
                     // Free Mode Data Unpacking
                     let customStartPos = null;
@@ -5165,6 +5330,10 @@
                         stairs: stairs
                     };
 
+                    // 如果分享码中包含 mapStartPos 或 playerStartLayer，则附加到 mapData
+                    if (mapStartPos) mapData.mapStartPos = mapStartPos;
+                    mapData.playerStartLayer = typeof playerStartLayer === 'number' ? playerStartLayer : 0;
+
                     this._applyLoadedData(mapData, gameMode, initialHealth, initialStamina, isEditor);
 
                 } catch (e) {
@@ -5205,6 +5374,20 @@
                     this.currentLayer = 0;
                     this.stairs = JSON.parse(JSON.stringify(mapData.stairs || []));
                     this.layers = JSON.parse(JSON.stringify(mapData.layers || []));
+
+                    // 应用分享码中声明的玩家起始层（编辑器也应显示对应图层）
+                    this.playerLayer = typeof mapData.playerStartLayer === 'number' ? mapData.playerStartLayer : 0;
+                    if (this.multiLayerMode) {
+                        if (this.playerLayer < 0 || this.playerLayer >= this.layerCount) this.playerLayer = 0;
+                        this.currentLayer = this.playerLayer;
+                        if (this.layers[this.playerLayer]) {
+                            const layer = this.layers[this.playerLayer];
+                            this.hWalls = layer.hWalls;
+                            this.vWalls = layer.vWalls;
+                            this.activeCells = layer.activeCells;
+                            this.customStartPos = layer.customStartPos || mapData.mapStartPos || null;
+                        }
+                    }
 
                     this.mapData = { // 更新当前的 mapData，确保 reset/play 正确
                         ...mapData,
@@ -5357,11 +5540,56 @@
             copyShareCode(isEditor = false) {
                 const code = this.generateShareCode(isEditor);
                 if (code) {
-                    navigator.clipboard.writeText(code).then(() => {
-                        this.showToast('分享码已复制到剪贴板！', 2000, 'success');
-                    }, () => {
-                        this.showToast('复制分享码失败。', 3000, 'error');
-                    });
+                    // 首选现代剪贴板 API
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(code).then(() => {
+                            this.showToast('分享码已复制到剪贴板！', 2000, 'success');
+                            try { this.updateURLWithShareCode(code); } catch (e) {}
+                        }).catch((err) => {
+                            console.error('copyShareCode: navigator.clipboard.writeText failed', err);
+                            // 回退到传统方法
+                            try {
+                                const ta = document.createElement('textarea');
+                                ta.value = code;
+                                ta.style.position = 'fixed';
+                                ta.style.left = '-9999px';
+                                document.body.appendChild(ta);
+                                ta.select();
+                                const ok = document.execCommand('copy');
+                                document.body.removeChild(ta);
+                                if (ok) {
+                                    this.showToast('分享码已复制到剪贴板（回退方式）！', 2000, 'success');
+                                    try { this.updateURLWithShareCode(code); } catch (e) {}
+                                } else {
+                                    this.showToast('复制分享码失败。', 3000, 'error');
+                                }
+                            } catch (e) {
+                                console.error('copyShareCode: fallback execCommand copy failed', e);
+                                this.showToast('复制分享码失败。', 3000, 'error');
+                            }
+                        });
+                    } else {
+                        // 没有 navigator.clipboard 支持，使用传统方法
+                        try {
+                            const ta = document.createElement('textarea');
+                            ta.value = code;
+                            ta.style.position = 'fixed';
+                            ta.style.left = '-9999px';
+                            document.body.appendChild(ta);
+                            ta.select();
+                            const ok = document.execCommand('copy');
+                            document.body.removeChild(ta);
+                            if (ok) {
+                                this.showToast('分享码已复制到剪贴板（回退方式）！', 2000, 'success');
+                                try { this.updateURLWithShareCode(code); } catch (e) {}
+                            } else {
+                                this.showToast('复制分享码失败。', 3000, 'error');
+                            }
+                        } catch (e) {
+                            console.error('copyShareCode: execCommand copy failed', e);
+                            this.showToast('复制分享码失败。', 3000, 'error');
+                        }
+                    }
                 } else {
                     this.showToast('无法生成分享码，请先创建地图。', 3000, 'error');
                 }
