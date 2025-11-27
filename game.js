@@ -1,40 +1,1050 @@
-    // ==================================================
-    //  常量定义
-    // ==================================================
-    const WALL_TYPES = {
-        EMPTY: 0,
-        SOLID: 1,
-        DOOR: 2,
-        LOCKED: 3,
-        ONE_WAY: 4,
-        GLASS: 5,
-        LETTER_DOOR: 6
-    };
+// ==================================================
+//  常量定义
+// ==================================================
+const WALL_TYPES = {
+    EMPTY: 0,
+    SOLID: 1,
+    DOOR: 2,
+    LOCKED: 3,
+    ONE_WAY: 4,
+    GLASS: 5,
+    LETTER_DOOR: 6
+};
 
-    const GAME_STATES = {
-        MENU: 'menu',
-        PLAYING: 'playing',
-        DEAD: 'dead',
-        WON: 'won',
-        EDITOR: 'editor'
-    };
+const GAME_STATES = {
+    MENU: 'menu',
+    PLAYING: 'playing',
+    DEAD: 'dead',
+    WON: 'won',
+    EDITOR: 'editor'
+};
 
-    const EDITOR_TOOLS = {
-        WALL: 'wall',
-        GLASS: 'glass',
-        DOOR: 'door',
-        ONE_WAY: 'oneway',
-        LOCK: 'lock',
-        LETTER_DOOR: 'letter',
-        BUTTON: 'button',
-        GHOST: 'ghost',
-        KEY: 'key',
-        START: 'start', // 新增起点工具
-        END: 'end',
-        STAIR: 'stair', // 新增楼梯工具
-        ERASER: 'eraser',
-        GRID: 'grid' // 新增地图方格工具
-    };
+const EDITOR_TOOLS = {
+    WALL: 'wall',
+    GLASS: 'glass',
+    DOOR: 'door',
+    ONE_WAY: 'oneway',
+    LOCK: 'lock',
+    LETTER_DOOR: 'letter',
+    BUTTON: 'button',
+    GHOST: 'ghost',
+    KEY: 'key',
+    START: 'start',
+    END: 'end',
+    STAIR: 'stair',
+    ERASER: 'eraser',
+    GRID: 'grid'
+};
+
+// ==================================================
+//  新架构：核心数据结构
+// ==================================================
+
+/**
+ * MapDefinition: 存储地图的静态、不可变定义。
+ * 它像棋盘，定义了游戏的舞台，加载后不再改变。
+ * 包含：地图尺寸、游戏模式、初始生命/体力、编辑模式、图层数量、
+ *       每层的activeCells（地图方格）、初始墙体状态、初始实体位置
+ */
+class MapDefinition {
+    constructor(data) {
+        this.width = data.width;
+        this.height = data.height;
+        this.gameMode = data.gameMode || 'exploration';
+        this.initialHealth = data.initialHealth || 5;
+        this.initialStamina = data.initialStamina || 100;
+        this.editorMode = data.editorMode || 'regular';
+        this.multiLayerMode = data.multiLayerMode || false;
+        this.layerCount = data.layerCount || 1;
+        
+        // 全局楼梯数据（跨层）
+        this.stairs = JSON.parse(JSON.stringify(data.stairs || []));
+
+        // 每层的静态定义
+        this.layers = [];
+        for (let i = 0; i < this.layerCount; i++) {
+            let layerData;
+            if (data.layers && data.layers[i]) {
+                layerData = data.layers[i];
+            } else if (i === 0) {
+                // 兼容单层地图：第0层使用顶层数据
+                layerData = {
+                    hWalls: data.hWalls,
+                    vWalls: data.vWalls,
+                    activeCells: data.activeCells || Array(this.height).fill(null).map(() => Array(this.width).fill(true)),
+                    ghosts: data.initialGhosts || [],
+                    items: data.items || [],
+                    buttons: data.buttons || [],
+                    stairs: (data.stairs || []).filter(s => s.layer === 0),
+                    endPos: data.endPos,
+                    customStartPos: data.customStartPos
+                };
+            } else {
+                // 空层
+                const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
+                layerData = {
+                    hWalls: Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty)),
+                    vWalls: Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty)),
+                    activeCells: Array(this.height).fill(null).map(() => Array(this.width).fill(true)),
+                    ghosts: [],
+                    items: [],
+                    buttons: [],
+                    stairs: [],
+                    endPos: null,
+                    customStartPos: null
+                };
+            }
+
+            this.layers.push({
+                // activeCells 是静态的，不会改变
+                activeCells: JSON.parse(JSON.stringify(layerData.activeCells || Array(this.height).fill(null).map(() => Array(this.width).fill(true)))),
+                // 初始墙体状态（包括类型、方向、字母门初始状态等）
+                initialWalls: {
+                    h: JSON.parse(JSON.stringify(layerData.hWalls || [])),
+                    v: JSON.parse(JSON.stringify(layerData.vWalls || []))
+                },
+                // 初始实体位置
+                initialEntities: {
+                    ghosts: JSON.parse(JSON.stringify(layerData.ghosts || [])),
+                    items: JSON.parse(JSON.stringify(layerData.items || [])),
+                    buttons: JSON.parse(JSON.stringify(layerData.buttons || [])),
+                    stairs: JSON.parse(JSON.stringify((layerData.stairs || []).length > 0 ? layerData.stairs : (data.stairs || []).filter(s => s.layer === i))),
+                    endPos: layerData.endPos ? { ...layerData.endPos } : null,
+                    customStartPos: layerData.customStartPos ? { ...layerData.customStartPos } : null
+                }
+            });
+        }
+
+        // 确定玩家出生点
+        this.playerStart = this._findPlayerStart(data);
+    }
+
+    _findPlayerStart(data) {
+        // 优先使用明确指定的 playerStartLayer
+        const startLayer = typeof data.playerStartLayer === 'number' ? data.playerStartLayer : 0;
+        
+        if (this.editorMode === 'free') {
+            // 自由模式：查找带有 customStartPos 的图层
+            for (let i = 0; i < this.layerCount; i++) {
+                const layer = this.layers[i];
+                if (layer && layer.initialEntities.customStartPos) {
+                    return { 
+                        x: layer.initialEntities.customStartPos.x, 
+                        y: layer.initialEntities.customStartPos.y, 
+                        layer: i 
+                    };
+                }
+            }
+            // 如果没找到，使用 mapStartPos 或默认
+            if (data.mapStartPos) {
+                return { x: data.mapStartPos.x, y: data.mapStartPos.y, layer: startLayer };
+            }
+        }
+        
+        // 常规模式或回退：使用 startPos 或默认
+        const defaultStart = data.startPos || { x: 1, y: this.height - 2 };
+        return { x: defaultStart.x, y: defaultStart.y, layer: startLayer };
+    }
+}
+
+/**
+ * GameState: 存储游戏某一时刻的完整动态快照。
+ * 这是一个纯粹的数据对象，代表游戏的一个瞬间。
+ * 包含：玩家状态、循环次数、死亡/胜利标志、每层的动态状态、已探索区域
+ */
+class GameState {
+    constructor(data) {
+        // 玩家状态
+        this.player = {
+            x: data.player.x,
+            y: data.player.y,
+            layer: data.player.layer,
+            hp: data.player.hp,
+            stamina: data.player.stamina,
+            keys: data.player.keys,
+            steps: data.player.steps,
+            trail: JSON.parse(JSON.stringify(data.player.trail || []))
+        };
+        
+        this.loopCount = data.loopCount || 0;
+        this.isDead = data.isDead || false;
+        this.isWon = data.isWon || false;
+        this.deathReason = data.deathReason || '';
+        this.isRevivalPoint = data.isRevivalPoint || false;
+
+        // 每层的动态状态
+        this.layerStates = data.layerStates.map(ls => ({
+            ghosts: JSON.parse(JSON.stringify(ls.ghosts)),
+            items: JSON.parse(JSON.stringify(ls.items)),
+            // 墙体的当前状态（主要是字母门的开关状态和数字门的消耗状态）
+            wallStates: {
+                h: JSON.parse(JSON.stringify(ls.wallStates.h)),
+                v: JSON.parse(JSON.stringify(ls.wallStates.v))
+            }
+        }));
+
+        // 每层的已探索区域
+        this.seenCells = JSON.parse(JSON.stringify(data.seenCells));
+    }
+
+    clone() {
+        return new GameState(JSON.parse(JSON.stringify(this)));
+    }
+}
+
+// ==================================================
+//  GameLogic: 纯函数模块，处理所有游戏逻辑
+// ==================================================
+
+const GameLogic = {
+    /**
+     * 从 MapDefinition 创建游戏初始状态
+     */
+    createInitialState(mapDef) {
+        // 创建每层的动态状态
+        const layerStates = mapDef.layers.map((layerDef, layerIndex) => {
+            // 复制初始墙体状态
+            const hWallStates = layerDef.initialWalls.h.map(row => 
+                row.map(wall => ({
+                    type: wall.type,
+                    keys: wall.keys || 0,
+                    direction: wall.direction ? { ...wall.direction } : null,
+                    letter: wall.letter || null,
+                    initialState: wall.initialState || 'closed',
+                    currentState: wall.initialState || 'closed'
+                }))
+            );
+            const vWallStates = layerDef.initialWalls.v.map(row => 
+                row.map(wall => ({
+                    type: wall.type,
+                    keys: wall.keys || 0,
+                    direction: wall.direction ? { ...wall.direction } : null,
+                    letter: wall.letter || null,
+                    initialState: wall.initialState || 'closed',
+                    currentState: wall.initialState || 'closed'
+                }))
+            );
+
+            return {
+                ghosts: layerDef.initialEntities.ghosts.map((g, idx) => ({
+                    x: g.x,
+                    y: g.y,
+                    id: g.id !== undefined ? g.id : idx,
+                    trail: []
+                })),
+                items: layerDef.initialEntities.items.map(i => ({
+                    x: i.x,
+                    y: i.y,
+                    type: i.type || 'key'
+                })),
+                wallStates: { h: hWallStates, v: vWallStates }
+            };
+        });
+
+        // 创建每层的视野
+        const seenCells = [];
+        for (let i = 0; i < mapDef.layerCount; i++) {
+            seenCells.push(
+                Array(mapDef.height).fill(null).map(() => Array(mapDef.width).fill(false))
+            );
+        }
+
+        const initialState = new GameState({
+            player: {
+                x: mapDef.playerStart.x,
+                y: mapDef.playerStart.y,
+                layer: mapDef.playerStart.layer,
+                hp: mapDef.initialHealth,
+                stamina: mapDef.initialStamina,
+                keys: 0,
+                steps: 0,
+                trail: []
+            },
+            loopCount: 0,
+            layerStates: layerStates,
+            seenCells: seenCells,
+            isRevivalPoint: true
+        });
+
+        // 更新初始视野
+        return this.updateVisibility(initialState, mapDef);
+    },
+
+    /**
+     * 根据动作计算下一个状态
+     * @returns {GameState} 新状态，如果无变化则返回原状态
+     */
+    calculateNextState(currentState, action, mapDef) {
+        if (currentState.isDead || currentState.isWon) {
+            // 特殊情况：复活动作
+            if (action.type === 'REVIVE') {
+                return this.handleRevive(currentState, mapDef);
+            }
+            return currentState;
+        }
+
+        const nextState = currentState.clone();
+        const originalPlayerPos = { 
+            x: currentState.player.x, 
+            y: currentState.player.y, 
+            layer: currentState.player.layer 
+        };
+
+        let stateChanged = false;
+        let isStairAction = false;
+
+        switch (action.type) {
+            case 'MOVE':
+                stateChanged = this.handleMove(nextState, action.payload, mapDef);
+                break;
+            case 'USE_STAIR':
+                stateChanged = this.handleUseStair(nextState, mapDef);
+                isStairAction = true;
+                break;
+            case 'PRESS_BUTTON':
+                stateChanged = this.handlePressButton(nextState, action.payload, mapDef);
+                break;
+            case 'REVIVE':
+                return this.handleRevive(currentState, mapDef);
+            default:
+                return currentState;
+        }
+
+        if (!stateChanged) {
+            return currentState;
+        }
+
+        // 按顺序处理玩家操作后的所有变化
+        this.handleItemPickup(nextState, mapDef);
+        
+        if (isStairAction) {
+            // 玩家使用楼梯：让原层的鬼向玩家原位置移动
+            this.moveGhostsAfterStair(nextState, originalPlayerPos, mapDef);
+        } else {
+            // 普通移动：处理鬼的移动（包括跨楼梯追踪）
+            this.moveGhostsWithStairChase(nextState, originalPlayerPos, mapDef);
+        }
+        
+        this.checkCollisions(nextState, mapDef);
+        this.updateVisibility(nextState, mapDef);
+        this.checkWinLossConditions(nextState, mapDef);
+
+        nextState.isRevivalPoint = false;
+        return nextState;
+    },
+
+    /**
+     * 处理移动动作
+     */
+    handleMove(state, direction, mapDef) {
+        const p = state.player;
+        const playerLayer = p.layer;
+        const layerDef = mapDef.layers[playerLayer];
+        const layerState = state.layerStates[playerLayer];
+        
+        // 检查是否按下了按钮
+        const buttons = layerDef.initialEntities.buttons || [];
+        const button = buttons.find(b => 
+            b.x === p.x && 
+            b.y === p.y && 
+            b.direction.dx === direction.dx && 
+            b.direction.dy === direction.dy
+        );
+        if (button) {
+            return this.handlePressButton(state, { letter: button.letter }, mapDef);
+        }
+
+        const newX = p.x + direction.dx;
+        const newY = p.y + direction.dy;
+
+        // 边界检查
+        if (newX < 0 || newX >= mapDef.width || newY < 0 || newY >= mapDef.height) {
+            return false;
+        }
+
+        // 检查目标格子是否是有效地图方格
+        if (!layerDef.activeCells[newY][newX]) {
+            return false;
+        }
+
+        // 获取墙体
+        const wallDef = this._getWallBetween(p, { x: newX, y: newY }, layerDef.initialWalls, direction);
+        const wallState = this._getWallStateBetween(p, { x: newX, y: newY }, layerState.wallStates, direction);
+
+        if (wallDef && wallDef.type !== WALL_TYPES.EMPTY) {
+            // 实心墙或玻璃墙不可通过
+            if (wallDef.type === WALL_TYPES.SOLID || wallDef.type === WALL_TYPES.GLASS) {
+                return false;
+            }
+            // 单向门检查方向
+            if (wallDef.type === WALL_TYPES.ONE_WAY) {
+                if (!wallDef.direction || direction.dx !== wallDef.direction.dx || direction.dy !== wallDef.direction.dy) {
+                    return false;
+                }
+            }
+            // 数字门检查钥匙数量
+            if (wallDef.type === WALL_TYPES.LOCKED) {
+                if (p.keys < (wallDef.keys || 0)) {
+                    return false;
+                }
+                // 消耗门：将墙体类型设为空
+                if (wallState) {
+                    wallState.type = WALL_TYPES.EMPTY;
+                }
+            }
+            // 字母门检查开关状态
+            if (wallDef.type === WALL_TYPES.LETTER_DOOR) {
+                if (wallState && wallState.currentState === 'closed') {
+                    return false;
+                }
+            }
+        }
+
+        // 添加轨迹
+        p.trail.unshift({ x: p.x, y: p.y, timestamp: Date.now() });
+        if (p.trail.length > 10) p.trail.pop();
+
+        // 更新玩家位置
+        p.x = newX;
+        p.y = newY;
+        p.steps++;
+
+        // 死亡循环模式消耗体力
+        if (mapDef.gameMode === 'death-loop') {
+            p.stamina--;
+        }
+
+        return true;
+    },
+
+    /**
+     * 处理使用楼梯
+     */
+    handleUseStair(state, mapDef) {
+        if (!mapDef.multiLayerMode) return false;
+
+        const p = state.player;
+        const stairs = mapDef.stairs;
+        
+        // 查找玩家位置的楼梯
+        const stair = stairs.find(s => 
+            s.x === p.x && 
+            s.y === p.y && 
+            s.layer === p.layer
+        );
+
+        if (!stair) return false;
+
+        // 计算目标层
+        const targetLayer = stair.direction === 'up' ? p.layer + 1 : p.layer - 1;
+        if (targetLayer < 0 || targetLayer >= mapDef.layerCount) return false;
+
+        // 检查目标层是否有对应楼梯
+        const targetStair = stairs.find(s =>
+            s.x === p.x &&
+            s.y === p.y &&
+            s.layer === targetLayer &&
+            s.direction === (stair.direction === 'up' ? 'down' : 'up')
+        );
+
+        if (!targetStair) return false;
+
+        // 执行上下楼
+        p.layer = targetLayer;
+        p.steps++;
+
+        if (mapDef.gameMode === 'death-loop') {
+            p.stamina--;
+        }
+
+        return true;
+    },
+
+    /**
+     * 处理按下按钮
+     */
+    handlePressButton(state, payload, mapDef) {
+        const letter = payload.letter;
+        let toggled = false;
+
+        // 遍历所有图层的墙体状态，切换对应字母门
+        state.layerStates.forEach(layerState => {
+            const toggleWall = (wall) => {
+                if (wall.type === WALL_TYPES.LETTER_DOOR && wall.letter === letter) {
+                    wall.currentState = wall.currentState === 'closed' ? 'open' : 'closed';
+                    toggled = true;
+                }
+            };
+
+            layerState.wallStates.h.forEach(row => row.forEach(toggleWall));
+            layerState.wallStates.v.forEach(row => row.forEach(toggleWall));
+        });
+
+        return toggled;
+    },
+
+    /**
+     * 处理物品拾取
+     */
+    handleItemPickup(state, mapDef) {
+        const p = state.player;
+        const items = state.layerStates[p.layer].items;
+        
+        const itemIndex = items.findIndex(item => item.x === p.x && item.y === p.y);
+        if (itemIndex > -1) {
+            const item = items[itemIndex];
+            if (item.type === 'key') {
+                p.keys++;
+            }
+            items.splice(itemIndex, 1);
+        }
+    },
+
+    /**
+     * 移动所有鬼
+     */
+    moveGhosts(state, originalPlayerPos, mapDef) {
+        const playerLayer = state.player.layer;
+        const ghosts = state.layerStates[playerLayer].ghosts;
+        const layerDef = mapDef.layers[playerLayer];
+        const layerState = state.layerStates[playerLayer];
+
+        let moveIntents = [];
+
+        // 收集移动意图
+        for (const ghost of ghosts) {
+            const sawBefore = this._canGhostSeePlayer(ghost, originalPlayerPos, layerDef, layerState);
+            const seesAfter = this._canGhostSeePlayer(ghost, state.player, layerDef, layerState);
+
+            let target = null;
+            if (!sawBefore && seesAfter) target = state.player;
+            else if (sawBefore && !seesAfter) target = originalPlayerPos;
+            else if (sawBefore && seesAfter) target = state.player;
+
+            if (target) {
+                const path = this._findShortestPath(ghost, target, layerDef, layerState);
+                if (path && path.length > 1) {
+                    moveIntents.push({ ghost, nextStep: path[1] });
+                }
+            }
+        }
+
+        if (moveIntents.length === 0) return;
+
+        // 解决移动冲突
+        let maxIterations = ghosts.length + 1;
+        let madeProgress = true;
+
+        while (madeProgress && moveIntents.length > 0 && maxIterations > 0) {
+            madeProgress = false;
+            maxIterations--;
+
+            const occupiedCells = new Set(ghosts.map(g => `${g.x},${g.y}`));
+            let possibleMoves = [];
+            let remainingIntents = [];
+
+            for (const intent of moveIntents) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!occupiedCells.has(targetKey)) {
+                    possibleMoves.push(intent);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            const finalMovesThisPass = [];
+            const claimedTargets = new Set();
+            for (const intent of possibleMoves) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!claimedTargets.has(targetKey)) {
+                    finalMovesThisPass.push(intent);
+                    claimedTargets.add(targetKey);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            if (finalMovesThisPass.length > 0) {
+                for (const { ghost, nextStep } of finalMovesThisPass) {
+                    ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                    if (ghost.trail.length > 5) ghost.trail.pop();
+                    ghost.x = nextStep.x;
+                    ghost.y = nextStep.y;
+                }
+                madeProgress = true;
+            }
+
+            moveIntents = remainingIntents;
+        }
+    },
+
+    /**
+     * 玩家使用楼梯后的鬼移动：让原层正在追击的鬼向玩家原位置移动一步
+     */
+    moveGhostsAfterStair(state, originalPlayerPos, mapDef) {
+        const originalLayer = originalPlayerPos.layer;
+        const ghosts = state.layerStates[originalLayer].ghosts;
+        const layerDef = mapDef.layers[originalLayer];
+        const layerState = state.layerStates[originalLayer];
+
+        let moveIntents = [];
+
+        // 收集移动意图：只有之前能看到玩家的鬼才会移动
+        for (const ghost of ghosts) {
+            const sawBefore = this._canGhostSeePlayer(ghost, originalPlayerPos, layerDef, layerState);
+
+            if (sawBefore) {
+                // 向玩家原位置移动
+                const path = this._findShortestPath(ghost, originalPlayerPos, layerDef, layerState);
+                if (path && path.length > 1) {
+                    moveIntents.push({ ghost, nextStep: path[1] });
+                }
+            }
+        }
+
+        if (moveIntents.length === 0) return;
+
+        // 解决移动冲突（与 moveGhosts 相同的逻辑）
+        let maxIterations = ghosts.length + 1;
+        let madeProgress = true;
+
+        while (madeProgress && moveIntents.length > 0 && maxIterations > 0) {
+            madeProgress = false;
+            maxIterations--;
+
+            const occupiedCells = new Set(ghosts.map(g => `${g.x},${g.y}`));
+            let possibleMoves = [];
+            let remainingIntents = [];
+
+            for (const intent of moveIntents) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!occupiedCells.has(targetKey)) {
+                    possibleMoves.push(intent);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            const finalMovesThisPass = [];
+            const claimedTargets = new Set();
+            for (const intent of possibleMoves) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!claimedTargets.has(targetKey)) {
+                    finalMovesThisPass.push(intent);
+                    claimedTargets.add(targetKey);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            if (finalMovesThisPass.length > 0) {
+                for (const { ghost, nextStep } of finalMovesThisPass) {
+                    ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                    if (ghost.trail.length > 5) ghost.trail.pop();
+                    ghost.x = nextStep.x;
+                    ghost.y = nextStep.y;
+                }
+                madeProgress = true;
+            }
+
+            moveIntents = remainingIntents;
+        }
+    },
+
+    /**
+     * 普通移动时的鬼移动：包括跨楼梯追踪
+     * 当玩家和鬼分别处于一对楼梯的两端时，鬼可以看见玩家
+     * 玩家移动后（非上下楼梯），鬼会通过楼梯来到玩家移动前的位置
+     */
+    moveGhostsWithStairChase(state, originalPlayerPos, mapDef) {
+        const playerLayer = state.player.layer;
+        
+        // 首先处理可能通过楼梯追踪的鬼，获取已经通过楼梯移动的鬼列表
+        let ghostsMovedViaStair = new Set();
+        if (mapDef.multiLayerMode) {
+            ghostsMovedViaStair = this._handleGhostStairChase(state, originalPlayerPos, mapDef);
+        }
+        
+        // 然后处理当前层的正常鬼移动（排除已经通过楼梯移动的鬼）
+        const ghosts = state.layerStates[playerLayer].ghosts;
+        const layerDef = mapDef.layers[playerLayer];
+        const layerState = state.layerStates[playerLayer];
+
+        let moveIntents = [];
+
+        // 收集移动意图（排除已通过楼梯移动的鬼）
+        for (const ghost of ghosts) {
+            // 跳过已经通过楼梯移动的鬼
+            if (ghostsMovedViaStair.has(ghost)) {
+                continue;
+            }
+            
+            const sawBefore = this._canGhostSeePlayer(ghost, originalPlayerPos, layerDef, layerState);
+            const seesAfter = this._canGhostSeePlayer(ghost, state.player, layerDef, layerState);
+
+            let target = null;
+            if (!sawBefore && seesAfter) target = state.player;
+            else if (sawBefore && !seesAfter) target = originalPlayerPos;
+            else if (sawBefore && seesAfter) target = state.player;
+
+            if (target) {
+                const path = this._findShortestPath(ghost, target, layerDef, layerState);
+                if (path && path.length > 1) {
+                    moveIntents.push({ ghost, nextStep: path[1] });
+                }
+            }
+        }
+
+        if (moveIntents.length === 0) return;
+
+        // 解决移动冲突
+        let maxIterations = ghosts.length + 1;
+        let madeProgress = true;
+
+        while (madeProgress && moveIntents.length > 0 && maxIterations > 0) {
+            madeProgress = false;
+            maxIterations--;
+
+            const occupiedCells = new Set(ghosts.map(g => `${g.x},${g.y}`));
+            let possibleMoves = [];
+            let remainingIntents = [];
+
+            for (const intent of moveIntents) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!occupiedCells.has(targetKey)) {
+                    possibleMoves.push(intent);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            const finalMovesThisPass = [];
+            const claimedTargets = new Set();
+            for (const intent of possibleMoves) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!claimedTargets.has(targetKey)) {
+                    finalMovesThisPass.push(intent);
+                    claimedTargets.add(targetKey);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            if (finalMovesThisPass.length > 0) {
+                for (const { ghost, nextStep } of finalMovesThisPass) {
+                    ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                    if (ghost.trail.length > 5) ghost.trail.pop();
+                    ghost.x = nextStep.x;
+                    ghost.y = nextStep.y;
+                }
+                madeProgress = true;
+            }
+
+            moveIntents = remainingIntents;
+        }
+    },
+
+    /**
+     * 处理鬼通过楼梯追踪玩家
+     * 当玩家和鬼处于配对楼梯的两端时，鬼会穿过楼梯追击
+     * @returns {Set} 已经通过楼梯移动的鬼的集合
+     */
+    _handleGhostStairChase(state, originalPlayerPos, mapDef) {
+        const movedGhosts = new Set();
+        const playerLayer = state.player.layer;
+        const stairs = mapDef.stairs;
+        
+        // 查找玩家原位置是否在楼梯上
+        const playerStair = stairs.find(s => 
+            s.x === originalPlayerPos.x && 
+            s.y === originalPlayerPos.y && 
+            s.layer === originalPlayerPos.layer
+        );
+        
+        if (!playerStair) return movedGhosts;
+        
+        // 找到配对的楼梯（另一层）
+        const pairedLayer = playerStair.direction === 'up' ? originalPlayerPos.layer + 1 : originalPlayerPos.layer - 1;
+        if (pairedLayer < 0 || pairedLayer >= mapDef.layerCount) return movedGhosts;
+        
+        const pairedStair = stairs.find(s =>
+            s.x === originalPlayerPos.x &&
+            s.y === originalPlayerPos.y &&
+            s.layer === pairedLayer &&
+            s.direction === (playerStair.direction === 'up' ? 'down' : 'up')
+        );
+        
+        if (!pairedStair) return movedGhosts;
+        
+        // 检查配对层是否有鬼在楼梯位置上
+        const pairedLayerGhosts = state.layerStates[pairedLayer].ghosts;
+        const ghostsOnPairedStair = pairedLayerGhosts.filter(g => 
+            g.x === pairedStair.x && g.y === pairedStair.y
+        );
+        
+        // 这些鬼可以"看见"玩家，会穿过楼梯追击
+        for (const ghost of ghostsOnPairedStair) {
+            // 从配对层移除鬼
+            const ghostIndex = pairedLayerGhosts.indexOf(ghost);
+            if (ghostIndex > -1) {
+                pairedLayerGhosts.splice(ghostIndex, 1);
+            }
+            
+            // 将鬼添加到玩家原来的层，位置为玩家原位置
+            ghost.x = originalPlayerPos.x;
+            ghost.y = originalPlayerPos.y;
+            ghost.trail = [];
+            state.layerStates[originalPlayerPos.layer].ghosts.push(ghost);
+            
+            // 标记这个鬼已经移动过了
+            movedGhosts.add(ghost);
+        }
+        
+        return movedGhosts;
+    },
+
+    /**
+     * 检查碰撞
+     */
+    checkCollisions(state, mapDef) {
+        const p = state.player;
+        const ghosts = state.layerStates[p.layer].ghosts;
+        
+        if (ghosts.some(g => g.x === p.x && g.y === p.y)) {
+            state.isDead = true;
+            state.deathReason = 'ghost';
+            
+            if (mapDef.gameMode === 'exploration') {
+                p.hp--;
+            }
+        }
+    },
+
+    /**
+     * 更新视野
+     */
+    updateVisibility(state, mapDef) {
+        const p = state.player;
+        const layer = p.layer;
+        const seen = state.seenCells[layer];
+        const layerDef = mapDef.layers[layer];
+        const layerState = state.layerStates[layer];
+
+        // 常规模式：揭示出生房间
+        if (mapDef.editorMode === 'regular') {
+            const roomY = mapDef.height - 3;
+            for (let y = roomY; y < roomY + 3; y++) {
+                for (let x = 0; x < 3; x++) {
+                    if (y >= 0 && y < mapDef.height && x >= 0 && x < mapDef.width) {
+                        seen[y][x] = true;
+                    }
+                }
+            }
+        } else {
+            // 自由模式：揭示起点
+            const start = layerDef.initialEntities.customStartPos;
+            if (start && seen[start.y] && start.x >= 0 && start.x < mapDef.width) {
+                seen[start.y][start.x] = true;
+            }
+        }
+
+        // 玩家当前位置可见
+        seen[p.y][p.x] = true;
+
+        // 四方向射线投射
+        const castRay = (dx, dy) => {
+            let x = p.x + dx;
+            let y = p.y + dy;
+            
+            while (x >= 0 && x < mapDef.width && y >= 0 && y < mapDef.height) {
+                // 检查是否是有效格子
+                if (!layerDef.activeCells[y][x]) break;
+
+                // 检查墙体
+                let wall;
+                if (dx === 1) wall = layerState.wallStates.v[p.y][x];
+                else if (dx === -1) wall = layerState.wallStates.v[p.y][x + 1];
+                else if (dy === 1) wall = layerState.wallStates.h[y][p.x];
+                else if (dy === -1) wall = layerState.wallStates.h[y + 1][p.x];
+
+                if (wall && wall.type !== WALL_TYPES.EMPTY && wall.type !== WALL_TYPES.GLASS) {
+                    break;
+                }
+
+                seen[y][x] = true;
+                x += dx;
+                y += dy;
+            }
+        };
+
+        castRay(1, 0);
+        castRay(-1, 0);
+        castRay(0, 1);
+        castRay(0, -1);
+
+        // 多层模式：楼梯视野穿透
+        if (mapDef.multiLayerMode) {
+            const playerStair = mapDef.stairs.find(s => 
+                s.x === p.x && s.y === p.y && s.layer === p.layer
+            );
+            if (playerStair) {
+                const targetLayer = playerStair.direction === 'up' ? p.layer + 1 : p.layer - 1;
+                if (targetLayer >= 0 && targetLayer < mapDef.layerCount && state.seenCells[targetLayer]) {
+                    state.seenCells[targetLayer][p.y][p.x] = true;
+                }
+            }
+        }
+
+        return state;
+    },
+
+    /**
+     * 检查胜利/失败条件
+     */
+    checkWinLossConditions(state, mapDef) {
+        const p = state.player;
+        const layerDef = mapDef.layers[p.layer];
+        const endPos = layerDef.initialEntities.endPos;
+
+        // 检查胜利
+        if (endPos && p.x === endPos.x && p.y === endPos.y) {
+            state.isWon = true;
+        }
+
+        // 检查失败
+        if (mapDef.gameMode === 'exploration' && p.hp <= 0) {
+            state.isDead = true;
+            state.deathReason = 'no_hp';
+        }
+        if (mapDef.gameMode === 'death-loop' && p.stamina <= 0) {
+            state.isDead = true;
+            state.deathReason = 'no_stamina';
+        }
+    },
+
+    /**
+     * 处理复活
+     */
+    handleRevive(currentState, mapDef) {
+        if (mapDef.gameMode === 'exploration') {
+            if (currentState.player.hp > 0) {
+                const nextState = currentState.clone();
+                nextState.isDead = false;
+                nextState.deathReason = '';
+                
+                // 回到出生点
+                nextState.player.x = mapDef.playerStart.x;
+                nextState.player.y = mapDef.playerStart.y;
+                nextState.player.layer = mapDef.playerStart.layer;
+                nextState.player.trail = [];
+                nextState.isRevivalPoint = true;
+                
+                return this.updateVisibility(nextState, mapDef);
+            }
+        } else {
+            // 死亡循环模式：重置但保留视野
+            const nextState = this.createInitialState(mapDef);
+            nextState.loopCount = currentState.loopCount + 1;
+            nextState.seenCells = JSON.parse(JSON.stringify(currentState.seenCells));
+            nextState.isRevivalPoint = true;
+            return nextState;
+        }
+        
+        return currentState;
+    },
+
+    // === 辅助函数 ===
+
+    _getWallBetween(pos1, pos2, walls, direction) {
+        if (direction.dx === 1) return walls.v[pos1.y] ? walls.v[pos1.y][pos1.x + 1] : null;
+        if (direction.dx === -1) return walls.v[pos1.y] ? walls.v[pos1.y][pos1.x] : null;
+        if (direction.dy === 1) return walls.h[pos1.y + 1] ? walls.h[pos1.y + 1][pos1.x] : null;
+        if (direction.dy === -1) return walls.h[pos1.y] ? walls.h[pos1.y][pos1.x] : null;
+        return null;
+    },
+
+    _getWallStateBetween(pos1, pos2, wallStates, direction) {
+        if (direction.dx === 1) return wallStates.v[pos1.y] ? wallStates.v[pos1.y][pos1.x + 1] : null;
+        if (direction.dx === -1) return wallStates.v[pos1.y] ? wallStates.v[pos1.y][pos1.x] : null;
+        if (direction.dy === 1) return wallStates.h[pos1.y + 1] ? wallStates.h[pos1.y + 1][pos1.x] : null;
+        if (direction.dy === -1) return wallStates.h[pos1.y] ? wallStates.h[pos1.y][pos1.x] : null;
+        return null;
+    },
+
+    _canGhostSeePlayer(ghost, playerPos, layerDef, layerState) {
+        if (!playerPos || (ghost.x !== playerPos.x && ghost.y !== playerPos.y)) return false;
+
+        const wallStates = layerState.wallStates;
+
+        if (ghost.x === playerPos.x) {
+            const startY = Math.min(ghost.y, playerPos.y);
+            const endY = Math.max(ghost.y, playerPos.y);
+            for (let y = startY; y < endY; y++) {
+                const wall = wallStates.h[y + 1][ghost.x];
+                if (wall && wall.type !== WALL_TYPES.EMPTY && wall.type !== WALL_TYPES.GLASS) {
+                    if (!(wall.type === WALL_TYPES.LETTER_DOOR && wall.currentState === 'open')) {
+                        return false;
+                    }
+                }
+            }
+        } else {
+            const startX = Math.min(ghost.x, playerPos.x);
+            const endX = Math.max(ghost.x, playerPos.x);
+            for (let x = startX; x < endX; x++) {
+                const wall = wallStates.v[ghost.y][x + 1];
+                if (wall && wall.type !== WALL_TYPES.EMPTY && wall.type !== WALL_TYPES.GLASS) {
+                    if (!(wall.type === WALL_TYPES.LETTER_DOOR && wall.currentState === 'open')) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    },
+
+    _findShortestPath(start, end, layerDef, layerState) {
+        const queue = [[{ x: start.x, y: start.y }]];
+        const visited = new Set([`${start.x},${start.y}`]);
+        const width = layerDef.activeCells[0].length;
+        const height = layerDef.activeCells.length;
+
+        while (queue.length > 0) {
+            const path = queue.shift();
+            const { x, y } = path[path.length - 1];
+
+            if (x === end.x && y === end.y) return path;
+
+            const neighbors = [{ dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }];
+            for (const { dx, dy } of neighbors) {
+                const nx = x + dx;
+                const ny = y + dy;
+                const key = `${nx},${ny}`;
+
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited.has(key)) {
+                    if (!layerDef.activeCells[ny][nx]) continue;
+
+                    let wall = null;
+                    if (dx === 1) wall = layerState.wallStates.v[y][x + 1];
+                    else if (dx === -1) wall = layerState.wallStates.v[y][x];
+                    else if (dy === 1) wall = layerState.wallStates.h[y + 1][x];
+                    else if (dy === -1) wall = layerState.wallStates.h[y][x];
+
+                    if (wall && wall.type !== WALL_TYPES.EMPTY) {
+                        if (wall.type === WALL_TYPES.LETTER_DOOR && wall.currentState === 'open') {
+                            // 可以通过
+                        } else {
+                            continue;
+                        }
+                    }
+
+                    visited.add(key);
+                    queue.push([...path, { x: nx, y: ny }]);
+                }
+            }
+        }
+        return null;
+    }
+};
 
     // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
     document.addEventListener('DOMContentLoaded', () => {
@@ -147,11 +1157,16 @@
                 this.padding = 15;
                 this.cellSize = canvas.width / this.width;
                 this.mapData = null;
+                
+                // 新架构：核心状态管理
+                this.mapDefinition = null;  // MapDefinition 实例，不可变的地图定义
+                this.currentGameState = null;  // GameState 实例，当前游戏状态
+                this.viewLayer = 0;  // 当前显示的图层（与玩家所在层可能不同）
 
                 // 新增：视口偏移（用于居中非标准地图）
                 this.drawOffset = { x: 0, y: 0 };
 
-                // 玩家状态
+                // 玩家状态（兼容旧代码）
                 this.player = { x: 1, y: 1, hp: 5, stamina: 100, trail: [], keys: 0 , steps: 0};
 
                 // 鬼和物品
@@ -726,19 +1741,30 @@
                 this.mapData = JSON.parse(JSON.stringify(mapData)); // 深拷贝地图数据以备重置
                 this.state = GAME_STATES.PLAYING;
 
+                // 创建 MapDefinition（不可变的地图定义）
+                this.mapDefinition = new MapDefinition({
+                    ...mapData,
+                    gameMode: this.gameMode,
+                    initialHealth: this.initialHealth,
+                    initialStamina: this.initialStamina
+                });
+
+                // 使用 GameLogic 创建初始游戏状态
+                this.currentGameState = GameLogic.createInitialState(this.mapDefinition);
+                
                 // 重置历史记录系统
-                this.history = [];
+                this.history = [this.currentGameState];
                 this.checkpoints = [];
-                this.currentStep = -1;
+                this.currentStep = 0;
                 
                 // 应用地图尺寸
                 this.width = mapData.width;
                 this.height = mapData.height;
-                this.padding = 15; // 新增：定义内边距
-                this.cellSize = (canvas.width - 2 * this.padding) / this.width; // 修改：计算单元格大小时预留边距
+                this.padding = 15;
+                this.cellSize = (canvas.width - 2 * this.padding) / this.width;
                 this.startPos = { x: 1, y: this.height - 2 };
                 
-                // 新增：加载自由模式数据
+                // 加载自由模式数据
                 this.editor.mode = mapData.editorMode || 'regular';
                 this.activeCells = mapData.activeCells || Array(this.height).fill(null).map(()=>Array(this.width).fill(true));
                 this.customStartPos = mapData.customStartPos || mapData.mapStartPos || null;
@@ -746,112 +1772,118 @@
                 // 加载多层地图数据
                 this.multiLayerMode = mapData.multiLayerMode || false;
                 this.layerCount = mapData.layerCount || 1;
-                this.currentLayer = 0;
                 this.stairs = JSON.parse(JSON.stringify(mapData.stairs || []));
                 this.layers = JSON.parse(JSON.stringify(mapData.layers || []));
 
-                // Fix 9, 11: 查找起点所在的图层
-                this.playerLayer = 0;
-                if (this.multiLayerMode) {
-                    // 优先使用 mapData 中声明的 playerStartLayer（如果存在且有效）
-                    if (typeof mapData.playerStartLayer === 'number' && mapData.playerStartLayer >= 0 && mapData.playerStartLayer < this.layerCount) {
-                        this.playerLayer = mapData.playerStartLayer;
-                    } else {
-                        // 否则回退到通过 layer.customStartPos 自动检测
-                        for (let i = 0; i < this.layerCount; i++) {
-                            if (this.layers[i] && this.layers[i].customStartPos) {
-                                this.playerLayer = i;
-                                break;
-                            }
-                        }
-                    }
+                // 从新架构的状态中同步玩家位置
+                this.playerLayer = this.currentGameState.player.layer;
+                this.currentLayer = this.playerLayer;
+                this.viewLayer = this.playerLayer;
+                
+                // 同步显示用的数据（兼容旧渲染代码）
+                this._syncFromGameState();
 
-                    // 切换到玩家出生层
-                    this.currentLayer = this.playerLayer;
-                    if (this.layers[this.playerLayer]) {
-                        const layer = this.layers[this.playerLayer];
-                        this.hWalls = layer.hWalls;
-                        this.vWalls = layer.vWalls;
-                        this.activeCells = layer.activeCells;
-                        this.ghosts = layer.ghosts;
-                        this.items = layer.items;
-                        this.buttons = layer.buttons;
-                        this.endPos = layer.endPos;
-                        this.customStartPos = layer.customStartPos || mapData.mapStartPos || null;
-                    }
-                }
-
-                // 计算视口偏移以居中地图（考虑所有图层）
+                // 计算视口偏移以居中地图
                 this.calculateDrawOffset();
 
-                this._renderStaticLayer(); // 渲染静态背景层
-                
-                // 加载地图结构（仅在非多层模式或作为后备时使用）
-                if (!this.multiLayerMode) {
-                    this.hWalls = JSON.parse(JSON.stringify(mapData.hWalls)); // 使用深拷贝
-                    this.vWalls = JSON.parse(JSON.stringify(mapData.vWalls)); // 使用深拷贝
-                    this.endPos = mapData.endPos;
-                    this.items = mapData.items || [];
-                    this.buttons = mapData.buttons || []; // 加载按钮
-                }
-
-                // 初始化所有字母门的当前状态
-                this.hWalls.forEach(row => row.forEach(wall => {
-                    if (wall.type === WALL_TYPES.LETTER_DOOR) {
-                        wall.currentState = wall.initialState || 'closed';
-                    }
-                }));
-                this.vWalls.forEach(row => row.forEach(wall => {
-                    if (wall.type === WALL_TYPES.LETTER_DOOR) {
-                        wall.currentState = wall.initialState || 'closed';
-                    }
-                }));
-                
-                // 初始化玩家状态：如果自由模式有自定义起点，使用它；否则使用默认
-                const start = this.customStartPos || this.startPos;
-                this.player = { x: start.x, y: start.y, hp: this.initialHealth, stamina: this.initialStamina, trail: [], keys: 0 , steps: 0};
-                if (this.gameMode === 'exploration') {
-                    this.player.hp = this.initialHealth;
-                } else {
-                    this.player.stamina = this.initialStamina;
-                    this.loopCount = 0;
-                }
-                
-                // 初始化鬼的状态
-                this.ghosts = JSON.parse(JSON.stringify(mapData.initialGhosts));
-                this.ghosts.forEach(g => g.trail = []);
-                
-                // 仅在全新开始或探索模式下重置视野
-                if (this.gameMode === 'exploration' || this.loopCount === 0) {
-                    // Fix 2: Per-layer fog of war - seenCells is now per-layer
-                    if (this.multiLayerMode) {
-                        this.seenCellsPerLayer = [];
-                        for (let i = 0; i < this.layerCount; i++) {
-                            this.seenCellsPerLayer[i] = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
-                        }
-                        this.seenCells = this.seenCellsPerLayer[this.playerLayer];
-                    } else {
-                        this.seenCells = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
-                        this.seenCellsPerLayer = null;
-                    }
-                }
-                this.updateVisibility();
+                this._renderStaticLayer();
                 
                 // 更新UI，隐藏浮窗，并开始游戏循环
                 this.updateUIDisplays();
                 this.hideAllOverlays();
-                this.updateLayerPanel(); // 更新图层面板
+                this.updateLayerPanel();
                 this.startAnimationLoop();
 
-                // 记录游戏的初始状态
-                this.recordHistory();
-
                 // 在这里自动生成分享码并更新 URL
-                // 使用 setTimeout 确保在当前执行栈清空后执行，避免任何潜在的时序问题
                 setTimeout(() => {
                     const code = this.generateShareCode();
                     this.updateURLWithShareCode(code);
                 }, 0);
+            }
+            
+            /**
+             * 从 currentGameState 同步数据到实例变量（用于兼容旧渲染代码）
+             */
+            _syncFromGameState() {
+                if (!this.currentGameState || !this.mapDefinition) return;
+                
+                const state = this.currentGameState;
+                const mapDef = this.mapDefinition;
+                const viewLayer = this.viewLayer;
+                
+                // 同步玩家状态
+                this.player = {
+                    x: state.player.x,
+                    y: state.player.y,
+                    hp: state.player.hp,
+                    stamina: state.player.stamina,
+                    keys: state.player.keys,
+                    steps: state.player.steps,
+                    trail: state.player.trail
+                };
+                this.playerLayer = state.player.layer;
+                this.loopCount = state.loopCount;
+                
+                // 同步当前显示层的数据
+                const layerDef = mapDef.layers[viewLayer];
+                const layerState = state.layerStates[viewLayer];
+                
+                this.activeCells = layerDef.activeCells;
+                this.hWalls = layerState.wallStates.h;
+                this.vWalls = layerState.wallStates.v;
+                this.ghosts = layerState.ghosts;
+                this.items = layerState.items;
+                this.buttons = layerDef.initialEntities.buttons;
+                this.endPos = layerDef.initialEntities.endPos;
+                this.customStartPos = layerDef.initialEntities.customStartPos;
+                
+                // 同步视野
+                this.seenCells = state.seenCells[viewLayer];
+                this.seenCellsPerLayer = state.seenCells;
+            }
+            
+            /**
+             * 处理玩家动作（新架构的核心方法）
+             * @param {object} action - 动作对象 { type: 'MOVE'|'USE_STAIR'|'PRESS_BUTTON'|'REVIVE', payload: {...} }
+             */
+            processAction(action) {
+                if (this.state !== GAME_STATES.PLAYING && this.state !== GAME_STATES.DEAD) return;
+                if (!this.currentGameState || !this.mapDefinition) return;
+                
+                const prevState = this.currentGameState;
+                const nextState = GameLogic.calculateNextState(prevState, action, this.mapDefinition);
+                
+                // 如果状态无变化，不记录历史
+                if (nextState === prevState) return;
+                
+                // 记录历史（截断旧的未来历史）
+                if (this.currentStep < this.history.length - 1) {
+                    this.history = this.history.slice(0, this.currentStep + 1);
+                    this.checkpoints = this.checkpoints.filter(cp => cp <= this.currentStep);
+                }
+                
+                this.history.push(nextState);
+                this.currentStep++;
+                this.currentGameState = nextState;
+                
+                // 有效操作后，始终切换到玩家所在层
+                this.viewLayer = nextState.player.layer;
+                this.currentLayer = this.viewLayer;
+                
+                // 同步状态并渲染
+                this._syncFromGameState();
+                this._renderStaticLayer();
+                this.draw();
+                this.updateUIDisplays();
+                this.updateLayerPanel();
+                this.updateHistoryButtons();
+                
+                // 处理游戏结束状态
+                if (nextState.isWon) {
+                    this.handleWin();
+                } else if (nextState.isDead) {
+                    this.handlePlayerDeath(nextState.deathReason);
+                }
             }
 
             calculateDrawOffset() {
@@ -1201,83 +2233,10 @@
             useStair() {
                 if (!this.multiLayerMode) return;
                 
-                // 检查玩家当前位置是否有楼梯
-                const stair = this.stairs.find(s => 
-                    s.x === this.player.x && 
-                    s.y === this.player.y && 
-                    s.layer === this.playerLayer
-                );
-                
-                if (!stair) return;
-                
-                // 计算目标层
-                const targetLayer = stair.direction === 'up' ? this.playerLayer + 1 : this.playerLayer - 1;
-                
-                // 验证目标层有效
-                if (targetLayer < 0 || targetLayer >= this.layerCount) return;
-                
-                // 检查目标层对应位置是否有对应楼梯
-                const targetStair = this.stairs.find(s =>
-                    s.x === this.player.x &&
-                    s.y === this.player.y &&
-                    s.layer === targetLayer &&
-                    s.direction === (stair.direction === 'up' ? 'down' : 'up')
-                );
-                
-                if (!targetStair) return;
-                
-                // 记录玩家之前位置用于鬼追踪
-                const playerPrevPos = { x: this.player.x, y: this.player.y };
-                const prevLayer = this.playerLayer;
-                
-                // Fix 4: 让前一层的鬼朝着玩家上楼梯前的位置移动
-                this.moveGhosts(playerPrevPos);
-                
-                // 执行上下楼
-                this.playerLayer = targetLayer;
-                this.player.steps++;
-                
-                if (this.gameMode === 'death-loop') {
-                    this.player.stamina--;
-                }
-                
-                // 保存当前层数据，切换到新层
-                this._saveCurrentLayerData();
-                this._switchToLayer(targetLayer);
-                this.currentLayer = targetLayer;
-                
-                // Fix 9: 切换seenCells到新层并更新视野
-                if (this.seenCellsPerLayer && this.seenCellsPerLayer[targetLayer]) {
-                    this.seenCells = this.seenCellsPerLayer[targetLayer];
-                }
-                this.updateVisibility();
-                
-                // Fix 4: 检查对面楼梯位置上是否有鬼要跟随玩家上下楼
-                this.handleGhostStairFollow(playerPrevPos, prevLayer, targetLayer);
-                
-                // 更新显示
-                this.updateUIDisplays();
-                this.updateLayerPanel();
-                this._renderStaticLayer();
-                this.draw();
-                
-                // 检查胜利/死亡
-                if (this.endPos && this.player.x === this.endPos.x && this.player.y === this.endPos.y) {
-                    this.handleWin();
-                    return;
-                }
-                
-                if (this.gameMode === 'death-loop' && this.player.stamina <= 0) {
-                    this.handlePlayerDeath('stamina_depleted');
-                    return;
-                }
-                
-                if (this.checkCollisionWithGhosts()) {
-                    this.handlePlayerDeath('ghost');
-                    return;
-                }
-                
-                this.recordHistory();
+                // 使用新架构处理楼梯动作
+                this.processAction({
+                    type: 'USE_STAIR'
+                });
             }
 
             /**
@@ -1347,89 +2306,12 @@
              */
             movePlayer(dx, dy) {
                 if (this.state !== GAME_STATES.PLAYING) return;
-
-                // 首先检查是否按下了按钮
-                const button = this.buttons.find(b => 
-                    b.x === this.player.x && 
-                    b.y === this.player.y && 
-                    b.direction.dx === dx && 
-                    b.direction.dy === dy
-                );
-                if (button) {
-                    this.pressButton(button.letter);
-                    return; // 按下按钮不移动，直接返回
-                }
-
-                const playerPrevPos = { x: this.player.x, y: this.player.y };
-                const newX = this.player.x + dx;
-                const newY = this.player.y + dy;
-
-                // 1. 检查是否越界
-                if (newX < 0 || newX >= this.width || newY < 0 || newY >= this.height) return;
-                if (!this.activeCells[newY][newX]) return; // 新增：不能走进虚空
-
-                // 2. 检查是否有墙阻挡
-                let wall;
-                if (dx === 1) wall = this.vWalls[this.player.y][this.player.x + 1];
-                if (dx === -1) wall = this.vWalls[this.player.y][this.player.x];
-                if (dy === 1) wall = this.hWalls[this.player.y + 1][this.player.x];
-                if (dy === -1) wall = this.hWalls[this.player.y][this.player.x];
-
-                if (wall) {
-                    if (wall.type === WALL_TYPES.SOLID || wall.type === WALL_TYPES.GLASS) return;
-                    if (wall.type === WALL_TYPES.ONE_WAY && (dx !== wall.direction.dx || dy !== wall.direction.dy)) return;
-                    if (wall.type === WALL_TYPES.LOCKED && this.player.keys < wall.keys) return;
-                    if (wall.type === WALL_TYPES.LETTER_DOOR && wall.currentState === 'closed') return; 
-                    if (wall.type === WALL_TYPES.LOCKED && this.player.keys >= wall.keys) {
-                        wall.type = WALL_TYPES.EMPTY;
-                    }
-                }
-
-                // 3. 更新玩家状态
-                this.player.trail.unshift({ x: this.player.x, y: this.player.y, timestamp: Date.now() });
-                this.player.x = newX;
-                this.player.y = newY;
-                this.player.steps++;
-                if (this.gameMode === 'death-loop') {
-                    this.player.stamina--;
-                }
                 
-                // 4. 更新UI和视野
-                this.updateUIDisplays();               
-                this.updateVisibility();
-                this.checkItemPickup();
-
-                // 5. 检查胜利条件
-                if (this.endPos && this.player.x === this.endPos.x && this.player.y === this.endPos.y) {
-                    this.handleWin();
-                    return;
-                }
-
-                // 6. 检查死亡条件 (体力耗尽)
-                if (this.gameMode === 'death-loop' && this.player.stamina <= 0) {
-                    this.handlePlayerDeath('stamina_depleted');
-                    return;
-                }
-
-                // 7. 检查是否与鬼碰撞
-                if (this.checkCollisionWithGhosts()) {
-                    this.handlePlayerDeath('ghost');
-                    return;
-                }
-
-                // 8. 移动鬼
-                this.moveGhosts(playerPrevPos);
-
-                // 9. 再次检查鬼移动后是否与玩家碰撞
-                if (this.checkCollisionWithGhosts()) {
-                    this.handlePlayerDeath('ghost');
-                    return;
-                }
-                
-                // 10. 更新警告并记录历史
-                this.updateProximityWarning();
-                if (!this.animationFrameId) this.draw();
-                this.recordHistory();
+                // 使用新架构处理移动动作
+                this.processAction({
+                    type: 'MOVE',
+                    payload: { dx, dy }
+                });
             }
 
             /**
@@ -1437,21 +2319,11 @@
              * @param {string} letter - 按下的按钮的字母
              */
             pressButton(letter) {
-                let toggled = false;
-                const toggleState = (wall) => {
-                    if (wall.type === WALL_TYPES.LETTER_DOOR && wall.letter === letter) {
-                        wall.currentState = (wall.currentState === 'closed') ? 'open' : 'closed';
-                        toggled = true;
-                    }
-                };
-
-                this.hWalls.forEach(row => row.forEach(toggleState));
-                this.vWalls.forEach(row => row.forEach(toggleState));
-
-                if (toggled) {
-                    this.showToast(`切换了字母门 '${letter}'`, 1500);
-                    this.draw(); // 状态改变，立即重绘
-                }
+                // 使用新架构处理按钮动作
+                this.processAction({
+                    type: 'PRESS_BUTTON',
+                    payload: { letter }
+                });
             }
 
             /**
@@ -1784,49 +2656,15 @@
              * 处理玩家复活逻辑
              */
             revivePlayer() {
-                if (this.gameMode === 'exploration') {
-                    this.resetPlayerPos();
-                    this.state = GAME_STATES.PLAYING;
-                    this.hideAllOverlays();
-                    this.updateVisibility();
-                    this.updateProximityWarning();
-                    this.startAnimationLoop();
-                    this.recordHistory(true); // 记录一个复活点
-                } else { // 死亡循环模式
-                    this.loopCount++;
-                    this.state = GAME_STATES.PLAYING;
-                    this.hideAllOverlays();
-
-                    // 重置玩家和地图状态，但保留已探索的视野
-                    this.resetPlayerPos();
-                    this.player.keys = 0;
-                    this.player.steps = 0;
-                    this.player.stamina = this.initialStamina;
-                    
-                    // 从原始地图数据中重置物品和鬼
-                    this.items = JSON.parse(JSON.stringify(this.mapData.items || []));
-                    this.ghosts = JSON.parse(JSON.stringify(this.mapData.initialGhosts));
-                    this.hWalls = JSON.parse(JSON.stringify(this.mapData.hWalls)); 
-                    this.vWalls = JSON.parse(JSON.stringify(this.mapData.vWalls));
-                    this.ghosts.forEach(g => g.trail = []); // 初始化拖尾数组
-
-                    // 重置所有字母门的当前状态
-                    this.hWalls.forEach(row => row.forEach(wall => {
-                        if (wall.type === WALL_TYPES.LETTER_DOOR) {
-                            wall.currentState = wall.initialState || 'closed';
-                        }
-                    }));
-                    this.vWalls.forEach(row => row.forEach(wall => {
-                        if (wall.type === WALL_TYPES.LETTER_DOOR) {
-                            wall.currentState = wall.initialState || 'closed';
-                        }
-                    }));
-
-                    this.updateVisibility();
-                    this.updateUIDisplays();
-                    this.startAnimationLoop();
-                    this.recordHistory(true); // 记录一个复活点
-                }
+                // 使用新架构处理复活动作
+                this.processAction({
+                    type: 'REVIVE'
+                });
+                
+                // 复活后更新UI
+                this.state = GAME_STATES.PLAYING;
+                this.hideAllOverlays();
+                this.startAnimationLoop();
             }
 
             /**
@@ -3084,10 +3922,12 @@
 
             /**
              * 切换到指定图层
+             * 注意：这是一个仅影响视图的操作，不是有效游戏动作，不记录历史
              * @param {number} layerIndex - 要切换到的图层索引
              */
             switchToLayer(layerIndex) {
                 if (layerIndex === this.currentLayer) return;
+                if (layerIndex < 0 || layerIndex >= this.layerCount) return;
 
                 if (this.state === GAME_STATES.EDITOR) {
                     // 编辑器模式下，保存当前层，加载新层
@@ -3097,41 +3937,37 @@
                     
                     this._renderStaticLayer();
                     this.drawEditor();
-                } else if (this.state === GAME_STATES.PLAYING) {
-                    // 游戏模式下，只切换视图，不改变游戏逻辑状态
-                    this._switchToLayer(layerIndex);
+                } else if (this.state === GAME_STATES.PLAYING || this.state === GAME_STATES.DEAD || this.state === GAME_STATES.WON) {
+                    // 游戏模式下，只切换视图层，不改变游戏逻辑状态
+                    // 切换显示的图层不属于有效操作，不记录历史
+                    this.viewLayer = layerIndex;
                     this.currentLayer = layerIndex;
+                    
+                    // 从 currentGameState 同步该层数据用于渲染
+                    if (this.currentGameState && this.mapDefinition) {
+                        const layerDef = this.mapDefinition.layers[layerIndex];
+                        const layerState = this.currentGameState.layerStates[layerIndex];
+                        
+                        this.activeCells = layerDef.activeCells;
+                        this.hWalls = layerState.wallStates.h;
+                        this.vWalls = layerState.wallStates.v;
+                        this.ghosts = layerState.ghosts;
+                        this.items = layerState.items;
+                        this.buttons = layerDef.initialEntities.buttons;
+                        this.endPos = layerDef.initialEntities.endPos;
+                        this.customStartPos = layerDef.initialEntities.customStartPos;
+                        this.seenCells = this.currentGameState.seenCells[layerIndex];
+                    }
                     
                     this._renderStaticLayer();
                     this.draw();
-                }
-    
-                /**
-                 * 查找所有图层中的起点
-                 * @param {Array} maps - 包含所有图层数据的数组
-                 * @returns {object|null} - 返回 {x, y, layer} 或 null
-                 */
-                function findStartPosInMaps(maps) {
-                    if (!maps || !Array.isArray(maps)) return null;
-                    for (let i = 0; i < maps.length; i++) {
-                        const map = maps[i];
-                        if (map && map.customStartPos) {
-                            return { ...map.customStartPos, layer: i };
-                        }
-                        // 兼容旧的或单层数据结构
-                        if (map && map.entities) {
-                             const start = map.entities.find(e => e.type === 'start');
-                             if (start) return { ...start, layer: i };
-                        }
-                    }
-                    return null;
                 }
                 
                 this.updateLayerPanel();
             }
 
             /**
-             * 保存当前图层数据到layers数组
+             * 保存当前图层数据到layers数组（编辑器使用）
              */
             _saveCurrentLayerData() {
                 if (!this.multiLayerMode || this.layers.length === 0) return;
@@ -3147,11 +3983,10 @@
                     endPos: this.endPos,
                     customStartPos: this.customStartPos
                 };
-                // 不在每次保存当前层时自动刷新分享码。分享码只在开始游戏或用户点击“复制分享码”时生成。
             }
 
             /**
-             * 从layers数组加载指定图层数据
+             * 从layers数组加载指定图层数据（编辑器使用）
              */
             _switchToLayer(layerIndex) {
                 this.currentLayer = layerIndex;
@@ -4692,17 +5527,43 @@
                         if (this.multiLayerMode) {
                             this._saveCurrentLayerData();
                         }
+                        
+                        // 多层模式下，主数据应该使用layer 0的数据，而不是当前层
+                        let layer0Data = {
+                            hWalls: this.hWalls,
+                            vWalls: this.vWalls,
+                            endPos: this.endPos,
+                            ghosts: this.ghosts,
+                            items: this.items,
+                            buttons: this.buttons || [],
+                            activeCells: this.activeCells,
+                            customStartPos: this.customStartPos
+                        };
+                        
+                        if (this.multiLayerMode && this.layers && this.layers[0]) {
+                            layer0Data = {
+                                hWalls: this.layers[0].hWalls,
+                                vWalls: this.layers[0].vWalls,
+                                endPos: this.layers[0].endPos,
+                                ghosts: this.layers[0].ghosts,
+                                items: this.layers[0].items,
+                                buttons: this.layers[0].buttons || [],
+                                activeCells: this.layers[0].activeCells,
+                                customStartPos: this.layers[0].customStartPos
+                            };
+                        }
+                        
                         sourceData = {
                             width: this.width, height: this.height,
-                            hWalls: this.hWalls, vWalls: this.vWalls,
-                            endPos: this.endPos, initialGhosts: this.ghosts, items: this.items,
-                            buttons: this.buttons,
+                            hWalls: layer0Data.hWalls, vWalls: layer0Data.vWalls,
+                            endPos: layer0Data.endPos, initialGhosts: layer0Data.ghosts, items: layer0Data.items,
+                            buttons: layer0Data.buttons,
                             gameMode: this.gameMode,
                             initialHealth: parseInt(document.getElementById('editor-initial-health').value) || 5,
                             initialStamina: parseInt(document.getElementById('editor-initial-stamina').value) || 100,
-                            activeCells: this.activeCells,
+                            activeCells: layer0Data.activeCells,
                             editorMode: this.editor.mode,
-                            customStartPos: this.customStartPos,
+                            customStartPos: layer0Data.customStartPos,
                             startPos: this.startPos,
                             playerStartLayer: this.playerLayer,
                             // Fix 6: 多层地图数据
@@ -5389,7 +6250,8 @@
                     this.height = mapData.height;
                     this.startPos = { x: 1, y: this.height - 2 };
                     this.editorMapSizeInput.value = this.width;
-                    this.cellSize = canvas.width / this.width;
+                    this.padding = 15; // 与enterEditorMode保持一致
+                    this.cellSize = (canvas.width - 2 * this.padding) / this.width; // 与enterEditorMode保持一致
                     this.hWalls = mapData.hWalls;
                     this.vWalls = mapData.vWalls;
                     this.endPos = mapData.endPos;
@@ -5534,13 +6396,32 @@
              */
             handleUndo() {
                 if (this.currentStep <= 0) return;
-                if (this.history[this.currentStep].isRevivalPoint) {
-                    this.showToast('无法撤回到上一次生命', 2000, 'error');
+                
+                // 检查前一个状态是否为复活点（不能撤回到复活点之前的状态）
+                const prevState = this.history[this.currentStep - 1];
+                if (prevState && prevState.isRevivalPoint && this.currentStep > 1) {
+                    // 如果前一个状态是复活点，且不是初始状态，则检查是否可以继续撤回
+                    // 复活点本身可以到达，但不能跨过它
+                }
+                
+                // 当前状态如果是复活点（且不是初始状态），不能撤回到它之前
+                if (this.history[this.currentStep] && this.history[this.currentStep].isRevivalPoint && this.currentStep > 0) {
+                    this.showToast('无法撤回到复活点之前', 2000, 'error');
                     return;
                 }
                 
                 this.currentStep--;
-                this.loadFromSnapshot(this.history[this.currentStep]);
+                this.currentGameState = this.history[this.currentStep];
+                
+                // 切换到玩家所在层
+                this.viewLayer = this.currentGameState.player.layer;
+                this.currentLayer = this.viewLayer;
+                
+                this._syncFromGameState();
+                this._renderStaticLayer();
+                this.draw();
+                this.updateUIDisplays();
+                this.updateLayerPanel();
                 this.updateHistoryButtons();
             }
 
@@ -5573,7 +6454,17 @@
                 // 回溯到最近的一个早期存档点
                 const targetStep = Math.max(...availableCheckpoints);
                 this.currentStep = targetStep;
-                this.loadFromSnapshot(this.history[this.currentStep]);
+                this.currentGameState = this.history[this.currentStep];
+                
+                // 切换到玩家所在层
+                this.viewLayer = this.currentGameState.player.layer;
+                this.currentLayer = this.viewLayer;
+                
+                this._syncFromGameState();
+                this._renderStaticLayer();
+                this.draw();
+                this.updateUIDisplays();
+                this.updateLayerPanel();
                 this.updateHistoryButtons();
                 this.showToast(`已回溯至存档点 (第 ${targetStep} 步)`, 2000, 'success');
             }
