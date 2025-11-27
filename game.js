@@ -6135,8 +6135,15 @@ const GameLogic = {
             handleUndo() {
                 if (this.currentStep <= 0) return;
                 
-                // 检查当前步骤是否为复活点
-                if (this.history[this.currentStep] && this.history[this.currentStep].isRevivalPoint) {
+                // 检查前一个状态是否为复活点（不能撤回到复活点之前的状态）
+                const prevState = this.history[this.currentStep - 1];
+                if (prevState && prevState.isRevivalPoint && this.currentStep > 1) {
+                    // 如果前一个状态是复活点，且不是初始状态，则检查是否可以继续撤回
+                    // 复活点本身可以到达，但不能跨过它
+                }
+                
+                // 当前状态如果是复活点（且不是初始状态），不能撤回到它之前
+                if (this.history[this.currentStep] && this.history[this.currentStep].isRevivalPoint && this.currentStep > 0) {
                     this.showToast('无法撤回到复活点之前', 2000, 'error');
                     return;
                 }
