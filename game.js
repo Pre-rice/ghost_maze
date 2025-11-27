@@ -291,6 +291,7 @@ const GameLogic = {
         };
 
         let stateChanged = false;
+        let isStairAction = false;
 
         switch (action.type) {
             case 'MOVE':
@@ -298,6 +299,7 @@ const GameLogic = {
                 break;
             case 'USE_STAIR':
                 stateChanged = this.handleUseStair(nextState, mapDef);
+                isStairAction = true;
                 break;
             case 'PRESS_BUTTON':
                 stateChanged = this.handlePressButton(nextState, action.payload, mapDef);
@@ -314,7 +316,15 @@ const GameLogic = {
 
         // 按顺序处理玩家操作后的所有变化
         this.handleItemPickup(nextState, mapDef);
-        this.moveGhosts(nextState, originalPlayerPos, mapDef);
+        
+        if (isStairAction) {
+            // 玩家使用楼梯：让原层的鬼向玩家原位置移动
+            this.moveGhostsAfterStair(nextState, originalPlayerPos, mapDef);
+        } else {
+            // 普通移动：处理鬼的移动（包括跨楼梯追踪）
+            this.moveGhostsWithStairChase(nextState, originalPlayerPos, mapDef);
+        }
+        
         this.checkCollisions(nextState, mapDef);
         this.updateVisibility(nextState, mapDef);
         this.checkWinLossConditions(nextState, mapDef);
@@ -565,6 +575,218 @@ const GameLogic = {
             }
 
             moveIntents = remainingIntents;
+        }
+    },
+
+    /**
+     * 玩家使用楼梯后的鬼移动：让原层正在追击的鬼向玩家原位置移动一步
+     */
+    moveGhostsAfterStair(state, originalPlayerPos, mapDef) {
+        const originalLayer = originalPlayerPos.layer;
+        const ghosts = state.layerStates[originalLayer].ghosts;
+        const layerDef = mapDef.layers[originalLayer];
+        const layerState = state.layerStates[originalLayer];
+
+        let moveIntents = [];
+
+        // 收集移动意图：只有之前能看到玩家的鬼才会移动
+        for (const ghost of ghosts) {
+            const sawBefore = this._canGhostSeePlayer(ghost, originalPlayerPos, layerDef, layerState);
+
+            if (sawBefore) {
+                // 向玩家原位置移动
+                const path = this._findShortestPath(ghost, originalPlayerPos, layerDef, layerState);
+                if (path && path.length > 1) {
+                    moveIntents.push({ ghost, nextStep: path[1] });
+                }
+            }
+        }
+
+        if (moveIntents.length === 0) return;
+
+        // 解决移动冲突（与 moveGhosts 相同的逻辑）
+        let maxIterations = ghosts.length + 1;
+        let madeProgress = true;
+
+        while (madeProgress && moveIntents.length > 0 && maxIterations > 0) {
+            madeProgress = false;
+            maxIterations--;
+
+            const occupiedCells = new Set(ghosts.map(g => `${g.x},${g.y}`));
+            let possibleMoves = [];
+            let remainingIntents = [];
+
+            for (const intent of moveIntents) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!occupiedCells.has(targetKey)) {
+                    possibleMoves.push(intent);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            const finalMovesThisPass = [];
+            const claimedTargets = new Set();
+            for (const intent of possibleMoves) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!claimedTargets.has(targetKey)) {
+                    finalMovesThisPass.push(intent);
+                    claimedTargets.add(targetKey);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            if (finalMovesThisPass.length > 0) {
+                for (const { ghost, nextStep } of finalMovesThisPass) {
+                    ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                    if (ghost.trail.length > 5) ghost.trail.pop();
+                    ghost.x = nextStep.x;
+                    ghost.y = nextStep.y;
+                }
+                madeProgress = true;
+            }
+
+            moveIntents = remainingIntents;
+        }
+    },
+
+    /**
+     * 普通移动时的鬼移动：包括跨楼梯追踪
+     * 当玩家和鬼分别处于一对楼梯的两端时，鬼可以看见玩家
+     * 玩家移动后（非上下楼梯），鬼会通过楼梯来到玩家移动前的位置
+     */
+    moveGhostsWithStairChase(state, originalPlayerPos, mapDef) {
+        const playerLayer = state.player.layer;
+        
+        // 首先处理可能通过楼梯追踪的鬼
+        if (mapDef.multiLayerMode) {
+            this._handleGhostStairChase(state, originalPlayerPos, mapDef);
+        }
+        
+        // 然后处理当前层的正常鬼移动
+        const ghosts = state.layerStates[playerLayer].ghosts;
+        const layerDef = mapDef.layers[playerLayer];
+        const layerState = state.layerStates[playerLayer];
+
+        let moveIntents = [];
+
+        // 收集移动意图
+        for (const ghost of ghosts) {
+            const sawBefore = this._canGhostSeePlayer(ghost, originalPlayerPos, layerDef, layerState);
+            const seesAfter = this._canGhostSeePlayer(ghost, state.player, layerDef, layerState);
+
+            let target = null;
+            if (!sawBefore && seesAfter) target = state.player;
+            else if (sawBefore && !seesAfter) target = originalPlayerPos;
+            else if (sawBefore && seesAfter) target = state.player;
+
+            if (target) {
+                const path = this._findShortestPath(ghost, target, layerDef, layerState);
+                if (path && path.length > 1) {
+                    moveIntents.push({ ghost, nextStep: path[1] });
+                }
+            }
+        }
+
+        if (moveIntents.length === 0) return;
+
+        // 解决移动冲突
+        let maxIterations = ghosts.length + 1;
+        let madeProgress = true;
+
+        while (madeProgress && moveIntents.length > 0 && maxIterations > 0) {
+            madeProgress = false;
+            maxIterations--;
+
+            const occupiedCells = new Set(ghosts.map(g => `${g.x},${g.y}`));
+            let possibleMoves = [];
+            let remainingIntents = [];
+
+            for (const intent of moveIntents) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!occupiedCells.has(targetKey)) {
+                    possibleMoves.push(intent);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            const finalMovesThisPass = [];
+            const claimedTargets = new Set();
+            for (const intent of possibleMoves) {
+                const targetKey = `${intent.nextStep.x},${intent.nextStep.y}`;
+                if (!claimedTargets.has(targetKey)) {
+                    finalMovesThisPass.push(intent);
+                    claimedTargets.add(targetKey);
+                } else {
+                    remainingIntents.push(intent);
+                }
+            }
+
+            if (finalMovesThisPass.length > 0) {
+                for (const { ghost, nextStep } of finalMovesThisPass) {
+                    ghost.trail.unshift({ x: ghost.x, y: ghost.y, timestamp: Date.now() });
+                    if (ghost.trail.length > 5) ghost.trail.pop();
+                    ghost.x = nextStep.x;
+                    ghost.y = nextStep.y;
+                }
+                madeProgress = true;
+            }
+
+            moveIntents = remainingIntents;
+        }
+    },
+
+    /**
+     * 处理鬼通过楼梯追踪玩家
+     * 当玩家和鬼处于配对楼梯的两端时，鬼会穿过楼梯追击
+     */
+    _handleGhostStairChase(state, originalPlayerPos, mapDef) {
+        const playerLayer = state.player.layer;
+        const stairs = mapDef.stairs;
+        
+        // 查找玩家原位置是否在楼梯上
+        const playerStair = stairs.find(s => 
+            s.x === originalPlayerPos.x && 
+            s.y === originalPlayerPos.y && 
+            s.layer === originalPlayerPos.layer
+        );
+        
+        if (!playerStair) return;
+        
+        // 找到配对的楼梯（另一层）
+        const pairedLayer = playerStair.direction === 'up' ? originalPlayerPos.layer + 1 : originalPlayerPos.layer - 1;
+        if (pairedLayer < 0 || pairedLayer >= mapDef.layerCount) return;
+        
+        const pairedStair = stairs.find(s =>
+            s.x === originalPlayerPos.x &&
+            s.y === originalPlayerPos.y &&
+            s.layer === pairedLayer &&
+            s.direction === (playerStair.direction === 'up' ? 'down' : 'up')
+        );
+        
+        if (!pairedStair) return;
+        
+        // 检查配对层是否有鬼在楼梯位置上
+        const pairedLayerGhosts = state.layerStates[pairedLayer].ghosts;
+        const ghostsOnPairedStair = pairedLayerGhosts.filter(g => 
+            g.x === pairedStair.x && g.y === pairedStair.y
+        );
+        
+        // 这些鬼可以"看见"玩家，会穿过楼梯追击
+        for (const ghost of ghostsOnPairedStair) {
+            // 从配对层移除鬼
+            const ghostIndex = pairedLayerGhosts.indexOf(ghost);
+            if (ghostIndex > -1) {
+                pairedLayerGhosts.splice(ghostIndex, 1);
+            }
+            
+            // 将鬼添加到玩家原来的层，位置为玩家原位置
+            ghost.x = originalPlayerPos.x;
+            ghost.y = originalPlayerPos.y;
+            ghost.trail = [];
+            state.layerStates[originalPlayerPos.layer].ghosts.push(ghost);
         }
     },
 
