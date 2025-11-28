@@ -394,7 +394,7 @@ button:disabled {
 
 .editor-toolbar {
     display: flex;
-    gap: 10px;
+    gap: 6px;
     flex-wrap: wrap;
     /* 微调：左对齐以便新按钮排版 */
     justify-content: flex-start;
@@ -411,6 +411,33 @@ button:disabled {
 .editor-toolbar button.active {
     background-color: var(--primary-hover-color);
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* 编辑器工具图标按钮样式 */
+.editor-toolbar .icon-btn {
+    width: 36px;
+    height: 36px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    border: 1px solid var(--wall-color);
+    border-radius: 4px;
+}
+
+.editor-toolbar .icon-btn:hover {
+    background-color: rgba(128, 128, 128, 0.2);
+}
+
+.editor-toolbar .icon-btn.active {
+    background-color: rgba(128, 128, 128, 0.4);
+    border-color: var(--primary-color);
+}
+
+.editor-toolbar .icon-btn svg {
+    width: 24px;
+    height: 24px;
 }
 
 /* === Toast Notification Styles === */

@@ -124,11 +124,11 @@ export function isWallEditable(wall, editorMode, width, height, activeCells = nu
  * @returns {boolean}
  */
 export function isCellOccupied(x, y, entities) {
-    const { ghosts, items, buttons, endPos, customStartPos, stairs, currentLayer } = entities;
+    const { ghosts, items, endPos, customStartPos, stairs, currentLayer } = entities;
+    // 注意：按钮(buttons)不再阻止其它元件放置（按钮可以与鬼、钥匙等共存）
     
     if (ghosts && ghosts.some(g => g.x === x && g.y === y)) return true;
     if (items && items.some(i => i.x === x && i.y === y)) return true;
-    if (buttons && buttons.some(b => b.x === x && b.y === y)) return true;
     if (endPos && endPos.x === x && endPos.y === y) return true;
     if (customStartPos && customStartPos.x === x && customStartPos.y === y) return true;
     if (stairs && stairs.some(s => s.x === x && s.y === y && s.layer === currentLayer)) return true;

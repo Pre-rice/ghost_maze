@@ -123,7 +123,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 hoveredWall: null,
                 hoveredButtonHotspot: null,
                 gridDragAction: null, // 'add' or 'remove'
-                stairPlacement: null // 楼梯放置状态 {x, y, direction: 'up'|'down'}
+                stairPlacement: null, // 楼梯放置状态 {x, y, direction: 'up'|'down'}
+                isRightClickErasing: false, // 右键橡皮擦状态
+                rightClickMousePos: null, // 右键擦除时的鼠标位置
+                previousToolBeforeRightClick: null // 右键擦除前的工具，用于松开右键后恢复
             };
 
             // 历史记录系统状态
@@ -220,6 +223,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         bindUI() {
             document.getElementById('home-btn').addEventListener('click', () => { window.location.href = window.location.pathname; });
+            // 编辑器模式的首页按钮
+            document.getElementById('editor-home-btn').addEventListener('click', () => { window.location.href = window.location.pathname; });
             document.getElementById('generate-map-btn').addEventListener('click', () => this.generateNewRandomMap());
             document.getElementById('reset-map-btn').addEventListener('click', () => this.resetCurrentMap());
             document.getElementById('edit-map-btn').addEventListener('click', () => this.enterEditorMode());
@@ -242,7 +247,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('win-replay-btn').addEventListener('click', () => this.resetCurrentMap());
             document.getElementById('win-new-map-btn').addEventListener('click', () => this.generateNewRandomMap());
             document.querySelectorAll('.tool-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => this.setEditorTool(e.target.id.split('-')[1]));
+                btn.addEventListener('click', (e) => {
+                    // 获取按钮的id，找到tool-后面的部分
+                    const toolName = e.currentTarget.id.split('-')[1];
+                    this.setEditorTool(toolName);
+                });
             });
             this.editorMapSizeInput.addEventListener('change', () => this.resizeAndClearEditor());
             document.getElementById('play-edited-map-btn').addEventListener('click', () => this.playEditedMap());
@@ -250,10 +259,28 @@ document.addEventListener('DOMContentLoaded', () => {
             window.addEventListener('keydown', (e) => this.handleKeyPress(e));
             const touchWrapper = (handler) => (e) => { if (this.editor.active) { e.preventDefault(); handler(e.changedTouches[0]); } };
             canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
-            canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
-            canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+            canvas.addEventListener('mousedown', (e) => {
+                // 在编辑器模式下，始终阻止默认行为（防止浏览器手势和选中文字等）
+                if (this.editor.active) {
+                    e.preventDefault();
+                }
+                this.handleCanvasMouseDown(e);
+            });
+            canvas.addEventListener('mousemove', (e) => {
+                // 在编辑器模式下，如果正在右键拖动，阻止默认行为（防止浏览器手势）
+                if (this.editor.active && (this.editor.isRightClickErasing || this.editor.isDragging)) {
+                    e.preventDefault();
+                }
+                this.handleCanvasMouseMove(e);
+            });
             canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
             canvas.addEventListener('mouseleave', (e) => this.handleCanvasMouseLeave(e));
+            // 右键相关事件处理（用于编辑器模式的橡皮擦功能）
+            canvas.addEventListener('contextmenu', (e) => { if (this.editor.active) e.preventDefault(); });
+            // 防止在编辑器模式下右键拖动时触发浏览器手势
+            canvas.addEventListener('dragstart', (e) => { if (this.editor.active) e.preventDefault(); });
+            // 防止浏览器默认的选中行为
+            canvas.addEventListener('selectstart', (e) => { if (this.editor.active) e.preventDefault(); });
             canvas.addEventListener('touchstart', touchWrapper(this.handleCanvasMouseDown.bind(this)), { passive: false });
             canvas.addEventListener('touchmove', touchWrapper(this.handleCanvasMouseMove.bind(this)), { passive: false });
             canvas.addEventListener('touchend', touchWrapper(this.handleCanvasMouseUp.bind(this)), { passive: false });
@@ -456,6 +483,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         handleKeyPress(e) {
+            // 编辑器模式的快捷键处理
+            if (this.state === GAME_STATES.EDITOR && this.editor.active) {
+                this.handleEditorKeyPress(e);
+                return;
+            }
             if (this.state !== GAME_STATES.PLAYING) return;
             this.stopAutoMove();
             if (this.multiLayerMode && this.currentLayer !== this.playerLayer) { this.switchToLayer(this.playerLayer); }
@@ -469,6 +501,75 @@ document.addEventListener('DOMContentLoaded', () => {
                 default: return;
             }
             e.preventDefault(); this.movePlayer(dx, dy);
+        }
+
+        handleEditorKeyPress(e) {
+            // 获取所有可见的工具按钮
+            const getVisibleTools = () => {
+                const toolBtns = document.querySelectorAll('.tool-btn');
+                const visibleTools = [];
+                toolBtns.forEach(btn => {
+                    if (btn.style.display !== 'none') {
+                        const toolName = btn.id.split('-')[1];
+                        visibleTools.push(toolName);
+                    }
+                });
+                return visibleTools;
+            };
+
+            switch (e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    // 向上切换图层
+                    if (this.multiLayerMode) {
+                        e.preventDefault();
+                        const nextLayer = this.currentLayer >= this.layerCount - 1 ? 0 : this.currentLayer + 1;
+                        this.switchToLayer(nextLayer);
+                    }
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    // 向下切换图层
+                    if (this.multiLayerMode) {
+                        e.preventDefault();
+                        const prevLayer = this.currentLayer <= 0 ? this.layerCount - 1 : this.currentLayer - 1;
+                        this.switchToLayer(prevLayer);
+                    }
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    // 向左切换工具
+                    e.preventDefault();
+                    {
+                        const visibleTools = getVisibleTools();
+                        const currentIndex = visibleTools.indexOf(this.editor.tool);
+                        const nextIndex = currentIndex <= 0 ? visibleTools.length - 1 : currentIndex - 1;
+                        this.setEditorTool(visibleTools[nextIndex]);
+                    }
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    // 向右切换工具
+                    e.preventDefault();
+                    {
+                        const visibleTools = getVisibleTools();
+                        const currentIndex = visibleTools.indexOf(this.editor.tool);
+                        const nextIndex = currentIndex >= visibleTools.length - 1 ? 0 : currentIndex + 1;
+                        this.setEditorTool(visibleTools[nextIndex]);
+                    }
+                    break;
+                case ' ':
+                    // 空格键：回到起点所在的图层
+                    e.preventDefault();
+                    if (this.multiLayerMode) {
+                        this.switchToLayer(this.playerLayer);
+                    }
+                    break;
+            }
         }
 
         useStair() { if (this.multiLayerMode) { this.processAction({ type: 'USE_STAIR' }); } }
@@ -1109,7 +1210,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.hoveredWall) {
                 const { x, y } = this.editor.hoveredWall;
                 if (x >= 0 && x < this.width && y >= 0 && y < this.height) { ctx.fillStyle = "rgba(255, 255, 0, 0.3)"; ctx.fillRect(x * cs, y * cs, cs, cs); }
-            } else if (this.editor.hoveredWall && !this.editor.isDragging && this.editor.tool !== EDITOR_TOOLS.ERASER) {
+            } else if (this.editor.hoveredWall && !this.editor.isDragging) {
                 const { x, y, type, direction } = this.editor.hoveredWall;
                 let wallType = 1;
                 switch (this.editor.tool) {
@@ -1140,6 +1241,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.editor.hoveredButtonHotspot) {
                 const virtualButton = { x: this.editor.hoveredButtonHotspot.x, y: this.editor.hoveredButtonHotspot.y, direction: this.editor.hoveredButtonHotspot.direction };
                 this.drawButton(virtualButton, true);
+            }
+            // 橡皮擦工具或右键橡皮擦时显示浅灰色大圆点提示
+            if ((this.editor.tool === EDITOR_TOOLS.ERASER || this.editor.isRightClickErasing) && this.editor.rightClickMousePos) {
+                ctx.fillStyle = '#aaaaaa';
+                ctx.beginPath();
+                ctx.arc(this.editor.rightClickMousePos.x, this.editor.rightClickMousePos.y, 8, 0, 2 * Math.PI);
+                ctx.fill();
             }
             ctx.restore();
         }
@@ -1178,6 +1286,8 @@ document.addEventListener('DOMContentLoaded', () => {
         eraseAtPos(pos) {
             const wall = this.getWallAtPos(pos.x, pos.y);
             if (wall && this.isWallEditable(wall)) {
+                // 先清除该墙上的按钮（requirement 8：按钮必须依附在墙上）
+                this.eraseButtonsOnWall(wall);
                 if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: WALL_TYPES.EMPTY, keys: 0 };
                 else this.vWalls[wall.y][wall.x] = { type: WALL_TYPES.EMPTY, keys: 0 };
             }
@@ -1187,9 +1297,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (this.customStartPos && this.customStartPos.x === cellX && this.customStartPos.y === cellY) { this.customStartPos = null; }
                 this.ghosts = this.ghosts.filter(g => g.x !== cellX || g.y !== cellY);
                 this.items = this.items.filter(i => i.x !== cellX || i.y !== cellY);
+                // 擦除按钮（requirement 5）
+                this.buttons = this.buttons.filter(b => b.x !== cellX || b.y !== cellY);
                 this.eraseStairAt(cellX, cellY, this.currentLayer);
             }
             this.drawEditor();
+        }
+
+        // 清除依附在指定墙上的按钮（requirement 8）
+        eraseButtonsOnWall(wall) {
+            if (wall.type === 'h') {
+                // 横墙：上方的格子按钮方向为 dy=1，下方的格子按钮方向为 dy=-1
+                this.buttons = this.buttons.filter(b => {
+                    // 上方格子（y = wall.y - 1）的下边按钮
+                    if (b.x === wall.x && b.y === wall.y - 1 && b.direction.dy === 1) return false;
+                    // 下方格子（y = wall.y）的上边按钮
+                    if (b.x === wall.x && b.y === wall.y && b.direction.dy === -1) return false;
+                    return true;
+                });
+            } else {
+                // 竖墙：左方的格子按钮方向为 dx=1，右方的格子按钮方向为 dx=-1
+                this.buttons = this.buttons.filter(b => {
+                    // 左方格子（x = wall.x - 1）的右边按钮
+                    if (b.x === wall.x - 1 && b.y === wall.y && b.direction.dx === 1) return false;
+                    // 右方格子（x = wall.x）的左边按钮
+                    if (b.x === wall.x && b.y === wall.y && b.direction.dx === -1) return false;
+                    return true;
+                });
+            }
         }
 
         eraseStairAt(x, y, layer) {
@@ -1230,8 +1365,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
         handleCanvasMouseDown(e) {
             if (!this.editor.active) return;
+            
+            // 右键点击处理（自动切换到橡皮擦工具）
+            if (e.button === 2) {
+                e.preventDefault();
+                // 保存当前工具，以便松开右键后恢复
+                if (this.editor.tool !== EDITOR_TOOLS.ERASER) {
+                    this.editor.previousToolBeforeRightClick = this.editor.tool;
+                    this.setEditorTool(EDITOR_TOOLS.ERASER);
+                }
+                this.editor.isRightClickErasing = true;
+                const pos = this.getMousePos(e);
+                this.editor.rightClickMousePos = pos;
+                this.eraseAtPos(pos);
+                return;
+            }
+            
             this.editor.isDragging = true; this.editor.didDrag = false; this.editor.hoveredWall = null;
             const pos = this.getMousePos(e);
+            
+            // 橡皮擦工具处理
+            if (this.editor.tool === EDITOR_TOOLS.ERASER) {
+                this.editor.rightClickMousePos = pos;
+                this.eraseAtPos(pos);
+                return;
+            }
+            
             if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.mode === 'free') {
                 const cellX = Math.floor(pos.x / this.cellSize); const cellY = Math.floor(pos.y / this.cellSize);
                 if (cellX >= 0 && cellX < this.width && cellY >= 0 && cellY < this.height) {
@@ -1261,10 +1420,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     const type = this.editor.tool === EDITOR_TOOLS.GLASS ? WALL_TYPES.GLASS : WALL_TYPES.SOLID;
                     this.toggleWall(wall, type); this.editor.lastDragPos = wall;
                 } else { this.editor.dragAxis = null; }
-            } else if (this.editor.tool === EDITOR_TOOLS.ERASER) { this.eraseAtPos(pos); }
-            else if (this.editor.tool === EDITOR_TOOLS.ONE_WAY) {
+            } else if (this.editor.tool === EDITOR_TOOLS.ONE_WAY) {
                 const wall = this.getWallAtPos(pos.x, pos.y);
                 if (wall && this.isWallEditable(wall)) {
+                    // 单向门不是SOLID墙，需要清除依附的按钮
+                    const currentWallObj = wall.type === 'h' ? this.hWalls[wall.y][wall.x] : this.vWalls[wall.y][wall.x];
+                    if (currentWallObj.type === WALL_TYPES.SOLID) {
+                        this.eraseButtonsOnWall(wall);
+                    }
                     const direction = this.getMouseSideOfWall(pos.x, pos.y, wall);
                     const newWall = { type: WALL_TYPES.ONE_WAY, direction: direction };
                     if (wall.type === 'h') this.hWalls[wall.y][wall.x] = newWall; else this.vWalls[wall.y][wall.x] = newWall;
@@ -1276,6 +1439,25 @@ document.addEventListener('DOMContentLoaded', () => {
         handleCanvasMouseMove(e) {
             if (!this.editor.active) return;
             const pos = this.getMousePos(e);
+            
+            // 右键拖动橡皮擦
+            if (this.editor.isRightClickErasing) {
+                this.editor.rightClickMousePos = pos;
+                this.eraseAtPos(pos);
+                return;
+            }
+            
+            // 橡皮擦工具：始终显示指示点，拖动时擦除
+            if (this.editor.tool === EDITOR_TOOLS.ERASER) {
+                this.editor.rightClickMousePos = pos;
+                if (this.editor.isDragging) {
+                    this.eraseAtPos(pos);
+                } else {
+                    this.drawEditor();
+                }
+                return;
+            }
+            
             if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.mode === 'free') {
                 const cellX = Math.floor(pos.x / this.cellSize); const cellY = Math.floor(pos.y / this.cellSize);
                 if (this.editor.isDragging) {
@@ -1366,8 +1548,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (wall.type === 'h') this.hWalls[wall.y][wall.x] = { type: newType }; else this.vWalls[wall.y][wall.x] = { type: newType };
                     this.drawEditor(); this.editor.lastDragPos = wall;
                 }
-            } else if (this.editor.tool === EDITOR_TOOLS.ERASER) { this.eraseAtPos(pos); }
-            else if (this.editor.tool === EDITOR_TOOLS.ONE_WAY && this.editor.lastDragPos) {
+            } else if (this.editor.tool === EDITOR_TOOLS.ONE_WAY && this.editor.lastDragPos) {
                 const wallData = this.editor.lastDragPos;
                 const newDirection = this.getMouseSideOfWall(pos.x, pos.y, wallData);
                 let currentWall = (wallData.type === 'h') ? this.hWalls[wallData.y][wallData.x] : this.vWalls[wallData.y][wallData.x];
@@ -1433,6 +1614,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         handleCanvasMouseUp(e) {
             if (!this.editor.active) return;
+            
+            // 右键松开时结束橡皮擦模式并恢复之前的工具
+            if (e.button === 2 || this.editor.isRightClickErasing) {
+                this.editor.isRightClickErasing = false;
+                this.editor.rightClickMousePos = null;
+                // 恢复右键按下前的工具
+                if (this.editor.previousToolBeforeRightClick) {
+                    this.setEditorTool(this.editor.previousToolBeforeRightClick);
+                    this.editor.previousToolBeforeRightClick = null;
+                }
+                this.drawEditor();
+                return;
+            }
+            
+            // 橡皮擦工具松开时不清除指示点（保持显示），只重置拖动状态
+            if (this.editor.tool === EDITOR_TOOLS.ERASER) {
+                // 不清除 rightClickMousePos，让圆点继续显示
+                this.editor.isDragging = false;
+                this.editor.didDrag = false;
+                this.drawEditor();
+                return;
+            }
+            
             this.editor.gridDragAction = null;
             if (this.editor.tool === EDITOR_TOOLS.STAIR && this.editor.stairPlacement) {
                 const { x, y, direction } = this.editor.stairPlacement;
@@ -1447,12 +1651,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (wall && this.isWallEditable(wall)) {
                     if (this.editor.tool === EDITOR_TOOLS.DOOR) {
                         const wallRef = wall.type === 'h' ? this.hWalls[wall.y][wall.x] : this.vWalls[wall.y][wall.x];
+                        // 门不是SOLID墙，需要清除依附的按钮
+                        if (wallRef.type === WALL_TYPES.SOLID) {
+                            this.eraseButtonsOnWall(wall);
+                        }
                         wallRef.type = wallRef.type === WALL_TYPES.DOOR ? WALL_TYPES.EMPTY : WALL_TYPES.DOOR;
                     } else if (this.editor.tool === EDITOR_TOOLS.LOCK) {
+                        const wallRef = wall.type === 'h' ? this.hWalls[wall.y][wall.x] : this.vWalls[wall.y][wall.x];
                         const numStr = prompt('请输入锁需要的钥匙数量:', '0');
                         if (numStr !== null) {
                             const keys = parseInt(numStr);
                             if (!isNaN(keys) && keys >= 0) {
+                                // 数字门不是SOLID墙，需要清除依附的按钮
+                                if (wallRef.type === WALL_TYPES.SOLID) {
+                                    this.eraseButtonsOnWall(wall);
+                                }
                                 const newWall = { type: WALL_TYPES.LOCKED, keys: keys };
                                 if (wall.type === 'h') this.hWalls[wall.y][wall.x] = newWall; else this.vWalls[wall.y][wall.x] = newWall;
                             } else { this.showToast('请输入一个有效的非负整数。', 3000, 'error'); }
@@ -1463,6 +1676,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         else {
                             const letter = prompt('请输入一个字母:', 'A');
                             if (letter && /^[a-zA-Z]$/.test(letter)) {
+                                // 字母门不是SOLID墙，需要清除依附的按钮
+                                if (wallRef.type === WALL_TYPES.SOLID) {
+                                    this.eraseButtonsOnWall(wall);
+                                }
                                 const newWall = { type: WALL_TYPES.LETTER_DOOR, letter: letter.toUpperCase(), initialState: 'closed' };
                                 if (wall.type === 'h') this.hWalls[wall.y][wall.x] = newWall; else this.vWalls[wall.y][wall.x] = newWall;
                             } else if (letter !== null) { this.showToast('请输入单个英文字母。', 3000, 'error'); }
@@ -1513,7 +1730,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         handleCanvasMouseLeave(e) {
+            // 清除所有悬停状态
             if (this.editor.hoveredWall) { this.editor.hoveredWall = null; this.drawEditor(); }
+            if (this.editor.hoveredButtonHotspot) { this.editor.hoveredButtonHotspot = null; this.drawEditor(); }
+            // 如果正在右键橡皮擦，也要停止
+            if (this.editor.isRightClickErasing) {
+                this.editor.isRightClickErasing = false;
+                this.editor.rightClickMousePos = null;
+                this.drawEditor();
+            }
+            // 橡皮擦工具：鼠标移出画布后清除小圆点
+            if (this.editor.tool === EDITOR_TOOLS.ERASER) {
+                this.editor.rightClickMousePos = null;
+                this.drawEditor();
+            }
             this.editor.dragAxis = null; this.editor.lastDragPos = null;
         }
 
@@ -1535,10 +1765,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
         toggleWall(wall, targetType = WALL_TYPES.SOLID) {
             const { x, y, type } = wall;
+            let currentWallObj;
             if (type === 'h' && y >= 0 && y <= this.height && x >= 0 && x < this.width) {
-                this.hWalls[y][x].type = this.hWalls[y][x].type === targetType ? WALL_TYPES.EMPTY : targetType;
+                currentWallObj = this.hWalls[y][x];
+                const newType = currentWallObj.type === targetType ? WALL_TYPES.EMPTY : targetType;
+                // 如果要清空墙类型或用非SOLID类型替换SOLID墙，先清除依附的按钮
+                // 按钮只能依附在SOLID墙上，替换为其他任何类型都需要清除按钮
+                if (newType === WALL_TYPES.EMPTY || (currentWallObj.type === WALL_TYPES.SOLID && newType !== WALL_TYPES.SOLID)) {
+                    this.eraseButtonsOnWall(wall);
+                }
+                this.hWalls[y][x].type = newType;
             } else if (type === 'v' && x >= 0 && x <= this.width && y >= 0 && y < this.height) {
-                this.vWalls[y][x].type = this.vWalls[y][x].type === targetType ? WALL_TYPES.EMPTY : targetType;
+                currentWallObj = this.vWalls[y][x];
+                const newType = currentWallObj.type === targetType ? WALL_TYPES.EMPTY : targetType;
+                // 如果要清空墙类型或用非SOLID类型替换SOLID墙，先清除依附的按钮
+                if (newType === WALL_TYPES.EMPTY || (currentWallObj.type === WALL_TYPES.SOLID && newType !== WALL_TYPES.SOLID)) {
+                    this.eraseButtonsOnWall(wall);
+                }
+                this.vWalls[y][x].type = newType;
             }
             this.drawEditor();
         }
