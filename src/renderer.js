@@ -332,27 +332,46 @@ export function drawStair(ctx, stair, cellSize, colors, isHighlight = false, alp
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = isHighlight ? colors.hoverHighlight : colors.wall;
     ctx.lineWidth = isHighlight ? 3 : 2;
-    ctx.fillStyle = stair.direction === 'up' ? 'rgba(0, 200, 100, 0.3)' : 'rgba(200, 100, 0, 0.3)';
+    ctx.lineJoin = 'miter'; // 确保直角不出现凹陷
+    ctx.lineCap = 'square'; // 确保线条端点平整
     
-    ctx.fillRect(x + offset, y + offset, size, size);
-    ctx.strokeRect(x + offset, y + offset, size, size);
-    
-    // 绘制方向指示
-    const arrowSize = size * 0.4;
-    const centerX = x + cellSize / 2;
-    const centerY = y + cellSize / 2;
+    // 绘制楼梯图标：三个方框锯齿加上两条完整边的密闭楼梯状图形
+    // 向上楼梯：左低右高，向下楼梯：左高右低
+    const left = x + offset;
+    const top = y + offset;
+    const stepWidth = size / 3;
+    const stepHeight = size / 3;
     
     ctx.beginPath();
+    
     if (stair.direction === 'up') {
-        ctx.moveTo(centerX, centerY - arrowSize / 2);
-        ctx.lineTo(centerX + arrowSize / 2, centerY + arrowSize / 2);
-        ctx.lineTo(centerX - arrowSize / 2, centerY + arrowSize / 2);
+        // 向上楼梯：左低右高
+        // 从左下角开始顺时针绘制
+        ctx.moveTo(left, top + size);                    // 左下角
+        ctx.lineTo(left, top + size - stepHeight);       // 左边第一台阶
+        ctx.lineTo(left + stepWidth, top + size - stepHeight);  // 第一台阶水平线
+        ctx.lineTo(left + stepWidth, top + size - 2 * stepHeight);  // 第二台阶垂直线
+        ctx.lineTo(left + 2 * stepWidth, top + size - 2 * stepHeight);  // 第二台阶水平线
+        ctx.lineTo(left + 2 * stepWidth, top);           // 第三台阶垂直线到顶部
+        ctx.lineTo(left + size, top);                    // 顶边
+        ctx.lineTo(left + size, top + size);             // 右边
+        ctx.closePath();                                  // 回到左下角
     } else {
-        ctx.moveTo(centerX, centerY + arrowSize / 2);
-        ctx.lineTo(centerX + arrowSize / 2, centerY - arrowSize / 2);
-        ctx.lineTo(centerX - arrowSize / 2, centerY - arrowSize / 2);
+        // 向下楼梯：左高右低
+        // 从左下角开始顺时针绘制
+        ctx.moveTo(left, top + size);                    // 左下角
+        ctx.lineTo(left, top);                           // 左边到顶部
+        ctx.lineTo(left + stepWidth, top);               // 顶边第一段
+        ctx.lineTo(left + stepWidth, top + stepHeight);  // 第一台阶向下
+        ctx.lineTo(left + 2 * stepWidth, top + stepHeight);  // 第二台阶水平线
+        ctx.lineTo(left + 2 * stepWidth, top + 2 * stepHeight);  // 第二台阶向下
+        ctx.lineTo(left + size, top + 2 * stepHeight);   // 第三台阶水平线
+        ctx.lineTo(left + size, top + size);             // 右边到底部
+        ctx.closePath();                                  // 回到左下角
     }
-    ctx.closePath();
+    
+    // 填充半透明背景
+    ctx.fillStyle = stair.direction === 'up' ? 'rgba(0, 200, 100, 0.3)' : 'rgba(200, 100, 0, 0.3)';
     ctx.fill();
     ctx.stroke();
     

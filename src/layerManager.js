@@ -91,6 +91,7 @@ export function updateLayerPanelUI(config) {
         currentLayer, 
         playerLayer, 
         editorActive,
+        hasStartPoint,  // 新增：是否有起点
         onLayerClick 
     } = config;
     
@@ -110,7 +111,8 @@ export function updateLayerPanelUI(config) {
         btn.className = 'layer-btn';
         btn.textContent = (i + 1).toString();
         if (i === currentLayer) btn.classList.add('active');
-        if (i === playerLayer) btn.classList.add('player-layer');
+        // 仅在有起点时才显示黄色边框标记玩家所在层
+        if (i === playerLayer && hasStartPoint !== false) btn.classList.add('player-layer');
         btn.addEventListener('click', () => onLayerClick(i));
         container.appendChild(btn);
     }

@@ -819,12 +819,27 @@ document.addEventListener('DOMContentLoaded', () => {
         removeLayer() {
             if (this.layerCount <= 1) { this.showToast('初始的1层不可删除！', 3000, 'error'); return; }
             this.showConfirm(`确定要删除第 ${this.layerCount} 层吗？`, () => {
+                // 保存当前层数据
+                this._saveCurrentLayerData();
+                
                 this.layers.pop(); this.layerCount--;
                 const removedLayerIndex = this.layerCount;
                 LayerManager.cleanupStairsOnLayerRemove(this.layers, removedLayerIndex);
+                
+                // 清理全局楼梯数组中指向被删除层的楼梯
+                this.stairs = this.stairs.filter(s => s.layer < this.layerCount);
+                // 清理指向被删除层的成对楼梯
+                this.stairs = this.stairs.filter(s => {
+                    const targetLayer = s.direction === 'up' ? s.layer + 1 : s.layer - 1;
+                    return targetLayer >= 0 && targetLayer < this.layerCount;
+                });
+                
+                // 如果当前视图在被删除的顶层，强制切换到新的顶层
                 if (this.currentLayer >= this.layerCount) {
                     this.currentLayer = this.layerCount - 1;
                     this._switchToLayer(this.currentLayer);
+                    this._renderStaticLayer();
+                    this.drawEditor();
                 }
                 this.updateLayerPanel(); this.showToast(`已删除第 ${this.layerCount + 1} 层`, 2000, 'success');
             });
@@ -870,12 +885,41 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateLayerPanel() {
+            // 检查是否有起点设置
+            let hasStartPoint = false;
+            if (this.editor.active) {
+                // 编辑器模式下检查
+                if (this.editor.mode === 'regular') {
+                    hasStartPoint = true; // 常规模式总是有起点
+                } else {
+                    // 自由模式下检查所有层是否有 customStartPos
+                    if (this.multiLayerMode) {
+                        for (let i = 0; i < this.layerCount; i++) {
+                            if (this.layers[i] && this.layers[i].customStartPos) {
+                                hasStartPoint = true;
+                                break;
+                            }
+                        }
+                        // 也检查当前编辑层的 customStartPos
+                        if (!hasStartPoint && this.customStartPos) {
+                            hasStartPoint = true;
+                        }
+                    } else {
+                        hasStartPoint = !!this.customStartPos;
+                    }
+                }
+            } else {
+                // 游戏模式下总是有起点
+                hasStartPoint = true;
+            }
+            
             LayerManager.updateLayerPanelUI({
                 multiLayerMode: this.multiLayerMode,
                 layerCount: this.layerCount,
                 currentLayer: this.currentLayer,
                 playerLayer: this.playerLayer,
                 editorActive: this.editor.active,
+                hasStartPoint: hasStartPoint,
                 onLayerClick: (i) => this.switchToLayer(i)
             });
         }
@@ -979,6 +1023,22 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty));
             this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty));
             this.endPos = null; this.customStartPos = null; this.ghosts = []; this.items = []; this.buttons = [];
+            
+            // 清空当前层的楼梯，同时清除成对的楼梯
+            const currentLayerStairs = this.stairs.filter(s => s.layer === this.currentLayer);
+            currentLayerStairs.forEach(stair => {
+                const pairedLayer = stair.direction === 'up' ? stair.layer + 1 : stair.layer - 1;
+                const pairedDirection = stair.direction === 'up' ? 'down' : 'up';
+                // 移除成对的楼梯
+                this.stairs = this.stairs.filter(s => 
+                    !(s.x === stair.x && s.y === stair.y && s.layer === pairedLayer && s.direction === pairedDirection)
+                );
+            });
+            // 移除当前层的所有楼梯
+            this.stairs = this.stairs.filter(s => s.layer !== this.currentLayer);
+            
+            // 更新层面板（起点被删除后不应显示黄色边框）
+            this.updateLayerPanel();
             this.drawEditor();
         }
 
@@ -1340,6 +1400,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetLayer = direction === 'up' ? this.currentLayer + 1 : this.currentLayer - 1;
             if (targetLayer < 0 || targetLayer >= this.layerCount) return false;
             if (this.layers[targetLayer] && this.layers[targetLayer].activeCells && !this.layers[targetLayer].activeCells[y][x]) return false;
+            
+            // 检查当前层该位置是否有其他元素（起点、鬼、钥匙、其他楼梯等）
+            if (this.isCellOccupiedInEditor(x, y)) return false;
+            
+            // 检查目标层该位置是否有其他元素
+            if (this.layers[targetLayer]) {
+                const targetLayerData = this.layers[targetLayer];
+                // 检查目标层是否有起点
+                if (targetLayerData.customStartPos && targetLayerData.customStartPos.x === x && targetLayerData.customStartPos.y === y) return false;
+                // 检查目标层是否有终点
+                if (targetLayerData.endPos && targetLayerData.endPos.x === x && targetLayerData.endPos.y === y) return false;
+                // 检查目标层是否有鬼
+                if (targetLayerData.ghosts && targetLayerData.ghosts.some(g => g.x === x && g.y === y)) return false;
+                // 检查目标层是否有钥匙
+                if (targetLayerData.items && targetLayerData.items.some(i => i.x === x && i.y === y)) return false;
+                // 检查目标层该位置是否已有楼梯（不是配对的那个）
+                if (this.stairs.some(s => s.x === x && s.y === y && s.layer === targetLayer && s.direction !== (direction === 'up' ? 'down' : 'up'))) return false;
+            }
+            
             return true;
         }
 
