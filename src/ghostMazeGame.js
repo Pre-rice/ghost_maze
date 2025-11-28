@@ -3,9 +3,6 @@ import { MapDefinition } from './mapDefinition.js';
 import { GameState } from './gameState.js';
 import { DataSerializer } from './dataSerializer.js';
 import { GameLogic } from './gameLogic.js';
-import { Renderer } from './renderer.js';
-import { UI } from './ui.js';
-import { showToast } from './ui.js';
 
 // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
 document.addEventListener('DOMContentLoaded', () => {
@@ -60,18 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     class GhostMazeGame {
         constructor() {
-            this.canvas = document.getElementById('game-canvas');
-            this.ctx = this.canvas.getContext('2d');
-
-            this.ui = new UI(this);
-            this.gameState = new GameState(this);
-            this.gameLogic = new GameLogic(this);
-            this.renderer = new Renderer(this);
-
-            this.ui.bindEvents();
-
-            this.isGameOver = false;
-            this.currentMode = 'exploration';
+            // 缓存常用的DOM元素引用，提高性能
             this.healthDisplay = document.getElementById('player-health-display');
             this.keysDisplay = document.getElementById('player-keys-display');
             this.stepsDisplay = document.getElementById('player-steps-display');
@@ -83,17 +69,27 @@ document.addEventListener('DOMContentLoaded', () => {
             this.confirmMessage = document.getElementById('confirm-message');
             this.confirmYesBtn = document.getElementById('confirm-yes-btn');
             this.confirmNoBtn = document.getElementById('confirm-no-btn');
+
             this.clearMapConfirmOverlay = document.getElementById('clear-map-confirm-overlay');
             this.clearEntitiesBtn = document.getElementById('confirm-clear-entities-btn');
             this.resetGridsBtn = document.getElementById('confirm-reset-grids-btn');
             this.clearGridsBtn = document.getElementById('confirm-clear-grids-btn');
             this.clearCancelBtn = document.getElementById('confirm-clear-cancel-btn');
+            
+            // 用于管理定时器和动画帧的ID
             this.toastTimeout = null;
             this.animationFrameId = null;
             this.autoMoveInterval = null;
             this.dpadInterval = null;
+
+            // 为静态背景层创建离屏Canvas，用于性能优化
+            this.staticLayerCanvas = document.createElement('canvas');
+            this.staticLayerCtx = this.staticLayerCanvas.getContext('2d');
+            
+            // 从CSS变量中获取颜色值，便于在Canvas绘图中统一风格
             this.updateColors();
-            this.renderer = new Renderer(canvas, this.colors);
+            
+            // 核心游戏状态
             this.state = GAME_STATES.MENU;
             this.gameMode = 'exploration';
             this.initialHealth = 5;
@@ -104,32 +100,48 @@ document.addEventListener('DOMContentLoaded', () => {
             this.padding = 15;
             this.cellSize = canvas.width / this.width;
             this.mapData = null;
-            this.mapDefinition = null;
-            this.currentGameState = null;
-            this.viewLayer = 0;
+            
+            // 新架构：核心状态管理
+            this.mapDefinition = null;  // MapDefinition 实例，不可变的地图定义
+            this.currentGameState = null;  // GameState 实例，当前游戏状态
+            this.viewLayer = 0;  // 当前显示的图层（与玩家所在层可能不同）
+
+            // 新增：视口偏移（用于居中非标准地图）
             this.drawOffset = { x: 0, y: 0 };
-            this.player = { x: 1, y: 1, hp: 5, stamina: 100, trail: [], keys: 0, steps: 0 };
+
+            // 玩家状态（兼容旧代码）
+            this.player = { x: 1, y: 1, hp: 5, stamina: 100, trail: [], keys: 0 , steps: 0};
+
+            // 鬼和物品
             this.ghosts = [];
             this.ghostCount = 3;
             this.items = [];
             this.buttons = [];
+
+            // 地图结构数据
             this.hWalls = [];
             this.vWalls = [];
             this.startPos = { x: 1, y: 1 };
             this.endPos = { x: 0, y: 0 };
-            this.customStartPos = null;
-            this.activeCells = [];
-            this.stairs = [];
-            this.multiLayerMode = false;
-            this.layerCount = 1;
-            this.currentLayer = 0;
-            this.playerLayer = 0;
-            this.layers = [];
+            this.customStartPos = null; // 新增：自定义起点
+            this.activeCells = []; // 新增：有效地图方格位图
+            this.stairs = []; // 新增：楼梯数据 [{x, y, layer, direction: 'up'|'down'}]
+            
+            // 多层地图相关状态
+            this.multiLayerMode = false; // 是否为多层地图模式
+            this.layerCount = 1; // 当前图层数量
+            this.currentLayer = 0; // 当前显示/编辑的图层（0-based索引，0是最底层）
+            this.playerLayer = 0; // 玩家当前所在图层
+            this.layers = []; // 存储所有图层数据的数组，每层包含 {hWalls, vWalls, activeCells, ghosts, items, buttons, stairs, endPos}
+            
+            // 视野系统
             this.seenCells = [];
             this.debugVision = false;
+
+            // 编辑器状态
             this.editor = {
                 active: false,
-                mode: 'regular',
+                mode: 'regular', // 'regular' or 'free'
                 tool: EDITOR_TOOLS.WALL,
                 isDragging: false,
                 didDrag: false,
@@ -137,16 +149,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 lastDragPos: null,
                 hoveredWall: null,
                 hoveredButtonHotspot: null,
-                gridDragAction: null,
-                stairPlacement: null
+                gridDragAction: null, // 'add' or 'remove'
+                stairPlacement: null // 楼梯放置状态 {x, y, direction: 'up'|'down'}
             };
+
+            // 历史记录系统状态
             this.history = [];
             this.checkpoints = [];
             this.currentStep = -1;
 
-            this.ui.bindEvents();
+            // 移动端虚拟方向键(D-pad)状态
+            this.dpad = {
+                element: document.getElementById('dpad-controls'),
+                grip: document.getElementById('dpad-center'), // Fix 8: 中键替代grip
+                isDragging: false,
+                isResizing: false,
+                startX: 0,
+                startY: 0,
+                initialLeft: 0,
+                initialTop: 0,
+                initialDist: 0,
+                currentScale: 1
+            };
+
+            // 绑定所有UI事件并显示初始欢迎信息
+            this.bindUI();
             this._initResizeListener();
             this.showInitialMessage();
+            // 页面加载时尝试从 URL 查询参数或 hash 读取分享码
             this.loadShareCodeFromURL();
         }
 
@@ -201,6 +231,68 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.font = '20px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('点击 "随机生成新地图" 或加载分享码开始游戏', canvas.width / 2, canvas.height / 2);
+        }
+
+        /**
+         * 显示一个短暂的顶部通知 (Toast)
+         */
+        showToast(message, duration = 3000, type = 'info') {
+            clearTimeout(this.toastTimeout);
+            this.toastElement.classList.remove('show');
+
+            // 使用短暂延时来确保浏览器能重置CSS动画
+            setTimeout(() => {
+                this.toastElement.textContent = message;
+                this.toastElement.className = 'toast'; 
+                if (type !== 'info') {
+                    this.toastElement.classList.add(type);
+                }
+                this.toastElement.classList.add('show');
+
+                this.toastTimeout = setTimeout(() => {
+                    this.toastElement.classList.remove('show');
+                }, duration);
+            }, 100);
+        }
+
+        /**
+         * 显示一个确认对话框
+         */
+        showConfirm(message, onConfirm) {
+            this.confirmMessage.textContent = message;
+            this.confirmOverlay.style.display = 'flex';
+
+            const hide = () => {
+                this.confirmOverlay.style.display = 'none';
+                this.confirmYesBtn.onclick = null;
+                this.confirmNoBtn.onclick = null;
+            };
+
+            this.confirmYesBtn.onclick = () => {
+                hide();
+                onConfirm();
+            };
+            this.confirmNoBtn.onclick = hide;
+        }
+
+        /**
+         * 隐藏所有游戏状态浮窗
+         */
+        hideAllOverlays() {
+            document.getElementById('death-overlay').style.display = 'none';
+            document.getElementById('game-over-overlay').style.display = 'none';
+            document.getElementById('win-overlay').style.display = 'none';
+        }
+
+        /**
+         * 重置当前地图到初始状态
+         */
+        resetCurrentMap() {
+            if (!this.mapData) {
+                this.showToast("没有可重置的地图。请先生成一个新地图。", 3000, 'error');
+                return;
+            }
+            this.startGame(this.mapData);
         }
 
         bindUI() {
@@ -842,11 +934,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             ctx.beginPath();
             const shouldDrawBoundary = (bx, by, isH) => {
-                const up = (by > 0 && by <= this.height) ? this.activeCells[by - 1][bx] : false;
-                const down = (by < this.height && by >= 0) ? this.activeCells[by][bx] : false;
-                const left = (bx > 0 && bx <= this.width) ? this.activeCells[by][bx - 1] : false;
-                const right = (bx < this.width && bx >= 0) ? this.activeCells[by][bx] : false;
-                return isH ? up !== down : left !== right;
+                if (isH) {
+                    const up = (by > 0 && by <= this.height) ? this.activeCells[by-1][bx] : false;
+                    const down = (by < this.height && by >= 0) ? this.activeCells[by][bx] : false;
+                    return up !== down;
+                } else {
+                    const left = (bx > 0 && bx <= this.width) ? this.activeCells[by][bx-1] : false;
+                    const right = (bx < this.width && bx >= 0) ? this.activeCells[by][bx] : false;
+                    return left !== right;
+                }
             };
             for (let y = 0; y <= this.height; y++) {
                 for (let x = 0; x < this.width; x++) {
@@ -1388,9 +1484,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.editor.mode === 'regular') { ctx.fillStyle = this.colors.startRoomHighlight; ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs); }
             ctx.beginPath();
             const shouldDrawBoundary = (bx, by, isH) => {
-                const up = (by > 0) ? this.activeCells[by - 1][bx] : false; const down = (by < this.height) ? this.activeCells[by][bx] : false;
-                const left = (bx > 0) ? this.activeCells[by][bx - 1] : false; const right = (bx < this.width) ? this.activeCells[by][bx] : false;
-                return isH ? up !== down : left !== right;
+                if (isH) {
+                    const up = (by > 0) ? this.activeCells[by - 1][bx] : false;
+                    const down = (by < this.height) ? this.activeCells[by][bx] : false;
+                    return up !== down;
+                } else {
+                    const left = (bx > 0) ? this.activeCells[by][bx - 1] : false;
+                    const right = (bx < this.width) ? this.activeCells[by][bx] : false;
+                    return left !== right;
+                }
             };
             for (let y = 0; y <= this.height; y++) {
                 for (let x = 0; x < this.width; x++) {

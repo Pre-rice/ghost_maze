@@ -11,8 +11,8 @@ export const DataSerializer = {
      */
     generateShareCode(sourceData) {
         try {
-            // 早期检测：确保压缩库 pako 已加载
-            if (typeof pako === 'undefined') {
+            // 早期检测：确保压缩库 pako 已加载（从window获取，因为是CDN加载的）
+            if (typeof window.pako === 'undefined') {
                 console.error('generateShareCode: pako is not defined.');
                 return { success: false, error: '压缩库未加载。' };
             }
@@ -180,7 +180,7 @@ export const DataSerializer = {
             }
 
             const uint8Data = new Uint8Array(buffer);
-            const compressed = pako.deflateRaw(uint8Data);
+            const compressed = window.pako.deflateRaw(uint8Data);
             let binaryString = '';
             for (let i = 0; i < compressed.byteLength; i++) {
                 binaryString += String.fromCharCode(compressed[i]);
@@ -213,7 +213,7 @@ export const DataSerializer = {
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
-            const inflated = pako.inflateRaw(bytes);
+            const inflated = window.pako.inflateRaw(bytes);
             let ptr = 0;
             const read = () => inflated[ptr++];
             
