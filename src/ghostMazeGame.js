@@ -227,16 +227,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         showInitialMessage() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = this.colors.border || '#d9d9d9';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.strokeRect(this.padding, this.padding, canvas.width - 2 * this.padding, canvas.height - 2 * this.padding);
-            ctx.setLineDash([]);
-            ctx.fillStyle = this.colors.text;
-            ctx.font = '20px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('点击 "随机生成新地图" 或加载分享码开始游戏', canvas.width / 2, canvas.height / 2);
+            Renderer.showInitialMessage(ctx, {
+                canvasWidth: canvas.width,
+                canvasHeight: canvas.height,
+                padding: this.padding,
+                colors: this.colors
+            });
         }
 
         /**
@@ -658,34 +654,26 @@ document.addEventListener('DOMContentLoaded', () => {
         pressButton(letter) { this.processAction({ type: 'PRESS_BUTTON', payload: { letter } }); }
 
         updateUIDisplays() {
-            if (this.gameMode === 'exploration') {
-                this.healthDisplay.textContent = `生命: ${this.player.hp}`;
-                this.keysDisplay.textContent = `钥匙: ${this.player.keys}`;
-                this.stepsDisplay.textContent = `步数: ${this.player.steps}`;
-            } else {
-                document.getElementById('loop-count-display').textContent = `循环次数: ${this.loopCount}`;
-                document.getElementById('player-keys-display-death-loop').textContent = `钥匙: ${this.player.keys}`;
-                document.getElementById('player-stamina-display').textContent = `剩余体力: ${this.player.stamina}`;
-            }
+            UI.updateUIDisplays({
+                gameMode: this.gameMode,
+                player: this.player,
+                loopCount: this.loopCount,
+                healthDisplay: this.healthDisplay,
+                keysDisplay: this.keysDisplay,
+                stepsDisplay: this.stepsDisplay
+            });
             this.updateProximityWarning();
         }
 
         updateProximityWarning() {
-            if (this.gameMode === 'death-loop') {
-                document.body.classList.remove('danger-bg');
-                this.ghostProximityDisplay.classList.remove('warning');
-                return;
-            }
-            let totalNearbyGhosts = 0, invisibleNearbyGhosts = 0;
-            for (const ghost of this.ghosts) {
-                if (Math.abs(ghost.x - this.player.x) <= 1 && Math.abs(ghost.y - this.player.y) <= 1) {
-                    totalNearbyGhosts++;
-                    if (!this.seenCells[ghost.y][ghost.x] && !this.debugVision) { invisibleNearbyGhosts++; }
-                }
-            }
-            this.ghostProximityDisplay.textContent = `周围鬼数: ${totalNearbyGhosts}`;
-            document.body.classList.toggle('danger-bg', invisibleNearbyGhosts > 0);
-            this.ghostProximityDisplay.classList.toggle('warning', invisibleNearbyGhosts > 0);
+            UI.updateProximityWarning({
+                gameMode: this.gameMode,
+                ghosts: this.ghosts,
+                player: this.player,
+                seenCells: this.seenCells,
+                debugVision: this.debugVision,
+                ghostProximityDisplay: this.ghostProximityDisplay
+            });
         }
 
         handlePlayerDeath(reason = 'ghost') {
@@ -1983,14 +1971,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateHistoryButtons() {
-            const undoBtn = document.getElementById('undo-btn');
-            const saveBtn = document.getElementById('save-btn');
-            const rewindBtn = document.getElementById('rewind-btn');
-            const canUndo = this.currentStep > 0 && !this.history[this.currentStep].isRevivalPoint;
-            undoBtn.disabled = !canUndo;
-            const lastCheckpoint = this.checkpoints.length > 0 ? this.checkpoints[this.checkpoints.length - 1] : -1;
-            saveBtn.disabled = !(this.currentStep > lastCheckpoint);
-            rewindBtn.disabled = !this.checkpoints.some(cp => cp < this.currentStep);
+            UI.updateHistoryButtons({
+                currentStep: this.currentStep,
+                history: this.history,
+                checkpoints: this.checkpoints
+            });
         }
 
         handleUndo() {
