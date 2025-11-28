@@ -448,3 +448,25 @@ export function showInitialMessage(ctx, config) {
     ctx.textAlign = 'center';
     ctx.fillText('点击 "随机生成新地图" 或加载分享码开始游戏', canvasWidth / 2, canvasHeight / 2);
 }
+
+/**
+ * 检查边界是否应该绘制
+ * @param {number} bx - 边界X坐标
+ * @param {number} by - 边界Y坐标
+ * @param {boolean} isH - 是否为水平边界
+ * @param {Array} activeCells - 活动单元格数组
+ * @param {number} width - 地图宽度
+ * @param {number} height - 地图高度
+ * @returns {boolean}
+ */
+export function shouldDrawBoundary(bx, by, isH, activeCells, width, height) {
+    if (isH) {
+        const up = (by > 0 && by <= height && activeCells[by-1]) ? activeCells[by-1][bx] : false;
+        const down = (by >= 0 && by < height && activeCells[by]) ? activeCells[by][bx] : false;
+        return up !== down;
+    } else {
+        const left = (bx > 0 && bx <= width && activeCells[by]) ? activeCells[by][bx-1] : false;
+        const right = (bx >= 0 && bx < width && activeCells[by]) ? activeCells[by][bx] : false;
+        return left !== right;
+    }
+}

@@ -11,54 +11,19 @@ import * as InputHandler from './inputHandler.js';
 import * as Editor from './editor.js';
 import * as LayerManager from './layerManager.js';
 import * as Pathfinding from './pathfinding.js';
+import * as ThemeManager from './themeManager.js';
 
 // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
 document.addEventListener('DOMContentLoaded', () => {
-    // ====== 三态主题切换：light / dark / auto ======
-    const sunIcon = `
-        <path d="M12 4.5V2m0 20v-2.5M4.93 4.93 3.51 3.51m16.98 16.98-1.42-1.42M4.5 12H2m20 0h-2.5M4.93 19.07l-1.42 1.42m16.98-16.98-1.42 1.42M12 7.5A4.5 4.5 0 1 1 7.5 12 4.505 4.505 0 0 1 12 7.5z"/>
-    `;
-    const moonIcon = `
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-    `;
-    const systemIcon = `
-        <path d="M3 4h18v12H3z M8 20h8M10 16h4" stroke-width="2" stroke="currentColor" fill="none"/>
-    `;
-    const toggleBtn = document.getElementById("theme-toggle-btn");
-    const themeIcon = document.getElementById("theme-icon");
-
-    function applyTheme(mode) {
-        document.documentElement.classList.remove("light", "dark");
-        if (mode === "light") {
-            document.documentElement.classList.add("light");
-            themeIcon.innerHTML = sunIcon;
-            toggleBtn.classList.remove("active");
-        } else if (mode === "dark") {
-            document.documentElement.classList.add("dark");
-            themeIcon.innerHTML = moonIcon;
-            toggleBtn.classList.add("active");
-        } else {
-            const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-            themeIcon.innerHTML = systemIcon;
-            toggleBtn.classList.toggle("active", systemDark);
-        }
-    }
-
-    let saved = localStorage.getItem("theme") || "auto";
-    applyTheme(saved);
-
-    document.getElementById("theme-toggle").addEventListener("click", () => {
-        let current = localStorage.getItem("theme") || "auto";
-        let next = current === "light" ? "dark" : current === "dark" ? "auto" : "light";
-        applyTheme(next);
-        localStorage.setItem("theme", next);
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 初始化主题管理器
+    ThemeManager.initThemeManager(() => {
         if (typeof game !== 'undefined' && game) {
             game.refreshTheme();
         }
     });
-
-    const canvas = document.getElementById('game-canvas');
-    const ctx = canvas.getContext('2d');
 
     /**
      * 游戏主类，封装了所有游戏逻辑、状态和UI交互
@@ -188,22 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateColors() {
-            const computedStyle = getComputedStyle(document.documentElement);
-            this.colors = {
-                ground: computedStyle.getPropertyValue('--ground-color').trim(),
-                gridLine: computedStyle.getPropertyValue('--grid-line-color').trim(),
-                unexplored: computedStyle.getPropertyValue('--unexplored-color').trim(),
-                wall: computedStyle.getPropertyValue('--wall-color').trim(),
-                player: computedStyle.getPropertyValue('--player-color').trim(),
-                ghost: computedStyle.getPropertyValue('--ghost-color').trim(),
-                endPoint: computedStyle.getPropertyValue('--end-point-color').trim(),
-                startPoint: computedStyle.getPropertyValue('--start-point-color').trim(),
-                key: computedStyle.getPropertyValue('--key-color').trim(),
-                startRoomHighlight: computedStyle.getPropertyValue('--start-room-highlight').trim(),
-                hoverHighlight: computedStyle.getPropertyValue('--hover-highlight-color').trim(),
-                text: computedStyle.getPropertyValue('--text-color').trim(),
-                voidGrid: computedStyle.getPropertyValue('--void-grid-color').trim()
-            };
+            this.colors = ThemeManager.getColorsFromCSS();
         }
 
         refreshTheme() {
@@ -656,20 +606,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             ctx.beginPath();
-            const shouldDrawBoundary = (bx, by, isH) => {
-                if (isH) {
-                    const up = (by > 0 && by <= this.height) ? this.activeCells[by-1][bx] : false;
-                    const down = (by < this.height && by >= 0) ? this.activeCells[by][bx] : false;
-                    return up !== down;
-                } else {
-                    const left = (bx > 0 && bx <= this.width) ? this.activeCells[by][bx-1] : false;
-                    const right = (bx < this.width && bx >= 0) ? this.activeCells[by][bx] : false;
-                    return left !== right;
-                }
-            };
             for (let y = 0; y <= this.height; y++) {
                 for (let x = 0; x < this.width; x++) {
-                    const isBoundary = shouldDrawBoundary(x, y, true);
+                    const isBoundary = Renderer.shouldDrawBoundary(x, y, true, this.activeCells, this.width, this.height);
                     const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y - 1][x]);
                     if (!isActiveRow && !isBoundary) continue;
                     const isVisible = isBoundary || this.debugVision || (y < this.height && this.activeCells[y][x] && this.seenCells[y][x]) || (y > 0 && this.activeCells[y - 1][x] && this.seenCells[y - 1][x]);
@@ -681,7 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             for (let y = 0; y < this.height; y++) {
                 for (let x = 0; x <= this.width; x++) {
-                    const isBoundary = shouldDrawBoundary(x, y, false);
+                    const isBoundary = Renderer.shouldDrawBoundary(x, y, false, this.activeCells, this.width, this.height);
                     const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x - 1]);
                     if (!isActiveCol && !isBoundary) continue;
                     const isVisible = isBoundary || this.debugVision || (x < this.width && this.activeCells[y][x] && this.seenCells[y][x]) || (x > 0 && this.activeCells[y][x - 1] && this.seenCells[y][x - 1]);
@@ -1089,23 +1028,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (this.editor.mode === 'regular') { ctx.fillStyle = this.colors.startRoomHighlight; ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs); }
             ctx.beginPath();
-            const shouldDrawBoundary = (bx, by, isH) => {
-                if (isH) {
-                    const up = (by > 0) ? this.activeCells[by - 1][bx] : false;
-                    const down = (by < this.height) ? this.activeCells[by][bx] : false;
-                    return up !== down;
-                } else {
-                    const left = (bx > 0) ? this.activeCells[by][bx - 1] : false;
-                    const right = (bx < this.width) ? this.activeCells[by][bx] : false;
-                    return left !== right;
-                }
-            };
             for (let y = 0; y <= this.height; y++) {
                 for (let x = 0; x < this.width; x++) {
                     const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y - 1][x]);
                     if (!isActiveRow) continue;
                     if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
-                    else if (this.editor.mode === 'free' && shouldDrawBoundary(x, y, true)) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, { type: 1 });
+                    else if (this.editor.mode === 'free' && Renderer.shouldDrawBoundary(x, y, true, this.activeCells, this.width, this.height)) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, { type: 1 });
                 }
             }
             for (let y = 0; y < this.height; y++) {
@@ -1113,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x - 1]);
                     if (!isActiveCol) continue;
                     if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
-                    else if (this.editor.mode === 'free' && shouldDrawBoundary(x, y, false)) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, { type: 1 });
+                    else if (this.editor.mode === 'free' && Renderer.shouldDrawBoundary(x, y, false, this.activeCells, this.width, this.height)) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, { type: 1 });
                 }
             }
             ctx.stroke();
