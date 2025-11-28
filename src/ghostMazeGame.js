@@ -4,6 +4,12 @@ import { GameState } from './gameState.js';
 import { DataSerializer } from './dataSerializer.js';
 import { GameLogic } from './gameLogic.js';
 
+// 导入新的模块化组件
+import * as UI from './ui.js';
+import * as Renderer from './renderer.js';
+import * as MazeGenerator from './mazeGenerator.js';
+import * as InputHandler from './inputHandler.js';
+
 // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
 document.addEventListener('DOMContentLoaded', () => {
     // ====== 三态主题切换：light / dark / auto ======
@@ -237,51 +243,21 @@ document.addEventListener('DOMContentLoaded', () => {
          * 显示一个短暂的顶部通知 (Toast)
          */
         showToast(message, duration = 3000, type = 'info') {
-            clearTimeout(this.toastTimeout);
-            this.toastElement.classList.remove('show');
-
-            // 使用短暂延时来确保浏览器能重置CSS动画
-            setTimeout(() => {
-                this.toastElement.textContent = message;
-                this.toastElement.className = 'toast'; 
-                if (type !== 'info') {
-                    this.toastElement.classList.add(type);
-                }
-                this.toastElement.classList.add('show');
-
-                this.toastTimeout = setTimeout(() => {
-                    this.toastElement.classList.remove('show');
-                }, duration);
-            }, 100);
+            UI.showToast(this.toastElement, message, duration, type, this);
         }
 
         /**
          * 显示一个确认对话框
          */
         showConfirm(message, onConfirm) {
-            this.confirmMessage.textContent = message;
-            this.confirmOverlay.style.display = 'flex';
-
-            const hide = () => {
-                this.confirmOverlay.style.display = 'none';
-                this.confirmYesBtn.onclick = null;
-                this.confirmNoBtn.onclick = null;
-            };
-
-            this.confirmYesBtn.onclick = () => {
-                hide();
-                onConfirm();
-            };
-            this.confirmNoBtn.onclick = hide;
+            UI.showConfirm(this.confirmOverlay, this.confirmMessage, this.confirmYesBtn, this.confirmNoBtn, message, onConfirm);
         }
 
         /**
          * 隐藏所有游戏状态浮窗
          */
         hideAllOverlays() {
-            document.getElementById('death-overlay').style.display = 'none';
-            document.getElementById('game-over-overlay').style.display = 'none';
-            document.getElementById('win-overlay').style.display = 'none';
+            UI.hideAllOverlays();
         }
 
         /**
@@ -350,85 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         initializeDpadTouchControls() {
-            const dpad = this.dpad;
-            const savedLeft = localStorage.getItem('dpadLeft');
-            const savedTop = localStorage.getItem('dpadTop');
-            const savedScale = localStorage.getItem('dpadScale');
-            if (savedScale) {
-                dpad.currentScale = parseFloat(savedScale);
-                dpad.element.style.transform = `scale(${dpad.currentScale})`;
-            }
-            if (savedLeft && savedTop) {
-                dpad.element.style.left = savedLeft;
-                dpad.element.style.top = savedTop;
-                dpad.element.style.right = 'auto';
-                dpad.element.style.bottom = 'auto';
-            }
-            const ensureJsPositioning = () => {
-                if (dpad.element.style.left === '' || dpad.element.style.top === '') {
-                    const rect = dpad.element.getBoundingClientRect();
-                    dpad.element.style.left = `${rect.left}px`;
-                    dpad.element.style.top = `${rect.top}px`;
-                    dpad.element.style.right = 'auto';
-                    dpad.element.style.bottom = 'auto';
-                }
-            };
-            dpad.grip.addEventListener('touchstart', (e) => {
-                const touches = e.touches;
-                if (touches.length === 1) {
-                    e.preventDefault();
-                    ensureJsPositioning();
-                    dpad.isDragging = true;
-                    dpad.startX = touches[0].clientX;
-                    dpad.startY = touches[0].clientY;
-                    dpad.initialLeft = parseFloat(dpad.element.style.left);
-                    dpad.initialTop = parseFloat(dpad.element.style.top);
-                }
-            }, { passive: false });
-            dpad.element.addEventListener('touchstart', (e) => {
-                const touches = e.touches;
-                if (touches.length === 2) {
-                    e.preventDefault();
-                    ensureJsPositioning();
-                    dpad.isResizing = true;
-                    const dx = touches[0].clientX - touches[1].clientX;
-                    const dy = touches[0].clientY - touches[1].clientY;
-                    dpad.initialDist = Math.sqrt(dx * dx + dy * dy);
-                }
-            }, { passive: false });
-            document.addEventListener('touchmove', (e) => {
-                if (!dpad.isDragging && !dpad.isResizing) return;
-                e.preventDefault();
-                const touches = e.touches;
-                if (dpad.isDragging && touches.length === 1) {
-                    const dx = touches[0].clientX - dpad.startX;
-                    const dy = touches[0].clientY - dpad.startY;
-                    dpad.element.style.left = `${dpad.initialLeft + dx}px`;
-                    dpad.element.style.top = `${dpad.initialTop + dy}px`;
-                } else if (dpad.isResizing && touches.length === 2) {
-                    const dx = touches[0].clientX - touches[1].clientX;
-                    const dy = touches[0].clientY - touches[1].clientY;
-                    const currentDist = Math.sqrt(dx * dx + dy * dy);
-                    const scaleChange = currentDist / dpad.initialDist;
-                    let newScale = dpad.currentScale * scaleChange;
-                    newScale = Math.max(0.5, Math.min(2.5, newScale));
-                    dpad.element.style.transform = `scale(${newScale})`;
-                }
-            }, { passive: false });
-            document.addEventListener('touchend', (e) => {
-                if (dpad.isResizing) {
-                    const transformStyle = dpad.element.style.transform;
-                    const scaleMatch = transformStyle.match(/scale\((.+)\)/);
-                    if (scaleMatch) { dpad.currentScale = parseFloat(scaleMatch[1]); }
-                    localStorage.setItem('dpadScale', dpad.currentScale);
-                }
-                if (dpad.isDragging) {
-                    localStorage.setItem('dpadLeft', dpad.element.style.left);
-                    localStorage.setItem('dpadTop', dpad.element.style.top);
-                }
-                dpad.isDragging = false;
-                dpad.isResizing = false;
-            });
+            UI.initializeDpadTouchControls(this.dpad);
         }
 
         setGameMode(newMode, fromEditor = false) {
@@ -450,46 +348,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateDpadVisibility() {
-            const dpadToggle = document.getElementById('dpad-toggle');
-            const dpadControls = document.getElementById('dpad-controls');
-            const shouldShow = dpadToggle.checked && !this.editor.active;
-            dpadControls.classList.toggle('hidden', !shouldShow);
+            UI.updateDpadVisibility(this.editor.active);
         }
 
         bindDpadControls() {
-            const handleDpadPress = (dx, dy) => {
-                if (this.state !== GAME_STATES.PLAYING) return;
-                if (this.multiLayerMode && this.currentLayer !== this.playerLayer) {
-                    this.switchToLayer(this.playerLayer);
-                }
-                clearInterval(this.autoMoveInterval);
-                clearInterval(this.dpadInterval);
-                this.movePlayer(dx, dy);
-                this.dpadInterval = setInterval(() => { this.movePlayer(dx, dy); }, 200);
-            };
-            const handleDpadRelease = () => { clearInterval(this.dpadInterval); };
-            const handleCenterPress = () => {
-                if (this.state !== GAME_STATES.PLAYING) return;
-                if (this.multiLayerMode && this.currentLayer !== this.playerLayer) {
-                    this.switchToLayer(this.playerLayer);
-                }
-                this.useStair();
-            };
-            const addListeners = (element, dx, dy) => {
-                element.addEventListener('touchstart', (e) => { e.preventDefault(); handleDpadPress(dx, dy); });
-                element.addEventListener('mousedown', () => handleDpadPress(dx, dy));
-            };
-            addListeners(document.getElementById('dpad-up'), 0, -1);
-            addListeners(document.getElementById('dpad-down'), 0, 1);
-            addListeners(document.getElementById('dpad-left'), -1, 0);
-            addListeners(document.getElementById('dpad-right'), 1, 0);
-            const centerBtn = document.getElementById('dpad-center');
-            if (centerBtn) {
-                centerBtn.addEventListener('touchstart', (e) => { e.preventDefault(); handleCenterPress(); });
-                centerBtn.addEventListener('mousedown', handleCenterPress);
-            }
-            document.addEventListener('touchend', handleDpadRelease);
-            document.addEventListener('mouseup', handleDpadRelease);
+            InputHandler.bindDpadControls(this);
         }
 
         startAnimationLoop() {
