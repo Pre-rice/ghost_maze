@@ -5,6 +5,24 @@ import { WALL_TYPES } from './constants.js';
  */
 
 /**
+ * 获取指定方向的墙壁
+ * @param {number} x - 当前x坐标
+ * @param {number} y - 当前y坐标
+ * @param {number} dx - x方向 (-1, 0, 1)
+ * @param {number} dy - y方向 (-1, 0, 1)
+ * @param {Array} hWalls - 横墙数组
+ * @param {Array} vWalls - 竖墙数组
+ * @returns {object|null} 墙壁对象或null
+ */
+function getWallInDirection(x, y, dx, dy, hWalls, vWalls) {
+    if (dx === 1) return vWalls[y][x + 1];
+    else if (dx === -1) return vWalls[y][x];
+    else if (dy === 1) return hWalls[y + 1][x];
+    else if (dy === -1) return hWalls[y][x];
+    return null;
+}
+
+/**
  * 计算从起点到所有可达点的距离（BFS）
  * @param {object} startNode - 起点 {x, y}
  * @param {number} width - 地图宽度
@@ -32,11 +50,7 @@ export function calculateDistances(startNode, width, height, hWalls, vWalls) {
             const ny = y + dy;
             
             if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                let wall;
-                if (dx === 1) wall = vWalls[y][x + 1];
-                if (dx === -1) wall = vWalls[y][x];
-                if (dy === 1) wall = hWalls[y + 1][x];
-                if (dy === -1) wall = hWalls[y][x];
+                const wall = getWallInDirection(x, y, dx, dy, hWalls, vWalls);
                 
                 if (wall && [WALL_TYPES.SOLID, WALL_TYPES.LOCKED, WALL_TYPES.ONE_WAY].includes(wall.type)) {
                     continue;
@@ -92,13 +106,8 @@ export function findPlayerPath(start, end, config) {
                     continue;
                 }
                 
-                let wall;
+                const wall = getWallInDirection(x, y, dx, dy, hWalls, vWalls);
                 let isBlocked = false;
-                
-                if (dx === 1) wall = vWalls[y][x + 1];
-                else if (dx === -1) wall = vWalls[y][x];
-                else if (dy === 1) wall = hWalls[y + 1][x];
-                else if (dy === -1) wall = hWalls[y][x];
                 
                 if (wall) {
                     if (wall.type === WALL_TYPES.SOLID || 
