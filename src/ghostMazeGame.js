@@ -492,7 +492,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const toolBtns = document.querySelectorAll('.tool-btn');
                 const visibleTools = [];
                 toolBtns.forEach(btn => {
-                    if (btn.style.display !== 'none' && btn.id !== 'tool-eraser') {
+                    if (btn.style.display !== 'none') {
                         const toolName = btn.id.split('-')[1];
                         visibleTools.push(toolName);
                     }
