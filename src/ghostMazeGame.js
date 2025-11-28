@@ -610,42 +610,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
         /**
          * 绘制图层边框外侧阴影（体现立体感）
+         * 阴影在边框的外侧（虚空一侧）绘制
          * @param {CanvasRenderingContext2D} renderCtx - Canvas上下文
          * @param {Array} activeCells - 活动单元格数组
          * @param {number} alpha - 透明度
          */
         _drawLayerBorderShadow(renderCtx, activeCells, alpha = 1.0) {
             const cs = this.cellSize;
-            const shadowOffset = 3; // 阴影偏移量
-            const shadowBlur = 4;   // 阴影模糊程度
+            const shadowOffset = 3;
+            const shadowWidth = 4;
             
             renderCtx.save();
-            renderCtx.globalAlpha = alpha * 0.6;
-            renderCtx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-            renderCtx.lineWidth = shadowBlur;
+            renderCtx.globalAlpha = alpha * 0.5;
+            renderCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+            renderCtx.lineWidth = shadowWidth;
             renderCtx.lineCap = 'round';
             renderCtx.lineJoin = 'round';
             
-            // 只在边框外侧绘制阴影线条
+            // 遍历所有单元格，在边界外侧（虚空侧）绘制阴影
             for (let y = 0; y < this.height; y++) {
                 for (let x = 0; x < this.width; x++) {
                     if (!activeCells[y] || !activeCells[y][x]) continue;
                     
-                    // 检查四个方向是否为边界（外侧是虚空）
-                    const top = (y === 0 || !activeCells[y - 1] || !activeCells[y - 1][x]);
-                    const bottom = (y === this.height - 1 || !activeCells[y + 1] || !activeCells[y + 1][x]);
-                    const left = (x === 0 || !activeCells[y][x - 1]);
-                    const right = (x === this.width - 1 || !activeCells[y][x + 1]);
+                    // 检查四个方向是否为边界（邻接虚空）
+                    const topIsVoid = (y === 0 || !activeCells[y - 1] || !activeCells[y - 1][x]);
+                    const bottomIsVoid = (y === this.height - 1 || !activeCells[y + 1] || !activeCells[y + 1][x]);
+                    const leftIsVoid = (x === 0 || !activeCells[y][x - 1]);
+                    const rightIsVoid = (x === this.width - 1 || !activeCells[y][x + 1]);
                     
+                    // 在虚空侧（外侧）偏移绘制阴影
                     renderCtx.beginPath();
-                    // 在边界外侧偏移绘制阴影
-                    if (bottom) { 
-                        renderCtx.moveTo(x * cs, (y + 1) * cs + shadowOffset); 
-                        renderCtx.lineTo((x + 1) * cs, (y + 1) * cs + shadowOffset); 
+                    if (topIsVoid) {
+                        renderCtx.moveTo(x * cs, y * cs - shadowOffset);
+                        renderCtx.lineTo((x + 1) * cs, y * cs - shadowOffset);
                     }
-                    if (right) { 
-                        renderCtx.moveTo((x + 1) * cs + shadowOffset, y * cs); 
-                        renderCtx.lineTo((x + 1) * cs + shadowOffset, (y + 1) * cs); 
+                    if (bottomIsVoid) {
+                        renderCtx.moveTo(x * cs, (y + 1) * cs + shadowOffset);
+                        renderCtx.lineTo((x + 1) * cs, (y + 1) * cs + shadowOffset);
+                    }
+                    if (leftIsVoid) {
+                        renderCtx.moveTo(x * cs - shadowOffset, y * cs);
+                        renderCtx.lineTo(x * cs - shadowOffset, (y + 1) * cs);
+                    }
+                    if (rightIsVoid) {
+                        renderCtx.moveTo((x + 1) * cs + shadowOffset, y * cs);
+                        renderCtx.lineTo((x + 1) * cs + shadowOffset, (y + 1) * cs);
                     }
                     renderCtx.stroke();
                 }
@@ -654,154 +663,233 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * 绘制较低图层的内容（半透明）
-         * @param {CanvasRenderingContext2D} renderCtx - Canvas上下文  
+         * 绘制单个图层的内容
+         * @param {CanvasRenderingContext2D} renderCtx - Canvas上下文
+         * @param {number} layerIdx - 图层索引
+         * @param {number} alpha - 透明度 (0-1)
          * @param {boolean} isEditor - 是否为编辑器模式
+         * @param {boolean} isCurrentLayer - 是否为当前查看的图层
          */
-        _drawLowerLayersContent(renderCtx, isEditor = false) {
-            if (!this.multiLayerMode || this.currentLayer === 0 || this.layerCount <= 1) return;
-            
+        _drawSingleLayer(renderCtx, layerIdx, alpha, isEditor, isCurrentLayer) {
             const cs = this.cellSize;
-            const lowerLayerAlpha = 0.5;
+            const layerData = this._getLayerData(layerIdx);
+            if (!layerData || !layerData.activeCells) return;
             
-            // 获取该图层的已探索区域（用于绘制迷雾）
-            const getSeenCells = (layerIdx) => {
-                if (isEditor) return null; // 编辑器模式不需要迷雾
-                if (this.currentGameState && this.currentGameState.seenCells) {
-                    return this.currentGameState.seenCells[layerIdx];
+            // 获取已探索区域（游戏模式）
+            let seenCells = null;
+            if (!isEditor && this.currentGameState && this.currentGameState.seenCells) {
+                seenCells = this.currentGameState.seenCells[layerIdx];
+            }
+            
+            renderCtx.save();
+            renderCtx.globalAlpha = alpha;
+            
+            // 1. 绘制地面和网格
+            for (let y = 0; y < this.height; y++) {
+                for (let x = 0; x < this.width; x++) {
+                    if (layerData.activeCells[y] && layerData.activeCells[y][x]) {
+                        renderCtx.fillStyle = this.colors.ground;
+                        renderCtx.fillRect(x * cs, y * cs, cs, cs);
+                        renderCtx.strokeStyle = this.colors.gridLine;
+                        renderCtx.lineWidth = 1;
+                        renderCtx.strokeRect(x * cs, y * cs, cs, cs);
+                    }
                 }
-                return null;
-            };
+            }
             
-            // 遍历所有比当前层低的图层
-            for (let layerIdx = this.currentLayer - 1; layerIdx >= 0; layerIdx--) {
-                const layerData = this._getLayerData(layerIdx);
-                if (!layerData || !layerData.activeCells) continue;
-                
-                const seenCells = getSeenCells(layerIdx);
-                
-                renderCtx.save();
-                renderCtx.globalAlpha = lowerLayerAlpha;
-                
-                // 绘制该图层的地面和网格（仅可见的单元格）
+            // 2. 绘制未探索迷雾（游戏模式）
+            if (!isEditor && seenCells && !this.debugVision) {
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
-                        if (layerData.activeCells[y] && layerData.activeCells[y][x] && 
-                            this._isCellVisibleFromAbove(x, y, layerIdx)) {
-                            renderCtx.fillStyle = this.colors.ground;
+                        if (layerData.activeCells[y] && layerData.activeCells[y][x] &&
+                            seenCells[y] && !seenCells[y][x]) {
+                            renderCtx.fillStyle = this.colors.unexplored;
                             renderCtx.fillRect(x * cs, y * cs, cs, cs);
-                            renderCtx.strokeStyle = this.colors.gridLine;
-                            renderCtx.lineWidth = 1;
-                            renderCtx.strokeRect(x * cs, y * cs, cs, cs);
                         }
                     }
                 }
-                
-                // 绘制未探索区域的迷雾（半透明黑色）- 仅在游戏模式下
-                if (!isEditor && seenCells && !this.debugVision) {
-                    for (let y = 0; y < this.height; y++) {
-                        for (let x = 0; x < this.width; x++) {
-                            if (layerData.activeCells[y] && layerData.activeCells[y][x] && 
-                                this._isCellVisibleFromAbove(x, y, layerIdx) &&
-                                seenCells[y] && !seenCells[y][x]) {
-                                renderCtx.fillStyle = this.colors.unexplored;
-                                renderCtx.fillRect(x * cs, y * cs, cs, cs);
-                            }
+            }
+            
+            // 3. 绘制墙体
+            if (layerData.hWalls && layerData.vWalls) {
+                renderCtx.beginPath();
+                // 横墙
+                for (let y = 0; y <= this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        const cellAbove = y > 0 && layerData.activeCells[y - 1] && layerData.activeCells[y - 1][x];
+                        const cellBelow = y < this.height && layerData.activeCells[y] && layerData.activeCells[y][x];
+                        if (!cellAbove && !cellBelow) continue;
+                        
+                        // 游戏模式下检查可见性
+                        if (!isEditor && !this.debugVision && seenCells) {
+                            const visAbove = cellAbove && seenCells[y - 1] && seenCells[y - 1][x];
+                            const visBelow = cellBelow && seenCells[y] && seenCells[y][x];
+                            if (!visAbove && !visBelow) continue;
+                        }
+                        
+                        if (layerData.hWalls[y] && layerData.hWalls[y][x] && layerData.hWalls[y][x].type > 0) {
+                            Renderer.drawWallOrDoor(renderCtx, x * cs, y * cs, (x + 1) * cs, y * cs, layerData.hWalls[y][x], cs, this.colors, this.state, false);
+                        } else if (Renderer.shouldDrawBoundary(x, y, true, layerData.activeCells, this.width, this.height)) {
+                            Renderer.drawWallOrDoor(renderCtx, x * cs, y * cs, (x + 1) * cs, y * cs, { type: 1 }, cs, this.colors, this.state, false);
                         }
                     }
                 }
-                
-                // 绘制墙体
-                if (layerData.hWalls && layerData.vWalls) {
-                    renderCtx.beginPath();
-                    for (let y = 0; y <= this.height; y++) {
-                        for (let x = 0; x < this.width; x++) {
-                            const cellAbove = y > 0 && layerData.activeCells[y - 1] && layerData.activeCells[y - 1][x];
-                            const cellBelow = y < this.height && layerData.activeCells[y] && layerData.activeCells[y][x];
-                            if (!cellAbove && !cellBelow) continue;
-                            
-                            const isVisibleAbove = cellAbove && this._isCellVisibleFromAbove(x, y - 1, layerIdx);
-                            const isVisibleBelow = cellBelow && this._isCellVisibleFromAbove(x, y, layerIdx);
-                            if (!isVisibleAbove && !isVisibleBelow) continue;
-                            
-                            if (layerData.hWalls[y] && layerData.hWalls[y][x] && layerData.hWalls[y][x].type > 0) {
-                                Renderer.drawWallOrDoor(renderCtx, x * cs, y * cs, (x + 1) * cs, y * cs, layerData.hWalls[y][x], cs, this.colors, this.state, false);
-                            } else if (Renderer.shouldDrawBoundary(x, y, true, layerData.activeCells, this.width, this.height)) {
-                                Renderer.drawWallOrDoor(renderCtx, x * cs, y * cs, (x + 1) * cs, y * cs, { type: 1 }, cs, this.colors, this.state, false);
-                            }
+                // 竖墙
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x <= this.width; x++) {
+                        const cellLeft = x > 0 && layerData.activeCells[y] && layerData.activeCells[y][x - 1];
+                        const cellRight = x < this.width && layerData.activeCells[y] && layerData.activeCells[y][x];
+                        if (!cellLeft && !cellRight) continue;
+                        
+                        // 游戏模式下检查可见性
+                        if (!isEditor && !this.debugVision && seenCells) {
+                            const visLeft = cellLeft && seenCells[y] && seenCells[y][x - 1];
+                            const visRight = cellRight && seenCells[y] && seenCells[y][x];
+                            if (!visLeft && !visRight) continue;
+                        }
+                        
+                        if (layerData.vWalls[y] && layerData.vWalls[y][x] && layerData.vWalls[y][x].type > 0) {
+                            Renderer.drawWallOrDoor(renderCtx, x * cs, y * cs, x * cs, (y + 1) * cs, layerData.vWalls[y][x], cs, this.colors, this.state, false);
+                        } else if (Renderer.shouldDrawBoundary(x, y, false, layerData.activeCells, this.width, this.height)) {
+                            Renderer.drawWallOrDoor(renderCtx, x * cs, y * cs, x * cs, (y + 1) * cs, { type: 1 }, cs, this.colors, this.state, false);
                         }
                     }
-                    for (let y = 0; y < this.height; y++) {
-                        for (let x = 0; x <= this.width; x++) {
-                            const cellLeft = x > 0 && layerData.activeCells[y] && layerData.activeCells[y][x - 1];
-                            const cellRight = x < this.width && layerData.activeCells[y] && layerData.activeCells[y][x];
-                            if (!cellLeft && !cellRight) continue;
-                            
-                            const isVisibleLeft = cellLeft && this._isCellVisibleFromAbove(x - 1, y, layerIdx);
-                            const isVisibleRight = cellRight && this._isCellVisibleFromAbove(x, y, layerIdx);
-                            if (!isVisibleLeft && !isVisibleRight) continue;
-                            
-                            if (layerData.vWalls[y] && layerData.vWalls[y][x] && layerData.vWalls[y][x].type > 0) {
-                                Renderer.drawWallOrDoor(renderCtx, x * cs, y * cs, x * cs, (y + 1) * cs, layerData.vWalls[y][x], cs, this.colors, this.state, false);
-                            } else if (Renderer.shouldDrawBoundary(x, y, false, layerData.activeCells, this.width, this.height)) {
-                                Renderer.drawWallOrDoor(renderCtx, x * cs, y * cs, x * cs, (y + 1) * cs, { type: 1 }, cs, this.colors, this.state, false);
-                            }
-                        }
-                    }
-                    renderCtx.stroke();
                 }
-                
-                // 绘制楼梯
-                const layerStairs = this.stairs.filter(s => s.layer === layerIdx);
-                layerStairs.forEach(stair => {
-                    if (this._isCellVisibleFromAbove(stair.x, stair.y, layerIdx)) {
-                        Renderer.drawStair(renderCtx, stair, cs, this.colors, false, lowerLayerAlpha);
+                renderCtx.stroke();
+            }
+            
+            // 4. 绘制墙角
+            this._drawCornersForLayer(renderCtx, layerData, seenCells, isEditor);
+            
+            // 5. 绘制楼梯
+            const layerStairs = this.stairs.filter(s => s.layer === layerIdx);
+            layerStairs.forEach(stair => {
+                if (isEditor || this.debugVision || (seenCells && seenCells[stair.y] && seenCells[stair.y][stair.x])) {
+                    Renderer.drawStair(renderCtx, stair, cs, this.colors, false, alpha);
+                }
+            });
+            
+            // 6. 绘制终点
+            if (layerData.endPos) {
+                if (isEditor || this.debugVision || (seenCells && seenCells[layerData.endPos.y] && seenCells[layerData.endPos.y][layerData.endPos.x])) {
+                    Renderer.drawCircle(renderCtx, layerData.endPos.x, layerData.endPos.y, cs, this.colors.endPoint, alpha);
+                }
+            }
+            
+            // 7. 绘制鬼
+            if (layerData.ghosts) {
+                layerData.ghosts.forEach(ghost => {
+                    if (isEditor || this.debugVision || (seenCells && seenCells[ghost.y] && seenCells[ghost.y][ghost.x])) {
+                        Renderer.drawCircle(renderCtx, ghost.x, ghost.y, cs, this.colors.ghost, alpha);
                     }
                 });
-                
-                // 绘制终点
-                if (layerData.endPos && this._isCellVisibleFromAbove(layerData.endPos.x, layerData.endPos.y, layerIdx)) {
-                    Renderer.drawCircle(renderCtx, layerData.endPos.x, layerData.endPos.y, cs, this.colors.endPoint, lowerLayerAlpha);
+            }
+            
+            // 8. 绘制玩家（仅在当前层且玩家所在层）
+            if (isCurrentLayer && !isEditor && (!this.multiLayerMode || this.currentLayer === this.playerLayer)) {
+                Renderer.drawCircle(renderCtx, this.player.x, this.player.y, cs, this.colors.player, alpha);
+            }
+            
+            // 9. 绘制物品
+            if (layerData.items) {
+                layerData.items.forEach(item => {
+                    if (isEditor || this.debugVision || (seenCells && seenCells[item.y] && seenCells[item.y][item.x])) {
+                        renderCtx.globalAlpha = alpha;
+                        Renderer.drawItem(renderCtx, item, cs, this.colors);
+                    }
+                });
+            }
+            
+            // 10. 绘制按钮
+            if (layerData.buttons) {
+                layerData.buttons.forEach(button => {
+                    if (isEditor || this.debugVision || (seenCells && seenCells[button.y] && seenCells[button.y][button.x])) {
+                        renderCtx.globalAlpha = alpha;
+                        Renderer.drawButton(renderCtx, button, cs, this.colors, false);
+                    }
+                });
+            }
+            
+            // 11. 绘制起点（编辑器模式）
+            if (isEditor && layerData.customStartPos) {
+                Renderer.drawCircle(renderCtx, layerData.customStartPos.x, layerData.customStartPos.y, cs, this.colors.player, alpha);
+            }
+            
+            // 12. 绘制边框阴影（外侧虚空）
+            if (this.multiLayerMode && this.layerCount > 1) {
+                this._drawLayerBorderShadow(renderCtx, layerData.activeCells, alpha);
+            }
+            
+            renderCtx.restore();
+        }
+
+        /**
+         * 为指定图层绘制墙角
+         */
+        _drawCornersForLayer(renderCtx, layerData, seenCells, isEditor) {
+            const cs = this.cellSize;
+            const w = Math.max(2, cs / 10);
+            renderCtx.fillStyle = this.colors.wall;
+            
+            const isActive = (cx, cy) => {
+                if (cx < 0 || cx >= this.width || cy < 0 || cy >= this.height) return false;
+                return layerData.activeCells[cy] && layerData.activeCells[cy][cx];
+            };
+            
+            const hasSolidWall = (type, wx, wy) => {
+                if (type === 'h') {
+                    if (wx < 0 || wx >= this.width) return false;
+                    if (layerData.hWalls && layerData.hWalls[wy] && layerData.hWalls[wy][wx] && layerData.hWalls[wy][wx].type === WALL_TYPES.SOLID) return true;
+                    return isActive(wx, wy - 1) !== isActive(wx, wy);
+                } else {
+                    if (wy < 0 || wy >= this.height) return false;
+                    if (layerData.vWalls && layerData.vWalls[wy] && layerData.vWalls[wy][wx] && layerData.vWalls[wy][wx].type === WALL_TYPES.SOLID) return true;
+                    return isActive(wx - 1, wy) !== isActive(wx, wy);
                 }
-                
-                // 绘制鬼
-                if (layerData.ghosts) {
-                    layerData.ghosts.forEach(ghost => {
-                        if (this._isCellVisibleFromAbove(ghost.x, ghost.y, layerIdx)) {
-                            Renderer.drawCircle(renderCtx, ghost.x, ghost.y, cs, this.colors.ghost, lowerLayerAlpha);
+            };
+            
+            for (let y = 0; y <= this.height; y++) {
+                for (let x = 0; x <= this.width; x++) {
+                    const hasHLeft = hasSolidWall('h', x - 1, y);
+                    const hasHRight = hasSolidWall('h', x, y);
+                    const hasVUp = hasSolidWall('v', x, y - 1);
+                    const hasVDown = hasSolidWall('v', x, y);
+                    const connectedCount = (hasHLeft ? 1 : 0) + (hasHRight ? 1 : 0) + (hasVUp ? 1 : 0) + (hasVDown ? 1 : 0);
+                    if (connectedCount < 2) continue;
+                    
+                    if (!isEditor && !this.debugVision && seenCells) {
+                        const isPureInternal = (x > 0 && x < this.width && y > 0 && y < this.height &&
+                            isActive(x - 1, y - 1) && isActive(x, y - 1) && isActive(x - 1, y) && isActive(x, y));
+                        if (isPureInternal) {
+                            const seen1 = seenCells[y - 1] && seenCells[y - 1][x - 1];
+                            const seen2 = seenCells[y - 1] && seenCells[y - 1][x];
+                            const seen3 = seenCells[y] && seenCells[y][x - 1];
+                            const seen4 = seenCells[y] && seenCells[y][x];
+                            if (!(seen1 || seen2 || seen3 || seen4)) continue;
                         }
-                    });
+                    }
+                    renderCtx.fillRect(x * cs - w / 2, y * cs - w / 2, w, w);
                 }
-                
-                // 绘制物品
-                if (layerData.items) {
-                    layerData.items.forEach(item => {
-                        if (this._isCellVisibleFromAbove(item.x, item.y, layerIdx)) {
-                            renderCtx.globalAlpha = lowerLayerAlpha;
-                            Renderer.drawItem(renderCtx, item, cs, this.colors);
-                        }
-                    });
-                }
-                
-                // 绘制按钮
-                if (layerData.buttons) {
-                    layerData.buttons.forEach(button => {
-                        if (this._isCellVisibleFromAbove(button.x, button.y, layerIdx)) {
-                            renderCtx.globalAlpha = lowerLayerAlpha;
-                            Renderer.drawButton(renderCtx, button, cs, this.colors, false);
-                        }
-                    });
-                }
-                
-                // 绘制起点（编辑器模式）
-                if (isEditor && layerData.customStartPos && this._isCellVisibleFromAbove(layerData.customStartPos.x, layerData.customStartPos.y, layerIdx)) {
-                    Renderer.drawCircle(renderCtx, layerData.customStartPos.x, layerData.customStartPos.y, cs, this.colors.player, lowerLayerAlpha);
-                }
-                
-                // 绘制边框阴影（外侧）
-                this._drawLayerBorderShadow(renderCtx, layerData.activeCells, lowerLayerAlpha);
-                
-                renderCtx.restore();
+            }
+        }
+
+        /**
+         * 绘制所有图层（从底层到当前层）
+         * @param {CanvasRenderingContext2D} renderCtx - Canvas上下文
+         * @param {boolean} isEditor - 是否为编辑器模式
+         */
+        _drawAllLayers(renderCtx, isEditor) {
+            if (!this.multiLayerMode || this.layerCount <= 1) {
+                // 单层模式，直接绘制当前层
+                this._drawSingleLayer(renderCtx, this.currentLayer, 1.0, isEditor, true);
+                return;
+            }
+            
+            // 多层模式：从第0层向上逐层渲染到当前层
+            for (let layerIdx = 0; layerIdx <= this.currentLayer; layerIdx++) {
+                const isCurrentLayer = (layerIdx === this.currentLayer);
+                const alpha = isCurrentLayer ? 1.0 : 0.5;
+                this._drawSingleLayer(renderCtx, layerIdx, alpha, isEditor, isCurrentLayer);
             }
         }
 
@@ -843,16 +931,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.save(); ctx.translate(this.drawOffset.x, this.drawOffset.y);
             const cs = this.cellSize; const now = Date.now();
             
-            // 绘制较低图层内容（半透明）
-            this._drawLowerLayersContent(ctx, false);
+            // 使用统一的图层渲染函数，从底层到当前层逐层渲染
+            this._drawAllLayers(ctx, false);
             
-            ctx.drawImage(this.staticLayerCanvas, 0, 0);
-            
-            // 绘制当前图层的边框阴影
-            if (this.multiLayerMode && this.layerCount > 1) {
-                this._drawLayerBorderShadow(ctx, this.activeCells, 1.0);
-            }
-            
+            // 绘制轨迹（仅当前层）
             const drawTrail = (arr, color) => arr.forEach(p => {
                 if (this.seenCells[p.y][p.x] || this.debugVision) {
                     const age = now - p.timestamp; const alpha = 0.3 * (1 - age / 500);
@@ -861,48 +943,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             drawTrail(this.player.trail, this.colors.player);
             this.ghosts.forEach(ghost => drawTrail(ghost.trail, this.colors.ghost));
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    if (this.activeCells[y][x] && !this.seenCells[y][x] && !this.debugVision) {
-                        ctx.fillStyle = this.colors.unexplored; ctx.fillRect(x * cs, y * cs, cs, cs);
-                    }
-                }
-            }
-            ctx.beginPath();
-            for (let y = 0; y <= this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    const isBoundary = Renderer.shouldDrawBoundary(x, y, true, this.activeCells, this.width, this.height);
-                    const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y - 1][x]);
-                    if (!isActiveRow && !isBoundary) continue;
-                    const isVisible = isBoundary || this.debugVision || (y < this.height && this.activeCells[y][x] && this.seenCells[y][x]) || (y > 0 && this.activeCells[y - 1][x] && this.seenCells[y - 1][x]);
-                    if (isVisible) {
-                        if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
-                        else if (isBoundary) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, { type: 1 });
-                    }
-                }
-            }
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 0; x <= this.width; x++) {
-                    const isBoundary = Renderer.shouldDrawBoundary(x, y, false, this.activeCells, this.width, this.height);
-                    const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x - 1]);
-                    if (!isActiveCol && !isBoundary) continue;
-                    const isVisible = isBoundary || this.debugVision || (x < this.width && this.activeCells[y][x] && this.seenCells[y][x]) || (x > 0 && this.activeCells[y][x - 1] && this.seenCells[y][x - 1]);
-                    if (isVisible) {
-                        if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
-                        else if (isBoundary) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, { type: 1 });
-                    }
-                }
-            }
-            ctx.stroke();
-            this.drawCorners(false);
-            this.stairs.filter(s => s.layer === this.currentLayer).forEach(stair => {
-                if (this.seenCells[stair.y][stair.x] || this.debugVision) { this.drawStair(stair); }
-            });
-            if (this.endPos && (this.seenCells[this.endPos.y][this.endPos.x] || this.debugVision)) { this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint); }
-            this.ghosts.forEach(ghost => { if (this.seenCells[ghost.y][ghost.x] || this.debugVision) { this.drawCircle(ghost.x, ghost.y, this.colors.ghost); } });
-            if (!this.multiLayerMode || this.currentLayer === this.playerLayer) { this.drawCircle(this.player.x, this.player.y, this.colors.player); }
-            this.items.forEach(item => { if (this.seenCells[item.y][item.x] || this.debugVision) { this.drawItem(item); } });
-            this.buttons.forEach(button => { if (this.seenCells[button.y][button.x] || this.debugVision) { this.drawButton(button); } });
+            
+            // 绘制墙体装饰（单向门箭头、字母等）
             this.drawWallOverlays(true);
             ctx.restore();
         }
@@ -1344,41 +1386,21 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.save(); ctx.translate(this.padding, this.padding);
             const cs = this.cellSize;
             
-            // 绘制较低图层内容（半透明）
-            this._drawLowerLayersContent(ctx, true);
+            // 使用统一的图层渲染函数，从底层到当前层逐层渲染
+            this._drawAllLayers(ctx, true);
             
-            ctx.drawImage(this.staticLayerCanvas, 0, 0);
-            
-            // 绘制当前图层的边框阴影
-            if (this.multiLayerMode && this.layerCount > 1) {
-                this._drawLayerBorderShadow(ctx, this.activeCells, 1.0);
-            }
-            
+            // 编辑器特有的绘制：虚空网格
             if (this.editor.mode === 'free') {
                 ctx.beginPath(); ctx.strokeStyle = this.colors.voidGrid; ctx.lineWidth = 1; ctx.setLineDash([5, 5]);
                 for (let y = 0; y < this.height; y++) { for (let x = 0; x < this.width; x++) { if (!this.activeCells[y][x]) { ctx.strokeRect(x * cs, y * cs, cs, cs); } } }
                 ctx.strokeRect(0, 0, this.width * cs, this.height * cs); ctx.setLineDash([]);
             }
             if (this.editor.mode === 'regular') { ctx.fillStyle = this.colors.startRoomHighlight; ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs); }
-            ctx.beginPath();
-            for (let y = 0; y <= this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y - 1][x]);
-                    if (!isActiveRow) continue;
-                    if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
-                    else if (this.editor.mode === 'free' && Renderer.shouldDrawBoundary(x, y, true, this.activeCells, this.width, this.height)) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, { type: 1 });
-                }
-            }
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 0; x <= this.width; x++) {
-                    const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x - 1]);
-                    if (!isActiveCol) continue;
-                    if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
-                    else if (this.editor.mode === 'free' && Renderer.shouldDrawBoundary(x, y, false, this.activeCells, this.width, this.height)) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, { type: 1 });
-                }
-            }
-            ctx.stroke();
-            this.drawCorners(true); this.drawWallOverlays();
+            
+            // 绘制墙体装饰
+            this.drawWallOverlays();
+            
+            // 编辑器工具高亮
             if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.hoveredWall) {
                 const { x, y } = this.editor.hoveredWall;
                 if (x >= 0 && x < this.width && y >= 0 && y < this.height) { ctx.fillStyle = "rgba(255, 255, 0, 0.3)"; ctx.fillRect(x * cs, y * cs, cs, cs); }
@@ -1402,14 +1424,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-            this.stairs.filter(s => s.layer === this.currentLayer).forEach(s => this.drawStair(s));
+            
+            // 楼梯放置预览
             if (this.editor.tool === EDITOR_TOOLS.STAIR && this.editor.stairPlacement) { this.drawStair(this.editor.stairPlacement, !this.editor.isDragging); }
-            this.items.forEach(item => this.drawItem(item));
-            if (this.endPos) this.drawCircle(this.endPos.x, this.endPos.y, this.colors.endPoint);
-            if (this.customStartPos) this.drawCircle(this.customStartPos.x, this.customStartPos.y, this.colors.player);
-            this.ghosts.forEach(g => this.drawCircle(g.x, g.y, this.colors.ghost));
-            this.buttons.forEach(b => this.drawButton(b));
+            
+            // 常规模式起点
             if (this.editor.mode === 'regular') this.drawCircle(this.startPos.x, this.startPos.y, this.colors.player);
+            
+            // 按钮热点高亮
             if (this.editor.hoveredButtonHotspot) {
                 const virtualButton = { x: this.editor.hoveredButtonHotspot.x, y: this.editor.hoveredButtonHotspot.y, direction: this.editor.hoveredButtonHotspot.direction };
                 this.drawButton(virtualButton, true);
