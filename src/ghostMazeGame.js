@@ -609,38 +609,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * 绘制图层边框阴影
+         * 绘制图层边框外侧阴影（体现立体感）
          * @param {CanvasRenderingContext2D} renderCtx - Canvas上下文
          * @param {Array} activeCells - 活动单元格数组
          * @param {number} alpha - 透明度
          */
         _drawLayerBorderShadow(renderCtx, activeCells, alpha = 1.0) {
             const cs = this.cellSize;
-            renderCtx.save();
-            renderCtx.globalAlpha = alpha;
-            renderCtx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-            renderCtx.shadowBlur = 8;
-            renderCtx.shadowOffsetX = 2;
-            renderCtx.shadowOffsetY = 2;
-            renderCtx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-            renderCtx.lineWidth = 2;
+            const shadowOffset = 3; // 阴影偏移量
+            const shadowBlur = 4;   // 阴影模糊程度
             
-            // 绘制每个活动单元格边界处的阴影
+            renderCtx.save();
+            renderCtx.globalAlpha = alpha * 0.6;
+            renderCtx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+            renderCtx.lineWidth = shadowBlur;
+            renderCtx.lineCap = 'round';
+            renderCtx.lineJoin = 'round';
+            
+            // 只在边框外侧绘制阴影线条
             for (let y = 0; y < this.height; y++) {
                 for (let x = 0; x < this.width; x++) {
                     if (!activeCells[y] || !activeCells[y][x]) continue;
                     
-                    // 检查四个方向是否为边界
+                    // 检查四个方向是否为边界（外侧是虚空）
                     const top = (y === 0 || !activeCells[y - 1] || !activeCells[y - 1][x]);
                     const bottom = (y === this.height - 1 || !activeCells[y + 1] || !activeCells[y + 1][x]);
                     const left = (x === 0 || !activeCells[y][x - 1]);
                     const right = (x === this.width - 1 || !activeCells[y][x + 1]);
                     
                     renderCtx.beginPath();
-                    if (top) { renderCtx.moveTo(x * cs, y * cs); renderCtx.lineTo((x + 1) * cs, y * cs); }
-                    if (bottom) { renderCtx.moveTo(x * cs, (y + 1) * cs); renderCtx.lineTo((x + 1) * cs, (y + 1) * cs); }
-                    if (left) { renderCtx.moveTo(x * cs, y * cs); renderCtx.lineTo(x * cs, (y + 1) * cs); }
-                    if (right) { renderCtx.moveTo((x + 1) * cs, y * cs); renderCtx.lineTo((x + 1) * cs, (y + 1) * cs); }
+                    // 在边界外侧偏移绘制阴影
+                    if (bottom) { 
+                        renderCtx.moveTo(x * cs, (y + 1) * cs + shadowOffset); 
+                        renderCtx.lineTo((x + 1) * cs, (y + 1) * cs + shadowOffset); 
+                    }
+                    if (right) { 
+                        renderCtx.moveTo((x + 1) * cs + shadowOffset, y * cs); 
+                        renderCtx.lineTo((x + 1) * cs + shadowOffset, (y + 1) * cs); 
+                    }
                     renderCtx.stroke();
                 }
             }
@@ -658,10 +664,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const cs = this.cellSize;
             const lowerLayerAlpha = 0.5;
             
+            // 获取该图层的已探索区域（用于绘制迷雾）
+            const getSeenCells = (layerIdx) => {
+                if (isEditor) return null; // 编辑器模式不需要迷雾
+                if (this.currentGameState && this.currentGameState.seenCells) {
+                    return this.currentGameState.seenCells[layerIdx];
+                }
+                return null;
+            };
+            
             // 遍历所有比当前层低的图层
             for (let layerIdx = this.currentLayer - 1; layerIdx >= 0; layerIdx--) {
                 const layerData = this._getLayerData(layerIdx);
                 if (!layerData || !layerData.activeCells) continue;
+                
+                const seenCells = getSeenCells(layerIdx);
                 
                 renderCtx.save();
                 renderCtx.globalAlpha = lowerLayerAlpha;
@@ -676,6 +693,20 @@ document.addEventListener('DOMContentLoaded', () => {
                             renderCtx.strokeStyle = this.colors.gridLine;
                             renderCtx.lineWidth = 1;
                             renderCtx.strokeRect(x * cs, y * cs, cs, cs);
+                        }
+                    }
+                }
+                
+                // 绘制未探索区域的迷雾（半透明黑色）- 仅在游戏模式下
+                if (!isEditor && seenCells && !this.debugVision) {
+                    for (let y = 0; y < this.height; y++) {
+                        for (let x = 0; x < this.width; x++) {
+                            if (layerData.activeCells[y] && layerData.activeCells[y][x] && 
+                                this._isCellVisibleFromAbove(x, y, layerIdx) &&
+                                seenCells[y] && !seenCells[y][x]) {
+                                renderCtx.fillStyle = this.colors.unexplored;
+                                renderCtx.fillRect(x * cs, y * cs, cs, cs);
+                            }
                         }
                     }
                 }
@@ -752,12 +783,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
                 
+                // 绘制按钮
+                if (layerData.buttons) {
+                    layerData.buttons.forEach(button => {
+                        if (this._isCellVisibleFromAbove(button.x, button.y, layerIdx)) {
+                            renderCtx.globalAlpha = lowerLayerAlpha;
+                            Renderer.drawButton(renderCtx, button, cs, this.colors, false);
+                        }
+                    });
+                }
+                
                 // 绘制起点（编辑器模式）
                 if (isEditor && layerData.customStartPos && this._isCellVisibleFromAbove(layerData.customStartPos.x, layerData.customStartPos.y, layerIdx)) {
                     Renderer.drawCircle(renderCtx, layerData.customStartPos.x, layerData.customStartPos.y, cs, this.colors.player, lowerLayerAlpha);
                 }
                 
-                // 绘制边框阴影
+                // 绘制边框阴影（外侧）
                 this._drawLayerBorderShadow(renderCtx, layerData.activeCells, lowerLayerAlpha);
                 
                 renderCtx.restore();
