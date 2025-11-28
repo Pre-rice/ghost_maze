@@ -9,6 +9,7 @@ import * as Renderer from './renderer.js';
 import * as MazeGenerator from './mazeGenerator.js';
 import * as InputHandler from './inputHandler.js';
 import * as Editor from './editor.js';
+import * as LayerManager from './layerManager.js';
 
 // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
 document.addEventListener('DOMContentLoaded', () => {
@@ -705,136 +706,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         drawWallOrDoor(x1, y1, x2, y2, wallObject, isHighlight = false) {
-            const type = wallObject.type; const cs = this.cellSize;
-            ctx.strokeStyle = isHighlight ? this.colors.hoverHighlight : this.colors.wall;
-            ctx.lineWidth = isHighlight ? Math.max(3, cs / 8) : ([WALL_TYPES.LOCKED, WALL_TYPES.ONE_WAY].includes(type) ? Math.max(3, cs / 12) : Math.max(2, cs / 10));
-            if (type === WALL_TYPES.SOLID) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
-            else if (type === WALL_TYPES.GLASS) {
-                const isHorizontal = y1 === y2; const lineLength = cs * 0.2; const offset = lineLength / 2;
-                const points = [{ x: x1 * 5 / 6 + x2 * 1 / 6, y: y1 * 5 / 6 + y2 * 1 / 6 }, { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }, { x: x1 * 1 / 6 + x2 * 5 / 6, y: y1 * 1 / 6 + y2 * 5 / 6 }];
-                for (const p of points) {
-                    if (isHorizontal) { ctx.moveTo(p.x - offset, p.y + offset); ctx.lineTo(p.x + offset, p.y - offset); }
-                    else { ctx.moveTo(p.x - offset, p.y + offset); ctx.lineTo(p.x + offset, p.y - offset); }
-                }
-            } else if (type === WALL_TYPES.LOCKED || type === WALL_TYPES.ONE_WAY || type === WALL_TYPES.LETTER_DOOR) {
-                let isLetterDoorOpen = (type === WALL_TYPES.LETTER_DOOR) && (this.state === GAME_STATES.EDITOR ? wallObject.initialState === 'open' : wallObject.currentState === 'open');
-                if (isLetterDoorOpen) return;
-                const isHorizontal = y1 === y2; const lockWidth = cs * 0.2;
-                if (isHorizontal) { ctx.rect(x1, y1 - lockWidth / 2, cs, lockWidth); } else { ctx.rect(x1 - lockWidth / 2, y1, lockWidth, cs); }
-            } else if (type === WALL_TYPES.DOOR) {
-                const isHorizontal = y1 === y2; const length = isHorizontal ? x2 - x1 : y2 - y1; const gap = length / 3;
-                if (isHorizontal) { ctx.moveTo(x1, y1); ctx.lineTo(x1 + gap, y1); ctx.moveTo(x2 - gap, y2); ctx.lineTo(x2, y2); }
-                else { ctx.moveTo(x1, y1); ctx.lineTo(x1, y1 + gap); ctx.moveTo(x2, y2 - gap); ctx.lineTo(x2, y2); }
-            }
+            Renderer.drawWallOrDoor(ctx, x1, y1, x2, y2, wallObject, this.cellSize, this.colors, this.state, isHighlight);
         }
 
         drawArrow(x1, y1, x2, y2, direction, color, withStroke) {
-            const centerX = (x1 + x2) / 2; const centerY = (y1 + y2) / 2; const cs = this.cellSize; const fontSize = cs * 0.6;
-            ctx.save(); ctx.translate(centerX, centerY);
-            if (direction.dx === 1) { ctx.rotate(0); } else if (direction.dx === -1) { ctx.rotate(Math.PI); }
-            else if (direction.dy === 1) { ctx.rotate(Math.PI / 2); } else if (direction.dy === -1) { ctx.rotate(-Math.PI / 2); }
-            ctx.scale(0.8, 1.0); ctx.font = `bold ${fontSize}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            if (withStroke) { ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.strokeText('>', 0, 0); }
-            ctx.fillStyle = color; ctx.fillText('>', 0, 0); ctx.restore();
+            Renderer.drawArrow(ctx, x1, y1, x2, y2, direction, color, withStroke, this.cellSize);
         }
 
         drawWallOverlays(inGame = false) {
-            const cs = this.cellSize;
-            const drawNumber = (x1, y1, x2, y2, number) => {
-                const centerX = (x1 + x2) / 2; const centerY = (y1 + y2) / 2; const fontSize = cs * 0.4; const text = number.toString();
-                ctx.font = `bold ${fontSize}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.strokeText(text, centerX, centerY);
-                ctx.fillStyle = this.colors.key; ctx.fillText(text, centerX, centerY);
-            };
-            for (let y = 1; y < this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    const w = this.hWalls[y][x];
-                    if (!(this.activeCells[y][x] && this.activeCells[y - 1][x])) continue;
-                    const isVisible = !inGame || this.debugVision || this.seenCells[y - 1][x] || this.seenCells[y][x];
-                    if (isVisible) {
-                        if (w.type === WALL_TYPES.LOCKED) { drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, w.keys); }
-                        else if (w.type === WALL_TYPES.LETTER_DOOR) { drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, w.letter); }
-                        else if (w.type === WALL_TYPES.ONE_WAY && w.direction) { this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, w.direction, this.colors.key, true); }
-                    }
-                }
-            }
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 1; x < this.width; x++) {
-                    const w = this.vWalls[y][x];
-                    if (!(this.activeCells[y][x] && this.activeCells[y][x - 1])) continue;
-                    const isVisible = !inGame || this.debugVision || this.seenCells[y][x - 1] || this.seenCells[y][x];
-                    if (isVisible) {
-                        if (w.type === WALL_TYPES.LOCKED) { drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, w.keys); }
-                        else if (w.type === WALL_TYPES.LETTER_DOOR) { drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, w.letter); }
-                        else if (w.type === WALL_TYPES.ONE_WAY && w.direction) { this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, w.direction, this.colors.key, true); }
-                    }
-                }
-            }
+            Renderer.drawWallOverlays(ctx, {
+                width: this.width,
+                height: this.height,
+                cellSize: this.cellSize,
+                hWalls: this.hWalls,
+                vWalls: this.vWalls,
+                activeCells: this.activeCells,
+                seenCells: this.seenCells,
+                debugVision: this.debugVision,
+                colors: this.colors,
+                inGame,
+                drawArrowFn: (x1, y1, x2, y2, dir, color, stroke) => this.drawArrow(x1, y1, x2, y2, dir, color, stroke)
+            });
         }
 
         drawCircle(x, y, color, alpha = 1.0) {
-            if (alpha <= 0) return; const cs = this.cellSize;
-            ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath();
-            ctx.arc(x * cs + cs / 2, y * cs + cs / 2, cs * 0.35, 0, 2 * Math.PI);
-            ctx.fill(); ctx.globalAlpha = 1.0;
+            Renderer.drawCircle(ctx, x, y, this.cellSize, color, alpha);
         }
 
         drawItem(item) {
-            if (item.type === 'key') {
-                const cs = this.cellSize; const centerX = item.x * cs + cs / 2; const centerY = item.y * cs + cs / 2; const size = cs * 0.3;
-                ctx.fillStyle = this.colors.key; ctx.beginPath();
-                ctx.moveTo(centerX, centerY - size); ctx.lineTo(centerX + size, centerY);
-                ctx.lineTo(centerX, centerY + size); ctx.lineTo(centerX - size, centerY);
-                ctx.closePath(); ctx.fill();
-            }
+            Renderer.drawItem(ctx, item, this.cellSize, this.colors);
         }
 
         drawStair(stair, isHighlight = false, alpha = 1.0) {
-            const cs = this.cellSize; const centerX = stair.x * cs + cs / 2; const centerY = stair.y * cs + cs / 2;
-            const scale = 0.8; const stairSize = cs * scale; const x = centerX - stairSize / 2; const y = centerY - stairSize / 2;
-            const padding = stairSize * 0.08; const innerWidth = stairSize - 2 * padding; const innerHeight = stairSize - 2 * padding;
-            const stepWidth = innerWidth / 3; const stepHeight = innerHeight / 3;
-            ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = isHighlight ? this.colors.hoverHighlight : this.colors.wall;
-            ctx.lineWidth = Math.max(2, cs / 15); ctx.beginPath();
-            const left = x + padding, right = x + stairSize - padding, bottom = y + stairSize - padding, top = y + padding;
-            if (stair.direction === 'up') {
-                ctx.moveTo(left, bottom); ctx.lineTo(left, bottom - stepHeight); ctx.lineTo(left + stepWidth, bottom - stepHeight);
-                ctx.lineTo(left + stepWidth, bottom - 2 * stepHeight); ctx.lineTo(left + 2 * stepWidth, bottom - 2 * stepHeight);
-                ctx.lineTo(left + 2 * stepWidth, top); ctx.lineTo(right, top); ctx.lineTo(right, bottom); ctx.lineTo(left, bottom);
-            } else {
-                ctx.moveTo(left, bottom); ctx.lineTo(left, top); ctx.lineTo(left + stepWidth, top);
-                ctx.lineTo(left + stepWidth, top + stepHeight); ctx.lineTo(left + 2 * stepWidth, top + stepHeight);
-                ctx.lineTo(left + 2 * stepWidth, top + 2 * stepHeight); ctx.lineTo(right, top + 2 * stepHeight);
-                ctx.lineTo(right, bottom); ctx.lineTo(left, bottom);
-            }
-            ctx.stroke(); ctx.restore();
+            Renderer.drawStair(ctx, stair, this.cellSize, this.colors, isHighlight, alpha);
         }
 
         drawButton(button, isHighlight = false) {
-            const cs = this.cellSize; const centerX = button.x * cs + cs / 2; const centerY = button.y * cs + cs / 2;
-            const buttonLength = cs * 0.5; const buttonWidth = cs * 0.2;
-            let p1, p2, p3, p4, letterCenterX, letterCenterY;
-            const setPoints = (x1, y1, x2, y2, x3, y3, x4, y4, lcx, lcy) => {
-                p1 = { x: x1, y: y1 }; p2 = { x: x2, y: y2 }; p3 = { x: x3, y: y3 }; p4 = { x: x4, y: y4 };
-                letterCenterX = lcx; letterCenterY = lcy;
-            };
-            if (button.direction.dy === -1) setPoints(centerX - buttonLength / 2, button.y * cs, centerX + buttonLength / 2, button.y * cs, centerX + buttonLength / 2, button.y * cs + buttonWidth, centerX - buttonLength / 2, button.y * cs + buttonWidth, centerX, button.y * cs + buttonWidth / 2);
-            else if (button.direction.dy === 1) setPoints(centerX - buttonLength / 2, (button.y + 1) * cs - buttonWidth, centerX + buttonLength / 2, (button.y + 1) * cs - buttonWidth, centerX + buttonLength / 2, (button.y + 1) * cs, centerX - buttonLength / 2, (button.y + 1) * cs, centerX, (button.y + 1) * cs - buttonWidth / 2);
-            else if (button.direction.dx === -1) setPoints(button.x * cs, centerY - buttonLength / 2, button.x * cs + buttonWidth, centerY - buttonLength / 2, button.x * cs + buttonWidth, centerY + buttonLength / 2, button.x * cs, centerY + buttonLength / 2, button.x * cs + buttonWidth / 2, centerY);
-            else if (button.direction.dx === 1) setPoints((button.x + 1) * cs - buttonWidth, centerY - buttonLength / 2, (button.x + 1) * cs, centerY - buttonLength / 2, (button.x + 1) * cs, centerY + buttonLength / 2, (button.x + 1) * cs - buttonWidth, centerY + buttonLength / 2, (button.x + 1) * cs - buttonWidth / 2, centerY);
-            ctx.strokeStyle = isHighlight ? this.colors.hoverHighlight : this.colors.wall;
-            ctx.lineWidth = isHighlight ? Math.max(3, cs / 8) : Math.max(2, cs / 10);
-            ctx.beginPath();
-            if (button.direction.dy === -1) { ctx.moveTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p2.x, p2.y); }
-            else if (button.direction.dy === 1) { ctx.moveTo(p4.x, p4.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); }
-            else if (button.direction.dx === -1) { ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); }
-            else if (button.direction.dx === 1) { ctx.moveTo(p2.x, p2.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.lineTo(p3.x, p3.y); }
-            ctx.stroke();
-            if (!isHighlight && button.letter) {
-                const fontSize = cs * 0.4; ctx.font = `bold ${fontSize}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.strokeText(button.letter, letterCenterX, letterCenterY);
-                ctx.fillStyle = this.colors.key; ctx.fillText(button.letter, letterCenterX, letterCenterY);
-            }
+            Renderer.drawButton(ctx, button, this.cellSize, this.colors, isHighlight);
         }
 
         enterEditorMode() {
@@ -964,13 +872,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         addLayer() {
             if (this.layerCount >= 10) { this.showToast('最多只能添加10层地图！', 3000, 'error'); return; }
-            const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
-            const newLayer = {
-                hWalls: Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty)),
-                vWalls: Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty)),
-                activeCells: Array(this.height).fill(null).map(() => Array(this.width).fill(true)),
-                ghosts: [], items: [], buttons: [], stairs: [], endPos: null, customStartPos: null
-            };
+            const newLayer = LayerManager.createNewLayer(this.width, this.height);
             this.layers.push(newLayer); this.layerCount++;
             this.updateLayerPanel(); this.showToast(`已添加第 ${this.layerCount} 层`, 2000, 'success');
         }
@@ -980,9 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showConfirm(`确定要删除第 ${this.layerCount} 层吗？`, () => {
                 this.layers.pop(); this.layerCount--;
                 const removedLayerIndex = this.layerCount;
-                for (let i = 0; i < this.layers.length; i++) {
-                    this.layers[i].stairs = this.layers[i].stairs.filter(s => !(s.direction === 'up' && i === removedLayerIndex - 1));
-                }
+                LayerManager.cleanupStairsOnLayerRemove(this.layers, removedLayerIndex);
                 if (this.currentLayer >= this.layerCount) {
                     this.currentLayer = this.layerCount - 1;
                     this._switchToLayer(this.currentLayer);
@@ -1031,21 +931,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateLayerPanel() {
-            const panel = document.getElementById('layer-panel');
-            if (!this.multiLayerMode) { panel.style.display = 'none'; return; }
-            panel.style.display = 'flex';
-            this._positionLayerPanel();
-            const container = document.getElementById('layer-buttons-container');
-            container.innerHTML = '';
-            for (let i = this.layerCount - 1; i >= 0; i--) {
-                const btn = document.createElement('button');
-                btn.className = 'layer-btn'; btn.textContent = (i + 1).toString();
-                if (i === this.currentLayer) btn.classList.add('active');
-                if (i === this.playerLayer) btn.classList.add('player-layer');
-                btn.addEventListener('click', () => this.switchToLayer(i));
-                container.appendChild(btn);
-            }
-            document.getElementById('layer-edit-controls').style.display = this.editor.active ? 'flex' : 'none';
+            LayerManager.updateLayerPanelUI({
+                multiLayerMode: this.multiLayerMode,
+                layerCount: this.layerCount,
+                currentLayer: this.currentLayer,
+                playerLayer: this.playerLayer,
+                editorActive: this.editor.active,
+                onLayerClick: (i) => this.switchToLayer(i)
+            });
         }
 
         _positionLayerPanel() { }

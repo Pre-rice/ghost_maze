@@ -204,7 +204,7 @@ export function drawArrow(ctx, x1, y1, x2, y2, direction, color, withStroke, cel
  */
 export function drawWallOverlays(ctx, config) {
     const { hWalls, vWalls, width, height, cellSize, seenCells, 
-            debugVision, colors, inGame } = config;
+            debugVision, colors, inGame, activeCells, drawArrowFn } = config;
     
     const drawTextOnWall = (x1, y1, x2, y2, text, color) => {
         const centerX = (x1 + x2) / 2;
@@ -215,19 +215,20 @@ export function drawWallOverlays(ctx, config) {
         ctx.textBaseline = 'middle';
         ctx.strokeStyle = 'black';
         ctx.lineWidth = 3;
-        ctx.strokeText(text, centerX, centerY);
+        ctx.strokeText(text.toString(), centerX, centerY);
         ctx.fillStyle = color;
-        ctx.fillText(text, centerX, centerY);
+        ctx.fillText(text.toString(), centerX, centerY);
     };
     
     // 横墙
-    for (let y = 0; y <= height; y++) {
+    for (let y = 1; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const wall = hWalls[y][x];
             if (!wall || wall.type === WALL_TYPES.EMPTY) continue;
+            if (activeCells && !(activeCells[y][x] && activeCells[y - 1][x])) continue;
             
             const isVisible = !inGame || debugVision || 
-                (y > 0 && seenCells[y - 1][x]) || (y < height && seenCells[y][x]);
+                (seenCells[y - 1] && seenCells[y - 1][x]) || (seenCells[y] && seenCells[y][x]);
             if (!isVisible) continue;
             
             if (wall.type === WALL_TYPES.LOCKED) {
@@ -235,19 +236,24 @@ export function drawWallOverlays(ctx, config) {
             } else if (wall.type === WALL_TYPES.LETTER_DOOR) {
                 drawTextOnWall(x * cellSize, y * cellSize, (x + 1) * cellSize, y * cellSize, wall.letter, colors.key);
             } else if (wall.type === WALL_TYPES.ONE_WAY && wall.direction) {
-                drawArrow(ctx, x * cellSize, y * cellSize, (x + 1) * cellSize, y * cellSize, wall.direction, colors.key, true, cellSize);
+                if (drawArrowFn) {
+                    drawArrowFn(x * cellSize, y * cellSize, (x + 1) * cellSize, y * cellSize, wall.direction, colors.key, true);
+                } else {
+                    drawArrow(ctx, x * cellSize, y * cellSize, (x + 1) * cellSize, y * cellSize, wall.direction, colors.key, true, cellSize);
+                }
             }
         }
     }
     
     // 竖墙
     for (let y = 0; y < height; y++) {
-        for (let x = 0; x <= width; x++) {
+        for (let x = 1; x < width; x++) {
             const wall = vWalls[y][x];
             if (!wall || wall.type === WALL_TYPES.EMPTY) continue;
+            if (activeCells && !(activeCells[y][x] && activeCells[y][x - 1])) continue;
             
             const isVisible = !inGame || debugVision || 
-                (x > 0 && seenCells[y][x - 1]) || (x < width && seenCells[y][x]);
+                (seenCells[y] && seenCells[y][x - 1]) || (seenCells[y] && seenCells[y][x]);
             if (!isVisible) continue;
             
             if (wall.type === WALL_TYPES.LOCKED) {
@@ -255,7 +261,11 @@ export function drawWallOverlays(ctx, config) {
             } else if (wall.type === WALL_TYPES.LETTER_DOOR) {
                 drawTextOnWall(x * cellSize, y * cellSize, x * cellSize, (y + 1) * cellSize, wall.letter, colors.key);
             } else if (wall.type === WALL_TYPES.ONE_WAY && wall.direction) {
-                drawArrow(ctx, x * cellSize, y * cellSize, x * cellSize, (y + 1) * cellSize, wall.direction, colors.key, true, cellSize);
+                if (drawArrowFn) {
+                    drawArrowFn(x * cellSize, y * cellSize, x * cellSize, (y + 1) * cellSize, wall.direction, colors.key, true);
+                } else {
+                    drawArrow(ctx, x * cellSize, y * cellSize, x * cellSize, (y + 1) * cellSize, wall.direction, colors.key, true, cellSize);
+                }
             }
         }
     }
