@@ -1,6 +1,5 @@
 import { WALL_TYPES, GAME_STATES, EDITOR_TOOLS } from './constants.js';
 import { MapDefinition } from './mapDefinition.js';
-import { GameState } from './gameState.js';
 import { DataSerializer } from './dataSerializer.js';
 import { GameLogic } from './gameLogic.js';
 
@@ -1083,9 +1082,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         _createEmptyWalls(type, width, height) {
-            const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
-            return type === 'h' ? Array(height + 1).fill(null).map(() => Array(width).fill(null).map(empty))
-                : Array(height).fill(null).map(() => Array(width + 1).fill(null).map(empty));
+            return Editor.createEmptyWalls(type, width, height);
         }
 
         resizeAndClearEditor() {
@@ -1283,8 +1280,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         isPosInStartRoom(cellX, cellY) {
             if (this.editor.mode === 'regular') {
-                const roomY = this.height - 3;
-                return cellX >= 0 && cellX < 3 && cellY >= roomY && cellY < roomY + 3;
+                return Editor.isPosInStartRoom(cellX, cellY, this.height);
             }
             return false;
         }
@@ -1314,11 +1310,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         isCellOccupiedInEditor(x, y) {
-            if (this.endPos && this.endPos.x === x && this.endPos.y === y) return true;
-            if (this.customStartPos && this.customStartPos.x === x && this.customStartPos.y === y) return true;
-            if (this.ghosts.some(g => g.x === x && g.y === y)) return true;
-            if (this.items.some(i => i.x === x && i.y === y)) return true;
-            return false;
+            return Editor.isCellOccupied(x, y, {
+                ghosts: this.ghosts,
+                items: this.items,
+                buttons: this.buttons,
+                endPos: this.endPos,
+                customStartPos: this.customStartPos,
+                stairs: this.stairs,
+                currentLayer: this.currentLayer
+            });
         }
 
         eraseAtPos(pos) {
@@ -1645,14 +1645,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         getWallAtPos(mouseX, mouseY) {
-            const cs = this.cellSize; const tolerance = cs / 5;
-            const gridX = mouseX / cs; const gridY = mouseY / cs;
-            const x = Math.floor(gridX); const y = Math.floor(gridY);
-            const nearHorizontal = Math.abs(gridY - Math.round(gridY)) * cs < tolerance;
-            const nearVertical = Math.abs(gridX - Math.round(gridX)) * cs < tolerance;
-            if (nearHorizontal && !nearVertical) return { type: 'h', x: x, y: Math.round(gridY) };
-            if (nearVertical && !nearHorizontal) return { type: 'v', x: Math.round(gridX), y: y };
-            return null;
+            return Editor.getWallAtPos(mouseX, mouseY, this.cellSize, this.width, this.height, this.editor.tool);
         }
 
         getButtonHotspotAtPos(mouseX, mouseY) {
