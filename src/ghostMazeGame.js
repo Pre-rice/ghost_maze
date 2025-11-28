@@ -10,6 +10,7 @@ import * as MazeGenerator from './mazeGenerator.js';
 import * as InputHandler from './inputHandler.js';
 import * as Editor from './editor.js';
 import * as LayerManager from './layerManager.js';
+import * as Pathfinding from './pathfinding.js';
 
 // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
 document.addEventListener('DOMContentLoaded', () => {
@@ -181,7 +182,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 绑定所有UI事件并显示初始欢迎信息
             this.bindUI();
-            this._initResizeListener();
             this.showInitialMessage();
             // 页面加载时尝试从 URL 查询参数或 hash 读取分享码
             this.loadShareCodeFromURL();
@@ -941,9 +941,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        _positionLayerPanel() { }
-        _initResizeListener() { }
-
         createBlankEditorMap() {
             this.padding = 15; this.cellSize = (canvas.width - 2 * this.padding) / this.width;
             const wall = () => ({ type: WALL_TYPES.SOLID, keys: 0 });
@@ -974,10 +971,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        _createEmptyWalls(type, width, height) {
-            return Editor.createEmptyWalls(type, width, height);
-        }
-
         resizeAndClearEditor() {
             const size = parseInt(this.editorMapSizeInput.value);
             if (size < 8 || size > 20) {
@@ -993,7 +986,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.playerLayer = 0; this.stairs = []; this.layers = [];
                 for (let i = 0; i < savedLayerCount; i++) {
                     this.layers.push({
-                        hWalls: this._createEmptyWalls('h', size, size), vWalls: this._createEmptyWalls('v', size, size),
+                        hWalls: Editor.createEmptyWalls('h', size, size), vWalls: Editor.createEmptyWalls('v', size, size),
                         activeCells: Array(size).fill(null).map(() => Array(size).fill(true)),
                         ghosts: [], items: [], buttons: [], stairs: [], endPos: null, customStartPos: null
                     });
@@ -1179,27 +1172,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         isWallEditable(wall) {
-            if (!wall) return false;
-            if (this.editor.mode === 'free') {
-                const { x, y, type } = wall;
-                const up = (type === 'h' && y > 0) ? this.activeCells[y - 1][x] : false;
-                const down = (type === 'h' && y < this.height) ? this.activeCells[y][x] : false;
-                const left = (type === 'v' && x > 0) ? this.activeCells[y][x - 1] : false;
-                const right = (type === 'v' && x < this.width) ? this.activeCells[y][x] : false;
-                if (type === 'h') return up && down; if (type === 'v') return left && right;
-                return false;
-            }
-            const { x, y, type } = wall;
-            if (type === 'h' && (y === 0 || y === this.height)) return false;
-            if (type === 'v' && (x === 0 || x === this.width)) return false;
-            const roomY = this.height - 3;
-            if (type === 'h' && y === roomY && x >= 0 && x < 3) return false;
-            if (type === 'h' && y === roomY + 3 && x >= 0 && x < 3) return false;
-            if (type === 'v' && x === 0 && y >= roomY && y < roomY + 3) return false;
-            if (type === 'v' && x === 3 && y >= roomY && y < roomY + 3) return false;
-            if (x >= 0 && x < 3 && y > roomY && y < roomY + 3 && type === 'h') return false;
-            if (y >= roomY && y < roomY + 3 && x > 0 && x < 3 && type === 'v') return false;
-            return true;
+            return Editor.isWallEditable(wall, this.editor.mode, this.width, this.height, this.activeCells);
         }
 
         isCellOccupiedInEditor(x, y) {
@@ -1542,38 +1515,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         getButtonHotspotAtPos(mouseX, mouseY) {
-            const cs = this.cellSize; let cellX = Math.floor(mouseX / cs); let cellY = Math.floor(mouseY / cs);
-            const isValidCell = (cx, cy) => cx >= 0 && cx < this.width && cy >= 0 && cy < this.height;
-            if (!isValidCell(cellX, cellY)) {
-                const localX = mouseX - cellX * cs; const localY = mouseY - cellY * cs; const tolerance = cs * 0.3;
-                if (localX > cs - tolerance && isValidCell(cellX + 1, cellY)) cellX++;
-                else if (localX < tolerance && isValidCell(cellX - 1, cellY)) cellX--;
-                else if (localY > cs - tolerance && isValidCell(cellX, cellY + 1)) cellY++;
-                else if (localY < tolerance && isValidCell(cellX, cellY - 1)) cellY--;
-                else return null;
-            }
-            if (!isValidCell(cellX, cellY) || !this.activeCells[cellY][cellX]) return null;
-            const localX = mouseX - cellX * cs; const localY = mouseY - cellY * cs;
-            let direction = null;
-            if (localY < localX && localY < -localX + cs) direction = { dx: 0, dy: -1 };
-            else if (localY > localX && localY > -localX + cs) direction = { dx: 0, dy: 1 };
-            else if (localY > localX && localY < -localX + cs) direction = { dx: -1, dy: 0 };
-            else if (localY < localX && localY > -localX + cs) direction = { dx: 1, dy: 0 };
-            if (!direction) return null;
-            const isActive = (x, y) => (x >= 0 && x < this.width && y >= 0 && y < this.height) ? this.activeCells[y][x] : false;
-            let isAttachable = false;
-            if (direction.dy === -1) { if (this.hWalls[cellY][cellX].type === WALL_TYPES.SOLID || (isActive(cellX, cellY) && !isActive(cellX, cellY - 1))) isAttachable = true; }
-            else if (direction.dy === 1) { if (this.hWalls[cellY + 1][cellX].type === WALL_TYPES.SOLID || (isActive(cellX, cellY) && !isActive(cellX, cellY + 1))) isAttachable = true; }
-            else if (direction.dx === -1) { if (this.vWalls[cellY][cellX].type === WALL_TYPES.SOLID || (isActive(cellX, cellY) && !isActive(cellX - 1, cellY))) isAttachable = true; }
-            else if (direction.dx === 1) { if (this.vWalls[cellY][cellX + 1].type === WALL_TYPES.SOLID || (isActive(cellX, cellY) && !isActive(cellX + 1, cellY))) isAttachable = true; }
-            if (isAttachable) {
-                const roomYStart = this.height - 3;
-                const isTopBoundary = direction.dy === -1 && cellY === roomYStart && cellX >= 0 && cellX < 3;
-                const isRightBoundary = direction.dx === 1 && cellX === 2 && cellY >= roomYStart && cellY < this.height;
-                if (this.editor.mode === 'regular' && (isTopBoundary || isRightBoundary)) { return null; }
-                return { x: cellX, y: cellY, direction: direction };
-            }
-            return null;
+            return Pathfinding.getButtonHotspotAtPos(mouseX, mouseY, {
+                cellSize: this.cellSize,
+                width: this.width,
+                height: this.height,
+                activeCells: this.activeCells,
+                hWalls: this.hWalls,
+                vWalls: this.vWalls,
+                editorMode: this.editor.mode
+            });
         }
 
         toggleWall(wall, targetType = WALL_TYPES.SOLID) {
@@ -1593,50 +1543,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         calculateDistances(startNode) {
-            const distances = Array(this.height).fill(null).map(() => Array(this.width).fill(Infinity));
-            const queue = [{ x: startNode.x, y: startNode.y, dist: 0 }];
-            distances[startNode.y][startNode.x] = 0;
-            while (queue.length > 0) {
-                const { x, y, dist } = queue.shift();
-                const neighbors = [{ dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }];
-                for (const { dx, dy } of neighbors) {
-                    const nx = x + dx; const ny = y + dy;
-                    if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height) {
-                        let wall;
-                        if (dx === 1) wall = this.vWalls[y][x + 1]; if (dx === -1) wall = this.vWalls[y][x];
-                        if (dy === 1) wall = this.hWalls[y + 1][x]; if (dy === -1) wall = this.hWalls[y][x];
-                        if (wall && [WALL_TYPES.SOLID, WALL_TYPES.LOCKED, WALL_TYPES.ONE_WAY].includes(wall.type)) continue;
-                        if (distances[ny][nx] === Infinity) { distances[ny][nx] = dist + 1; queue.push({ x: nx, y: ny, dist: dist + 1 }); }
-                    }
-                }
-            }
-            return distances;
+            return Pathfinding.calculateDistances(startNode, this.width, this.height, this.hWalls, this.vWalls);
         }
 
         findPlayerPath(start, end) {
-            const queue = [[{ x: start.x, y: start.y }]];
-            const visited = new Set([`${start.x},${start.y}`]);
-            while (queue.length > 0) {
-                const path = queue.shift(); const { x, y } = path[path.length - 1];
-                if (x === end.x && y === end.y) return path;
-                const neighbors = [{ dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }];
-                for (const { dx, dy } of neighbors) {
-                    const nx = x + dx; const ny = y + dy; const key = `${nx},${ny}`;
-                    if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height && !visited.has(key)) {
-                        if (!this.seenCells[ny][nx] && !this.debugVision) continue;
-                        let wall, isBlocked = false;
-                        if (dx === 1) wall = this.vWalls[y][x + 1]; else if (dx === -1) wall = this.vWalls[y][x];
-                        else if (dy === 1) wall = this.hWalls[y + 1][x]; else if (dy === -1) wall = this.hWalls[y][x];
-                        if (wall) {
-                            if (wall.type === WALL_TYPES.SOLID || wall.type === WALL_TYPES.GLASS || (wall.type === WALL_TYPES.LOCKED && this.player.keys < wall.keys)) { isBlocked = true; }
-                            else if (wall.type === WALL_TYPES.ONE_WAY && (dx !== wall.direction.dx || dy !== wall.direction.dy)) { isBlocked = true; }
-                        }
-                        if (isBlocked) continue;
-                        visited.add(key); const newPath = [...path, { x: nx, y: ny }]; queue.push(newPath);
-                    }
-                }
-            }
-            return null;
+            return Pathfinding.findPlayerPath(start, end, {
+                width: this.width,
+                height: this.height,
+                hWalls: this.hWalls,
+                vWalls: this.vWalls,
+                seenCells: this.seenCells,
+                debugVision: this.debugVision,
+                playerKeys: this.player.keys
+            });
         }
 
         async _loadCodeFromClipboard(isEditor = false) {

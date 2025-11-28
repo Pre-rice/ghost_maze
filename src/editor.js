@@ -84,12 +84,24 @@ export function isPosInStartRoom(cellX, cellY, height) {
  * @param {number} height - 地图高度
  * @returns {boolean}
  */
-export function isWallEditable(wall, editorMode, width, height) {
+export function isWallEditable(wall, editorMode, width, height, activeCells = null) {
     if (!wall) return false;
     const { x, y, type } = wall;
     const roomY = height - 3;
     
-    if (editorMode === 'free') return true;
+    if (editorMode === 'free') {
+        // 在自由模式下，需要检查相邻单元格是否激活
+        if (activeCells) {
+            const up = (type === 'h' && y > 0) ? activeCells[y - 1][x] : false;
+            const down = (type === 'h' && y < height) ? activeCells[y][x] : false;
+            const left = (type === 'v' && x > 0) ? activeCells[y][x - 1] : false;
+            const right = (type === 'v' && x < width) ? activeCells[y][x] : false;
+            if (type === 'h') return up && down;
+            if (type === 'v') return left && right;
+            return false;
+        }
+        return true;
+    }
     
     // 常规模式下的边界检查
     if (type === 'h') {
