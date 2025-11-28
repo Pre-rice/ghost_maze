@@ -259,10 +259,16 @@ document.addEventListener('DOMContentLoaded', () => {
             window.addEventListener('keydown', (e) => this.handleKeyPress(e));
             const touchWrapper = (handler) => (e) => { if (this.editor.active) { e.preventDefault(); handler(e.changedTouches[0]); } };
             canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
-            canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
+            canvas.addEventListener('mousedown', (e) => {
+                // 在编辑器模式下，始终阻止默认行为（防止浏览器手势和选中文字等）
+                if (this.editor.active) {
+                    e.preventDefault();
+                }
+                this.handleCanvasMouseDown(e);
+            });
             canvas.addEventListener('mousemove', (e) => {
                 // 在编辑器模式下，如果正在右键拖动，阻止默认行为（防止浏览器手势）
-                if (this.editor.active && this.editor.isRightClickErasing) {
+                if (this.editor.active && (this.editor.isRightClickErasing || this.editor.isDragging)) {
                     e.preventDefault();
                 }
                 this.handleCanvasMouseMove(e);
@@ -273,6 +279,8 @@ document.addEventListener('DOMContentLoaded', () => {
             canvas.addEventListener('contextmenu', (e) => { if (this.editor.active) e.preventDefault(); });
             // 防止在编辑器模式下右键拖动时触发浏览器手势
             canvas.addEventListener('dragstart', (e) => { if (this.editor.active) e.preventDefault(); });
+            // 防止浏览器默认的选中行为
+            canvas.addEventListener('selectstart', (e) => { if (this.editor.active) e.preventDefault(); });
             canvas.addEventListener('touchstart', touchWrapper(this.handleCanvasMouseDown.bind(this)), { passive: false });
             canvas.addEventListener('touchmove', touchWrapper(this.handleCanvasMouseMove.bind(this)), { passive: false });
             canvas.addEventListener('touchend', touchWrapper(this.handleCanvasMouseUp.bind(this)), { passive: false });
@@ -1234,9 +1242,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const virtualButton = { x: this.editor.hoveredButtonHotspot.x, y: this.editor.hoveredButtonHotspot.y, direction: this.editor.hoveredButtonHotspot.direction };
                 this.drawButton(virtualButton, true);
             }
-            // 橡皮擦工具或右键橡皮擦时显示灰色大圆点提示
+            // 橡皮擦工具或右键橡皮擦时显示浅灰色大圆点提示
             if ((this.editor.tool === EDITOR_TOOLS.ERASER || this.editor.isRightClickErasing) && this.editor.rightClickMousePos) {
-                ctx.fillStyle = '#888888';
+                ctx.fillStyle = '#aaaaaa';
                 ctx.beginPath();
                 ctx.arc(this.editor.rightClickMousePos.x, this.editor.rightClickMousePos.y, 8, 0, 2 * Math.PI);
                 ctx.fill();
@@ -1620,9 +1628,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // 橡皮擦工具松开时清除指示点
+            // 橡皮擦工具松开时不清除指示点（保持显示），只重置拖动状态
             if (this.editor.tool === EDITOR_TOOLS.ERASER) {
-                this.editor.rightClickMousePos = null;
+                // 不清除 rightClickMousePos，让圆点继续显示
                 this.editor.isDragging = false;
                 this.editor.didDrag = false;
                 this.drawEditor();
@@ -1728,6 +1736,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // 如果正在右键橡皮擦，也要停止
             if (this.editor.isRightClickErasing) {
                 this.editor.isRightClickErasing = false;
+                this.editor.rightClickMousePos = null;
+                this.drawEditor();
+            }
+            // 橡皮擦工具：鼠标移出画布后清除小圆点
+            if (this.editor.tool === EDITOR_TOOLS.ERASER) {
                 this.editor.rightClickMousePos = null;
                 this.drawEditor();
             }
