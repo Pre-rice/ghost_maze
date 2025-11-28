@@ -9,6 +9,7 @@ import * as UI from './ui.js';
 import * as Renderer from './renderer.js';
 import * as MazeGenerator from './mazeGenerator.js';
 import * as InputHandler from './inputHandler.js';
+import * as Editor from './editor.js';
 
 // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
 document.addEventListener('DOMContentLoaded', () => {
@@ -499,138 +500,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // 随机地图总是使用默认的生命和体力值
             this.initialHealth = 5;
             this.initialStamina = 100;
-            const mapData = this.generateMaze(size, size);
-            // 随机地图总是常规模式
-            mapData.editorMode = 'regular';
-            mapData.activeCells = Array(size).fill(null).map(() => Array(size).fill(true));
-            // 确保为单层地图正确设置 layers 数组
-            mapData.multiLayerMode = false;
-            mapData.layerCount = 1;
-            mapData.layers = [{
-                hWalls: mapData.hWalls,
-                vWalls: mapData.vWalls,
-                activeCells: mapData.activeCells,
-                ghosts: mapData.initialGhosts,
-                items: mapData.items,
-                buttons: mapData.buttons,
-                endPos: mapData.endPos,
-                customStartPos: null
-            }];
+            // 使用 MazeGenerator 模块生成完整地图
+            const mapData = MazeGenerator.generateFullMaze(size, size, this.ghostCount);
             this.startGame(mapData);
-        }
-
-        generateMaze(width, height) {
-            this.width = width; this.height = height; this.padding = 15;
-            this.cellSize = (canvas.width - 2 * this.padding) / this.width;
-            const wall = () => ({ type: WALL_TYPES.SOLID, keys: 0 });
-            const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
-            const door = () => ({ type: WALL_TYPES.DOOR, keys: 0 });
-            this.hWalls = Array(height + 1).fill(null).map(() => Array(width).fill(null).map(wall));
-            this.vWalls = Array(height).fill(null).map(() => Array(width + 1).fill(null).map(wall));
-            const roomY = height - 3;
-            for (let y = roomY; y < roomY + 3; y++) {
-                for (let x = 0; x < 3; x++) {
-                    if (x < 2) this.vWalls[y][x + 1] = empty();
-                    if (y < roomY + 2) this.hWalls[y + 1][x] = empty();
-                }
-            }
-            this.vWalls[roomY + 1][3] = door(); this.hWalls[roomY][1] = door();
-            this.startPos = { x: 1, y: height - 2 };
-            const visited = Array(height).fill(null).map(() => Array(width).fill(false));
-            for (let y = roomY; y < roomY + 3; y++) { for (let x = 0; x < 3; x++) { visited[y][x] = true; } }
-            const stack = [];
-            let startGenX, startGenY;
-            do { startGenX = Math.floor(Math.random() * width); startGenY = Math.floor(Math.random() * height); } while (visited[startGenY][startGenX]);
-            stack.push({ x: startGenX, y: startGenY }); visited[startGenY][startGenX] = true;
-            while (stack.length > 0) {
-                const current = stack.pop(); const neighbors = [];
-                const dirs = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
-                for (const dir of dirs) {
-                    const nx = current.x + dir.x, ny = current.y + dir.y;
-                    if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited[ny][nx]) { neighbors.push({ x: nx, y: ny, dir: dir }); }
-                }
-                if (neighbors.length > 0) {
-                    stack.push(current);
-                    const { x: nx, y: ny, dir } = neighbors[Math.floor(Math.random() * neighbors.length)];
-                    if (dir.x === 1) this.vWalls[current.y][current.x + 1] = empty();
-                    else if (dir.x === -1) this.vWalls[current.y][current.x] = empty();
-                    else if (dir.y === 1) this.hWalls[current.y + 1][current.x] = empty();
-                    else if (dir.y === -1) this.hWalls[current.y][current.x] = empty();
-                    visited[ny][nx] = true; stack.push({ x: nx, y: ny });
-                }
-            }
-            const wallsToRemove = Math.floor(width * height * 0.08); let removedCount = 0, attempts = 0;
-            while (removedCount < wallsToRemove && attempts < wallsToRemove * 10) {
-                attempts++; const rx = Math.floor(Math.random() * (width - 1)), ry = Math.floor(Math.random() * (height - 1));
-                if (Math.random() > 0.5) {
-                    if (rx < width - 1 && !(ry >= roomY && ry < roomY + 3 && rx + 1 === 3)) {
-                        if (this.vWalls[ry][rx + 1].type === WALL_TYPES.SOLID) { this.vWalls[ry][rx + 1] = empty(); removedCount++; }
-                    }
-                } else {
-                    if (ry < height - 1 && !(rx >= 0 && rx < 3 && ry + 1 === roomY)) {
-                        if (this.hWalls[ry + 1][rx].type === WALL_TYPES.SOLID) { this.hWalls[ry + 1][rx] = empty(); removedCount++; }
-                    }
-                }
-            }
-            this.endPos = this.findFarthestEndCell();
-            const doorProbability = 0.02;
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    const isNearEnd = (Math.abs(x - this.endPos.x) <= 1 && y === this.endPos.y) || (x === this.endPos.x && Math.abs(y - this.endPos.y) <= 1);
-                    if (y < this.height - 1 && !this.isPosInStartRoom(x, y) && !this.isPosInStartRoom(x, y + 1) && !isNearEnd && Math.random() < doorProbability) this.hWalls[y + 1][x] = door();
-                    if (x < width - 1 && !this.isPosInStartRoom(x, y) && !this.isPosInStartRoom(x + 1, y) && !isNearEnd && Math.random() < doorProbability) this.vWalls[y][x + 1] = door();
-                }
-            }
-            const { x: ex, y: ey } = this.endPos; const lockedDoor = { type: WALL_TYPES.LOCKED, keys: 3 };
-            if (this.hWalls[ey][ex].type === WALL_TYPES.EMPTY) this.hWalls[ey][ex] = lockedDoor;
-            else if (this.hWalls[ey + 1][ex].type === WALL_TYPES.EMPTY) this.hWalls[ey + 1][ex] = lockedDoor;
-            else if (this.vWalls[ey][ex].type === WALL_TYPES.EMPTY) this.vWalls[ey][ex] = lockedDoor;
-            else if (this.vWalls[ey][ex + 1].type === WALL_TYPES.EMPTY) this.vWalls[ey][ex + 1] = lockedDoor;
-            const occupied = new Set(); occupied.add(`${this.endPos.x},${this.endPos.y}`);
-            for (let y = height - 3; y < height; y++) { for (let x = 0; x < 3; x++) { occupied.add(`${x},${y}`); } }
-            const initialGhosts = [];
-            while (initialGhosts.length < this.ghostCount) {
-                const x = Math.floor(Math.random() * width), y = Math.floor(Math.random() * height), posKey = `${x},${y}`;
-                if (!occupied.has(posKey)) { initialGhosts.push({ x, y, id: initialGhosts.length }); occupied.add(posKey); }
-            }
-            this.items = []; const keysToPlace = 4; const validCells = [], preferredCells = [];
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                    if (!occupied.has(`${x},${y}`)) {
-                        validCells.push({ x, y }); let wallCount = 0;
-                        if (this.hWalls[y][x].type > 0) wallCount++; if (this.hWalls[y + 1][x].type > 0) wallCount++;
-                        if (this.vWalls[y][x].type > 0) wallCount++; if (this.vWalls[y][x + 1].type > 0) wallCount++;
-                        if (wallCount >= 3) { preferredCells.push({ x, y }); }
-                    }
-                }
-            }
-            for (let i = 0; i < keysToPlace; i++) {
-                let pos = null;
-                if (preferredCells.length > 0) { const index = Math.floor(Math.random() * preferredCells.length); pos = preferredCells.splice(index, 1)[0]; }
-                else if (validCells.length > 0) { const index = Math.floor(Math.random() * validCells.length); pos = validCells.splice(index, 1)[0]; }
-                if (pos) {
-                    this.items.push({ x: pos.x, y: pos.y, type: 'key' });
-                    const validIndex = validCells.findIndex(c => c.x === pos.x && c.y === pos.y);
-                    if (validIndex > -1) validCells.splice(validIndex, 1);
-                }
-            }
-            return { width, height, hWalls: this.hWalls, vWalls: this.vWalls, endPos: this.endPos, initialGhosts: initialGhosts, items: this.items, buttons: [] };
-        }
-
-        findFarthestEndCell() {
-            const distances = this.calculateDistances(this.startPos);
-            let maxDist = -1, farthestCell = null;
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    if (x === 0 || x === this.width - 1 || y === 0 || y === this.height - 1) {
-                        let wallCount = 0;
-                        if (this.hWalls[y][x].type > 0) wallCount++; if (this.hWalls[y + 1][x].type > 0) wallCount++;
-                        if (this.vWalls[y][x].type > 0) wallCount++; if (this.vWalls[y][x + 1].type > 0) wallCount++;
-                        if (wallCount >= 3 && distances[y][x] > maxDist) { maxDist = distances[y][x]; farthestCell = { x, y }; }
-                    }
-                }
-            }
-            return farthestCell || { x: this.width - 1, y: 0 };
         }
 
         handleKeyPress(e) {
