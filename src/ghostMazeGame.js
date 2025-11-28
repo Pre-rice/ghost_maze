@@ -1,77 +1,36 @@
 import { WALL_TYPES, GAME_STATES, EDITOR_TOOLS } from './constants.js';
 import { MapDefinition } from './mapDefinition.js';
-import { GameState } from './gameState.js';
 import { DataSerializer } from './dataSerializer.js';
 import { GameLogic } from './gameLogic.js';
-import { Renderer } from './renderer.js';
-import { UI } from './ui.js';
-import { showToast } from './ui.js';
+
+// 导入新的模块化组件
+import * as UI from './ui.js';
+import * as Renderer from './renderer.js';
+import * as MazeGenerator from './mazeGenerator.js';
+import * as InputHandler from './inputHandler.js';
+import * as Editor from './editor.js';
+import * as LayerManager from './layerManager.js';
+import * as Pathfinding from './pathfinding.js';
+import * as ThemeManager from './themeManager.js';
 
 // 监听DOM内容加载完成事件，确保在操作DOM之前所有元素都已准备好
 document.addEventListener('DOMContentLoaded', () => {
-    // ====== 三态主题切换：light / dark / auto ======
-    const sunIcon = `
-        <path d="M12 4.5V2m0 20v-2.5M4.93 4.93 3.51 3.51m16.98 16.98-1.42-1.42M4.5 12H2m20 0h-2.5M4.93 19.07l-1.42 1.42m16.98-16.98-1.42 1.42M12 7.5A4.5 4.5 0 1 1 7.5 12 4.505 4.505 0 0 1 12 7.5z"/>
-    `;
-    const moonIcon = `
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-    `;
-    const systemIcon = `
-        <path d="M3 4h18v12H3z M8 20h8M10 16h4" stroke-width="2" stroke="currentColor" fill="none"/>
-    `;
-    const toggleBtn = document.getElementById("theme-toggle-btn");
-    const themeIcon = document.getElementById("theme-icon");
-
-    function applyTheme(mode) {
-        document.documentElement.classList.remove("light", "dark");
-        if (mode === "light") {
-            document.documentElement.classList.add("light");
-            themeIcon.innerHTML = sunIcon;
-            toggleBtn.classList.remove("active");
-        } else if (mode === "dark") {
-            document.documentElement.classList.add("dark");
-            themeIcon.innerHTML = moonIcon;
-            toggleBtn.classList.add("active");
-        } else {
-            const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-            themeIcon.innerHTML = systemIcon;
-            toggleBtn.classList.toggle("active", systemDark);
-        }
-    }
-
-    let saved = localStorage.getItem("theme") || "auto";
-    applyTheme(saved);
-
-    document.getElementById("theme-toggle").addEventListener("click", () => {
-        let current = localStorage.getItem("theme") || "auto";
-        let next = current === "light" ? "dark" : current === "dark" ? "auto" : "light";
-        applyTheme(next);
-        localStorage.setItem("theme", next);
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 初始化主题管理器
+    ThemeManager.initThemeManager(() => {
         if (typeof game !== 'undefined' && game) {
             game.refreshTheme();
         }
     });
-
-    const canvas = document.getElementById('game-canvas');
-    const ctx = canvas.getContext('2d');
 
     /**
      * 游戏主类，封装了所有游戏逻辑、状态和UI交互
      */
     class GhostMazeGame {
         constructor() {
-            this.canvas = document.getElementById('game-canvas');
-            this.ctx = this.canvas.getContext('2d');
-
-            this.ui = new UI(this);
-            this.gameState = new GameState(this);
-            this.gameLogic = new GameLogic(this);
-            this.renderer = new Renderer(this);
-
-            this.ui.bindEvents();
-
-            this.isGameOver = false;
-            this.currentMode = 'exploration';
+            // 缓存常用的DOM元素引用，提高性能
             this.healthDisplay = document.getElementById('player-health-display');
             this.keysDisplay = document.getElementById('player-keys-display');
             this.stepsDisplay = document.getElementById('player-steps-display');
@@ -83,17 +42,27 @@ document.addEventListener('DOMContentLoaded', () => {
             this.confirmMessage = document.getElementById('confirm-message');
             this.confirmYesBtn = document.getElementById('confirm-yes-btn');
             this.confirmNoBtn = document.getElementById('confirm-no-btn');
+
             this.clearMapConfirmOverlay = document.getElementById('clear-map-confirm-overlay');
             this.clearEntitiesBtn = document.getElementById('confirm-clear-entities-btn');
             this.resetGridsBtn = document.getElementById('confirm-reset-grids-btn');
             this.clearGridsBtn = document.getElementById('confirm-clear-grids-btn');
             this.clearCancelBtn = document.getElementById('confirm-clear-cancel-btn');
+            
+            // 用于管理定时器和动画帧的ID
             this.toastTimeout = null;
             this.animationFrameId = null;
             this.autoMoveInterval = null;
             this.dpadInterval = null;
+
+            // 为静态背景层创建离屏Canvas，用于性能优化
+            this.staticLayerCanvas = document.createElement('canvas');
+            this.staticLayerCtx = this.staticLayerCanvas.getContext('2d');
+            
+            // 从CSS变量中获取颜色值，便于在Canvas绘图中统一风格
             this.updateColors();
-            this.renderer = new Renderer(canvas, this.colors);
+            
+            // 核心游戏状态
             this.state = GAME_STATES.MENU;
             this.gameMode = 'exploration';
             this.initialHealth = 5;
@@ -104,32 +73,48 @@ document.addEventListener('DOMContentLoaded', () => {
             this.padding = 15;
             this.cellSize = canvas.width / this.width;
             this.mapData = null;
-            this.mapDefinition = null;
-            this.currentGameState = null;
-            this.viewLayer = 0;
+            
+            // 新架构：核心状态管理
+            this.mapDefinition = null;  // MapDefinition 实例，不可变的地图定义
+            this.currentGameState = null;  // GameState 实例，当前游戏状态
+            this.viewLayer = 0;  // 当前显示的图层（与玩家所在层可能不同）
+
+            // 新增：视口偏移（用于居中非标准地图）
             this.drawOffset = { x: 0, y: 0 };
-            this.player = { x: 1, y: 1, hp: 5, stamina: 100, trail: [], keys: 0, steps: 0 };
+
+            // 玩家状态（兼容旧代码）
+            this.player = { x: 1, y: 1, hp: 5, stamina: 100, trail: [], keys: 0 , steps: 0};
+
+            // 鬼和物品
             this.ghosts = [];
             this.ghostCount = 3;
             this.items = [];
             this.buttons = [];
+
+            // 地图结构数据
             this.hWalls = [];
             this.vWalls = [];
             this.startPos = { x: 1, y: 1 };
             this.endPos = { x: 0, y: 0 };
-            this.customStartPos = null;
-            this.activeCells = [];
-            this.stairs = [];
-            this.multiLayerMode = false;
-            this.layerCount = 1;
-            this.currentLayer = 0;
-            this.playerLayer = 0;
-            this.layers = [];
+            this.customStartPos = null; // 新增：自定义起点
+            this.activeCells = []; // 新增：有效地图方格位图
+            this.stairs = []; // 新增：楼梯数据 [{x, y, layer, direction: 'up'|'down'}]
+            
+            // 多层地图相关状态
+            this.multiLayerMode = false; // 是否为多层地图模式
+            this.layerCount = 1; // 当前图层数量
+            this.currentLayer = 0; // 当前显示/编辑的图层（0-based索引，0是最底层）
+            this.playerLayer = 0; // 玩家当前所在图层
+            this.layers = []; // 存储所有图层数据的数组，每层包含 {hWalls, vWalls, activeCells, ghosts, items, buttons, stairs, endPos}
+            
+            // 视野系统
             this.seenCells = [];
             this.debugVision = false;
+
+            // 编辑器状态
             this.editor = {
                 active: false,
-                mode: 'regular',
+                mode: 'regular', // 'regular' or 'free'
                 tool: EDITOR_TOOLS.WALL,
                 isDragging: false,
                 didDrag: false,
@@ -137,36 +122,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 lastDragPos: null,
                 hoveredWall: null,
                 hoveredButtonHotspot: null,
-                gridDragAction: null,
-                stairPlacement: null
+                gridDragAction: null, // 'add' or 'remove'
+                stairPlacement: null // 楼梯放置状态 {x, y, direction: 'up'|'down'}
             };
+
+            // 历史记录系统状态
             this.history = [];
             this.checkpoints = [];
             this.currentStep = -1;
 
-            this.ui.bindEvents();
-            this._initResizeListener();
+            // 移动端虚拟方向键(D-pad)状态
+            this.dpad = {
+                element: document.getElementById('dpad-controls'),
+                grip: document.getElementById('dpad-center'), // Fix 8: 中键替代grip
+                isDragging: false,
+                isResizing: false,
+                startX: 0,
+                startY: 0,
+                initialLeft: 0,
+                initialTop: 0,
+                initialDist: 0,
+                currentScale: 1
+            };
+
+            // 绑定所有UI事件并显示初始欢迎信息
+            this.bindUI();
             this.showInitialMessage();
+            // 页面加载时尝试从 URL 查询参数或 hash 读取分享码
             this.loadShareCodeFromURL();
         }
 
         updateColors() {
-            const computedStyle = getComputedStyle(document.documentElement);
-            this.colors = {
-                ground: computedStyle.getPropertyValue('--ground-color').trim(),
-                gridLine: computedStyle.getPropertyValue('--grid-line-color').trim(),
-                unexplored: computedStyle.getPropertyValue('--unexplored-color').trim(),
-                wall: computedStyle.getPropertyValue('--wall-color').trim(),
-                player: computedStyle.getPropertyValue('--player-color').trim(),
-                ghost: computedStyle.getPropertyValue('--ghost-color').trim(),
-                endPoint: computedStyle.getPropertyValue('--end-point-color').trim(),
-                startPoint: computedStyle.getPropertyValue('--start-point-color').trim(),
-                key: computedStyle.getPropertyValue('--key-color').trim(),
-                startRoomHighlight: computedStyle.getPropertyValue('--start-room-highlight').trim(),
-                hoverHighlight: computedStyle.getPropertyValue('--hover-highlight-color').trim(),
-                text: computedStyle.getPropertyValue('--text-color').trim(),
-                voidGrid: computedStyle.getPropertyValue('--void-grid-color').trim()
-            };
+            this.colors = ThemeManager.getColorsFromCSS();
         }
 
         refreshTheme() {
@@ -191,16 +178,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         showInitialMessage() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = this.colors.border || '#d9d9d9';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.strokeRect(this.padding, this.padding, canvas.width - 2 * this.padding, canvas.height - 2 * this.padding);
-            ctx.setLineDash([]);
-            ctx.fillStyle = this.colors.text;
-            ctx.font = '20px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('点击 "随机生成新地图" 或加载分享码开始游戏', canvas.width / 2, canvas.height / 2);
+            Renderer.showInitialMessage(ctx, {
+                canvasWidth: canvas.width,
+                canvasHeight: canvas.height,
+                padding: this.padding,
+                colors: this.colors
+            });
+        }
+
+        /**
+         * 显示一个短暂的顶部通知 (Toast)
+         */
+        showToast(message, duration = 3000, type = 'info') {
+            UI.showToast(this.toastElement, message, duration, type, this);
+        }
+
+        /**
+         * 显示一个确认对话框
+         */
+        showConfirm(message, onConfirm) {
+            UI.showConfirm(this.confirmOverlay, this.confirmMessage, this.confirmYesBtn, this.confirmNoBtn, message, onConfirm);
+        }
+
+        /**
+         * 隐藏所有游戏状态浮窗
+         */
+        hideAllOverlays() {
+            UI.hideAllOverlays();
+        }
+
+        /**
+         * 重置当前地图到初始状态
+         */
+        resetCurrentMap() {
+            if (!this.mapData) {
+                this.showToast("没有可重置的地图。请先生成一个新地图。", 3000, 'error');
+                return;
+            }
+            this.startGame(this.mapData);
         }
 
         bindUI() {
@@ -258,85 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         initializeDpadTouchControls() {
-            const dpad = this.dpad;
-            const savedLeft = localStorage.getItem('dpadLeft');
-            const savedTop = localStorage.getItem('dpadTop');
-            const savedScale = localStorage.getItem('dpadScale');
-            if (savedScale) {
-                dpad.currentScale = parseFloat(savedScale);
-                dpad.element.style.transform = `scale(${dpad.currentScale})`;
-            }
-            if (savedLeft && savedTop) {
-                dpad.element.style.left = savedLeft;
-                dpad.element.style.top = savedTop;
-                dpad.element.style.right = 'auto';
-                dpad.element.style.bottom = 'auto';
-            }
-            const ensureJsPositioning = () => {
-                if (dpad.element.style.left === '' || dpad.element.style.top === '') {
-                    const rect = dpad.element.getBoundingClientRect();
-                    dpad.element.style.left = `${rect.left}px`;
-                    dpad.element.style.top = `${rect.top}px`;
-                    dpad.element.style.right = 'auto';
-                    dpad.element.style.bottom = 'auto';
-                }
-            };
-            dpad.grip.addEventListener('touchstart', (e) => {
-                const touches = e.touches;
-                if (touches.length === 1) {
-                    e.preventDefault();
-                    ensureJsPositioning();
-                    dpad.isDragging = true;
-                    dpad.startX = touches[0].clientX;
-                    dpad.startY = touches[0].clientY;
-                    dpad.initialLeft = parseFloat(dpad.element.style.left);
-                    dpad.initialTop = parseFloat(dpad.element.style.top);
-                }
-            }, { passive: false });
-            dpad.element.addEventListener('touchstart', (e) => {
-                const touches = e.touches;
-                if (touches.length === 2) {
-                    e.preventDefault();
-                    ensureJsPositioning();
-                    dpad.isResizing = true;
-                    const dx = touches[0].clientX - touches[1].clientX;
-                    const dy = touches[0].clientY - touches[1].clientY;
-                    dpad.initialDist = Math.sqrt(dx * dx + dy * dy);
-                }
-            }, { passive: false });
-            document.addEventListener('touchmove', (e) => {
-                if (!dpad.isDragging && !dpad.isResizing) return;
-                e.preventDefault();
-                const touches = e.touches;
-                if (dpad.isDragging && touches.length === 1) {
-                    const dx = touches[0].clientX - dpad.startX;
-                    const dy = touches[0].clientY - dpad.startY;
-                    dpad.element.style.left = `${dpad.initialLeft + dx}px`;
-                    dpad.element.style.top = `${dpad.initialTop + dy}px`;
-                } else if (dpad.isResizing && touches.length === 2) {
-                    const dx = touches[0].clientX - touches[1].clientX;
-                    const dy = touches[0].clientY - touches[1].clientY;
-                    const currentDist = Math.sqrt(dx * dx + dy * dy);
-                    const scaleChange = currentDist / dpad.initialDist;
-                    let newScale = dpad.currentScale * scaleChange;
-                    newScale = Math.max(0.5, Math.min(2.5, newScale));
-                    dpad.element.style.transform = `scale(${newScale})`;
-                }
-            }, { passive: false });
-            document.addEventListener('touchend', (e) => {
-                if (dpad.isResizing) {
-                    const transformStyle = dpad.element.style.transform;
-                    const scaleMatch = transformStyle.match(/scale\((.+)\)/);
-                    if (scaleMatch) { dpad.currentScale = parseFloat(scaleMatch[1]); }
-                    localStorage.setItem('dpadScale', dpad.currentScale);
-                }
-                if (dpad.isDragging) {
-                    localStorage.setItem('dpadLeft', dpad.element.style.left);
-                    localStorage.setItem('dpadTop', dpad.element.style.top);
-                }
-                dpad.isDragging = false;
-                dpad.isResizing = false;
-            });
+            UI.initializeDpadTouchControls(this.dpad);
         }
 
         setGameMode(newMode, fromEditor = false) {
@@ -358,46 +295,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateDpadVisibility() {
-            const dpadToggle = document.getElementById('dpad-toggle');
-            const dpadControls = document.getElementById('dpad-controls');
-            const shouldShow = dpadToggle.checked && !this.editor.active;
-            dpadControls.classList.toggle('hidden', !shouldShow);
+            UI.updateDpadVisibility(this.editor.active);
         }
 
         bindDpadControls() {
-            const handleDpadPress = (dx, dy) => {
-                if (this.state !== GAME_STATES.PLAYING) return;
-                if (this.multiLayerMode && this.currentLayer !== this.playerLayer) {
-                    this.switchToLayer(this.playerLayer);
-                }
-                clearInterval(this.autoMoveInterval);
-                clearInterval(this.dpadInterval);
-                this.movePlayer(dx, dy);
-                this.dpadInterval = setInterval(() => { this.movePlayer(dx, dy); }, 200);
-            };
-            const handleDpadRelease = () => { clearInterval(this.dpadInterval); };
-            const handleCenterPress = () => {
-                if (this.state !== GAME_STATES.PLAYING) return;
-                if (this.multiLayerMode && this.currentLayer !== this.playerLayer) {
-                    this.switchToLayer(this.playerLayer);
-                }
-                this.useStair();
-            };
-            const addListeners = (element, dx, dy) => {
-                element.addEventListener('touchstart', (e) => { e.preventDefault(); handleDpadPress(dx, dy); });
-                element.addEventListener('mousedown', () => handleDpadPress(dx, dy));
-            };
-            addListeners(document.getElementById('dpad-up'), 0, -1);
-            addListeners(document.getElementById('dpad-down'), 0, 1);
-            addListeners(document.getElementById('dpad-left'), -1, 0);
-            addListeners(document.getElementById('dpad-right'), 1, 0);
-            const centerBtn = document.getElementById('dpad-center');
-            if (centerBtn) {
-                centerBtn.addEventListener('touchstart', (e) => { e.preventDefault(); handleCenterPress(); });
-                centerBtn.addEventListener('mousedown', handleCenterPress);
-            }
-            document.addEventListener('touchend', handleDpadRelease);
-            document.addEventListener('mouseup', handleDpadRelease);
+            InputHandler.bindDpadControls(this);
         }
 
         startAnimationLoop() {
@@ -548,138 +450,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // 随机地图总是使用默认的生命和体力值
             this.initialHealth = 5;
             this.initialStamina = 100;
-            const mapData = this.generateMaze(size, size);
-            // 随机地图总是常规模式
-            mapData.editorMode = 'regular';
-            mapData.activeCells = Array(size).fill(null).map(() => Array(size).fill(true));
-            // 确保为单层地图正确设置 layers 数组
-            mapData.multiLayerMode = false;
-            mapData.layerCount = 1;
-            mapData.layers = [{
-                hWalls: mapData.hWalls,
-                vWalls: mapData.vWalls,
-                activeCells: mapData.activeCells,
-                ghosts: mapData.initialGhosts,
-                items: mapData.items,
-                buttons: mapData.buttons,
-                endPos: mapData.endPos,
-                customStartPos: null
-            }];
+            // 使用 MazeGenerator 模块生成完整地图
+            const mapData = MazeGenerator.generateFullMaze(size, size, this.ghostCount);
             this.startGame(mapData);
-        }
-
-        generateMaze(width, height) {
-            this.width = width; this.height = height; this.padding = 15;
-            this.cellSize = (canvas.width - 2 * this.padding) / this.width;
-            const wall = () => ({ type: WALL_TYPES.SOLID, keys: 0 });
-            const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
-            const door = () => ({ type: WALL_TYPES.DOOR, keys: 0 });
-            this.hWalls = Array(height + 1).fill(null).map(() => Array(width).fill(null).map(wall));
-            this.vWalls = Array(height).fill(null).map(() => Array(width + 1).fill(null).map(wall));
-            const roomY = height - 3;
-            for (let y = roomY; y < roomY + 3; y++) {
-                for (let x = 0; x < 3; x++) {
-                    if (x < 2) this.vWalls[y][x + 1] = empty();
-                    if (y < roomY + 2) this.hWalls[y + 1][x] = empty();
-                }
-            }
-            this.vWalls[roomY + 1][3] = door(); this.hWalls[roomY][1] = door();
-            this.startPos = { x: 1, y: height - 2 };
-            const visited = Array(height).fill(null).map(() => Array(width).fill(false));
-            for (let y = roomY; y < roomY + 3; y++) { for (let x = 0; x < 3; x++) { visited[y][x] = true; } }
-            const stack = [];
-            let startGenX, startGenY;
-            do { startGenX = Math.floor(Math.random() * width); startGenY = Math.floor(Math.random() * height); } while (visited[startGenY][startGenX]);
-            stack.push({ x: startGenX, y: startGenY }); visited[startGenY][startGenX] = true;
-            while (stack.length > 0) {
-                const current = stack.pop(); const neighbors = [];
-                const dirs = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
-                for (const dir of dirs) {
-                    const nx = current.x + dir.x, ny = current.y + dir.y;
-                    if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited[ny][nx]) { neighbors.push({ x: nx, y: ny, dir: dir }); }
-                }
-                if (neighbors.length > 0) {
-                    stack.push(current);
-                    const { x: nx, y: ny, dir } = neighbors[Math.floor(Math.random() * neighbors.length)];
-                    if (dir.x === 1) this.vWalls[current.y][current.x + 1] = empty();
-                    else if (dir.x === -1) this.vWalls[current.y][current.x] = empty();
-                    else if (dir.y === 1) this.hWalls[current.y + 1][current.x] = empty();
-                    else if (dir.y === -1) this.hWalls[current.y][current.x] = empty();
-                    visited[ny][nx] = true; stack.push({ x: nx, y: ny });
-                }
-            }
-            const wallsToRemove = Math.floor(width * height * 0.08); let removedCount = 0, attempts = 0;
-            while (removedCount < wallsToRemove && attempts < wallsToRemove * 10) {
-                attempts++; const rx = Math.floor(Math.random() * (width - 1)), ry = Math.floor(Math.random() * (height - 1));
-                if (Math.random() > 0.5) {
-                    if (rx < width - 1 && !(ry >= roomY && ry < roomY + 3 && rx + 1 === 3)) {
-                        if (this.vWalls[ry][rx + 1].type === WALL_TYPES.SOLID) { this.vWalls[ry][rx + 1] = empty(); removedCount++; }
-                    }
-                } else {
-                    if (ry < height - 1 && !(rx >= 0 && rx < 3 && ry + 1 === roomY)) {
-                        if (this.hWalls[ry + 1][rx].type === WALL_TYPES.SOLID) { this.hWalls[ry + 1][rx] = empty(); removedCount++; }
-                    }
-                }
-            }
-            this.endPos = this.findFarthestEndCell();
-            const doorProbability = 0.02;
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    const isNearEnd = (Math.abs(x - this.endPos.x) <= 1 && y === this.endPos.y) || (x === this.endPos.x && Math.abs(y - this.endPos.y) <= 1);
-                    if (y < this.height - 1 && !this.isPosInStartRoom(x, y) && !this.isPosInStartRoom(x, y + 1) && !isNearEnd && Math.random() < doorProbability) this.hWalls[y + 1][x] = door();
-                    if (x < width - 1 && !this.isPosInStartRoom(x, y) && !this.isPosInStartRoom(x + 1, y) && !isNearEnd && Math.random() < doorProbability) this.vWalls[y][x + 1] = door();
-                }
-            }
-            const { x: ex, y: ey } = this.endPos; const lockedDoor = { type: WALL_TYPES.LOCKED, keys: 3 };
-            if (this.hWalls[ey][ex].type === WALL_TYPES.EMPTY) this.hWalls[ey][ex] = lockedDoor;
-            else if (this.hWalls[ey + 1][ex].type === WALL_TYPES.EMPTY) this.hWalls[ey + 1][ex] = lockedDoor;
-            else if (this.vWalls[ey][ex].type === WALL_TYPES.EMPTY) this.vWalls[ey][ex] = lockedDoor;
-            else if (this.vWalls[ey][ex + 1].type === WALL_TYPES.EMPTY) this.vWalls[ey][ex + 1] = lockedDoor;
-            const occupied = new Set(); occupied.add(`${this.endPos.x},${this.endPos.y}`);
-            for (let y = height - 3; y < height; y++) { for (let x = 0; x < 3; x++) { occupied.add(`${x},${y}`); } }
-            const initialGhosts = [];
-            while (initialGhosts.length < this.ghostCount) {
-                const x = Math.floor(Math.random() * width), y = Math.floor(Math.random() * height), posKey = `${x},${y}`;
-                if (!occupied.has(posKey)) { initialGhosts.push({ x, y, id: initialGhosts.length }); occupied.add(posKey); }
-            }
-            this.items = []; const keysToPlace = 4; const validCells = [], preferredCells = [];
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                    if (!occupied.has(`${x},${y}`)) {
-                        validCells.push({ x, y }); let wallCount = 0;
-                        if (this.hWalls[y][x].type > 0) wallCount++; if (this.hWalls[y + 1][x].type > 0) wallCount++;
-                        if (this.vWalls[y][x].type > 0) wallCount++; if (this.vWalls[y][x + 1].type > 0) wallCount++;
-                        if (wallCount >= 3) { preferredCells.push({ x, y }); }
-                    }
-                }
-            }
-            for (let i = 0; i < keysToPlace; i++) {
-                let pos = null;
-                if (preferredCells.length > 0) { const index = Math.floor(Math.random() * preferredCells.length); pos = preferredCells.splice(index, 1)[0]; }
-                else if (validCells.length > 0) { const index = Math.floor(Math.random() * validCells.length); pos = validCells.splice(index, 1)[0]; }
-                if (pos) {
-                    this.items.push({ x: pos.x, y: pos.y, type: 'key' });
-                    const validIndex = validCells.findIndex(c => c.x === pos.x && c.y === pos.y);
-                    if (validIndex > -1) validCells.splice(validIndex, 1);
-                }
-            }
-            return { width, height, hWalls: this.hWalls, vWalls: this.vWalls, endPos: this.endPos, initialGhosts: initialGhosts, items: this.items, buttons: [] };
-        }
-
-        findFarthestEndCell() {
-            const distances = this.calculateDistances(this.startPos);
-            let maxDist = -1, farthestCell = null;
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    if (x === 0 || x === this.width - 1 || y === 0 || y === this.height - 1) {
-                        let wallCount = 0;
-                        if (this.hWalls[y][x].type > 0) wallCount++; if (this.hWalls[y + 1][x].type > 0) wallCount++;
-                        if (this.vWalls[y][x].type > 0) wallCount++; if (this.vWalls[y][x + 1].type > 0) wallCount++;
-                        if (wallCount >= 3 && distances[y][x] > maxDist) { maxDist = distances[y][x]; farthestCell = { x, y }; }
-                    }
-                }
-            }
-            return farthestCell || { x: this.width - 1, y: 0 };
         }
 
         handleKeyPress(e) {
@@ -703,34 +476,26 @@ document.addEventListener('DOMContentLoaded', () => {
         pressButton(letter) { this.processAction({ type: 'PRESS_BUTTON', payload: { letter } }); }
 
         updateUIDisplays() {
-            if (this.gameMode === 'exploration') {
-                this.healthDisplay.textContent = `生命: ${this.player.hp}`;
-                this.keysDisplay.textContent = `钥匙: ${this.player.keys}`;
-                this.stepsDisplay.textContent = `步数: ${this.player.steps}`;
-            } else {
-                document.getElementById('loop-count-display').textContent = `循环次数: ${this.loopCount}`;
-                document.getElementById('player-keys-display-death-loop').textContent = `钥匙: ${this.player.keys}`;
-                document.getElementById('player-stamina-display').textContent = `剩余体力: ${this.player.stamina}`;
-            }
+            UI.updateUIDisplays({
+                gameMode: this.gameMode,
+                player: this.player,
+                loopCount: this.loopCount,
+                healthDisplay: this.healthDisplay,
+                keysDisplay: this.keysDisplay,
+                stepsDisplay: this.stepsDisplay
+            });
             this.updateProximityWarning();
         }
 
         updateProximityWarning() {
-            if (this.gameMode === 'death-loop') {
-                document.body.classList.remove('danger-bg');
-                this.ghostProximityDisplay.classList.remove('warning');
-                return;
-            }
-            let totalNearbyGhosts = 0, invisibleNearbyGhosts = 0;
-            for (const ghost of this.ghosts) {
-                if (Math.abs(ghost.x - this.player.x) <= 1 && Math.abs(ghost.y - this.player.y) <= 1) {
-                    totalNearbyGhosts++;
-                    if (!this.seenCells[ghost.y][ghost.x] && !this.debugVision) { invisibleNearbyGhosts++; }
-                }
-            }
-            this.ghostProximityDisplay.textContent = `周围鬼数: ${totalNearbyGhosts}`;
-            document.body.classList.toggle('danger-bg', invisibleNearbyGhosts > 0);
-            this.ghostProximityDisplay.classList.toggle('warning', invisibleNearbyGhosts > 0);
+            UI.updateProximityWarning({
+                gameMode: this.gameMode,
+                ghosts: this.ghosts,
+                player: this.player,
+                seenCells: this.seenCells,
+                debugVision: this.debugVision,
+                ghostProximityDisplay: this.ghostProximityDisplay
+            });
         }
 
         handlePlayerDeath(reason = 'ghost') {
@@ -841,16 +606,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             ctx.beginPath();
-            const shouldDrawBoundary = (bx, by, isH) => {
-                const up = (by > 0 && by <= this.height) ? this.activeCells[by - 1][bx] : false;
-                const down = (by < this.height && by >= 0) ? this.activeCells[by][bx] : false;
-                const left = (bx > 0 && bx <= this.width) ? this.activeCells[by][bx - 1] : false;
-                const right = (bx < this.width && bx >= 0) ? this.activeCells[by][bx] : false;
-                return isH ? up !== down : left !== right;
-            };
             for (let y = 0; y <= this.height; y++) {
                 for (let x = 0; x < this.width; x++) {
-                    const isBoundary = shouldDrawBoundary(x, y, true);
+                    const isBoundary = Renderer.shouldDrawBoundary(x, y, true, this.activeCells, this.width, this.height);
                     const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y - 1][x]);
                     if (!isActiveRow && !isBoundary) continue;
                     const isVisible = isBoundary || this.debugVision || (y < this.height && this.activeCells[y][x] && this.seenCells[y][x]) || (y > 0 && this.activeCells[y - 1][x] && this.seenCells[y - 1][x]);
@@ -862,7 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             for (let y = 0; y < this.height; y++) {
                 for (let x = 0; x <= this.width; x++) {
-                    const isBoundary = shouldDrawBoundary(x, y, false);
+                    const isBoundary = Renderer.shouldDrawBoundary(x, y, false, this.activeCells, this.width, this.height);
                     const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x - 1]);
                     if (!isActiveCol && !isBoundary) continue;
                     const isVisible = isBoundary || this.debugVision || (x < this.width && this.activeCells[y][x] && this.seenCells[y][x]) || (x > 0 && this.activeCells[y][x - 1] && this.seenCells[y][x - 1]);
@@ -887,136 +645,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         drawWallOrDoor(x1, y1, x2, y2, wallObject, isHighlight = false) {
-            const type = wallObject.type; const cs = this.cellSize;
-            ctx.strokeStyle = isHighlight ? this.colors.hoverHighlight : this.colors.wall;
-            ctx.lineWidth = isHighlight ? Math.max(3, cs / 8) : ([WALL_TYPES.LOCKED, WALL_TYPES.ONE_WAY].includes(type) ? Math.max(3, cs / 12) : Math.max(2, cs / 10));
-            if (type === WALL_TYPES.SOLID) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
-            else if (type === WALL_TYPES.GLASS) {
-                const isHorizontal = y1 === y2; const lineLength = cs * 0.2; const offset = lineLength / 2;
-                const points = [{ x: x1 * 5 / 6 + x2 * 1 / 6, y: y1 * 5 / 6 + y2 * 1 / 6 }, { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }, { x: x1 * 1 / 6 + x2 * 5 / 6, y: y1 * 1 / 6 + y2 * 5 / 6 }];
-                for (const p of points) {
-                    if (isHorizontal) { ctx.moveTo(p.x - offset, p.y + offset); ctx.lineTo(p.x + offset, p.y - offset); }
-                    else { ctx.moveTo(p.x - offset, p.y + offset); ctx.lineTo(p.x + offset, p.y - offset); }
-                }
-            } else if (type === WALL_TYPES.LOCKED || type === WALL_TYPES.ONE_WAY || type === WALL_TYPES.LETTER_DOOR) {
-                let isLetterDoorOpen = (type === WALL_TYPES.LETTER_DOOR) && (this.state === GAME_STATES.EDITOR ? wallObject.initialState === 'open' : wallObject.currentState === 'open');
-                if (isLetterDoorOpen) return;
-                const isHorizontal = y1 === y2; const lockWidth = cs * 0.2;
-                if (isHorizontal) { ctx.rect(x1, y1 - lockWidth / 2, cs, lockWidth); } else { ctx.rect(x1 - lockWidth / 2, y1, lockWidth, cs); }
-            } else if (type === WALL_TYPES.DOOR) {
-                const isHorizontal = y1 === y2; const length = isHorizontal ? x2 - x1 : y2 - y1; const gap = length / 3;
-                if (isHorizontal) { ctx.moveTo(x1, y1); ctx.lineTo(x1 + gap, y1); ctx.moveTo(x2 - gap, y2); ctx.lineTo(x2, y2); }
-                else { ctx.moveTo(x1, y1); ctx.lineTo(x1, y1 + gap); ctx.moveTo(x2, y2 - gap); ctx.lineTo(x2, y2); }
-            }
+            Renderer.drawWallOrDoor(ctx, x1, y1, x2, y2, wallObject, this.cellSize, this.colors, this.state, isHighlight);
         }
 
         drawArrow(x1, y1, x2, y2, direction, color, withStroke) {
-            const centerX = (x1 + x2) / 2; const centerY = (y1 + y2) / 2; const cs = this.cellSize; const fontSize = cs * 0.6;
-            ctx.save(); ctx.translate(centerX, centerY);
-            if (direction.dx === 1) { ctx.rotate(0); } else if (direction.dx === -1) { ctx.rotate(Math.PI); }
-            else if (direction.dy === 1) { ctx.rotate(Math.PI / 2); } else if (direction.dy === -1) { ctx.rotate(-Math.PI / 2); }
-            ctx.scale(0.8, 1.0); ctx.font = `bold ${fontSize}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            if (withStroke) { ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.strokeText('>', 0, 0); }
-            ctx.fillStyle = color; ctx.fillText('>', 0, 0); ctx.restore();
+            Renderer.drawArrow(ctx, x1, y1, x2, y2, direction, color, withStroke, this.cellSize);
         }
 
         drawWallOverlays(inGame = false) {
-            const cs = this.cellSize;
-            const drawNumber = (x1, y1, x2, y2, number) => {
-                const centerX = (x1 + x2) / 2; const centerY = (y1 + y2) / 2; const fontSize = cs * 0.4; const text = number.toString();
-                ctx.font = `bold ${fontSize}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.strokeText(text, centerX, centerY);
-                ctx.fillStyle = this.colors.key; ctx.fillText(text, centerX, centerY);
-            };
-            for (let y = 1; y < this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    const w = this.hWalls[y][x];
-                    if (!(this.activeCells[y][x] && this.activeCells[y - 1][x])) continue;
-                    const isVisible = !inGame || this.debugVision || this.seenCells[y - 1][x] || this.seenCells[y][x];
-                    if (isVisible) {
-                        if (w.type === WALL_TYPES.LOCKED) { drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, w.keys); }
-                        else if (w.type === WALL_TYPES.LETTER_DOOR) { drawNumber(x * cs, y * cs, (x + 1) * cs, y * cs, w.letter); }
-                        else if (w.type === WALL_TYPES.ONE_WAY && w.direction) { this.drawArrow(x * cs, y * cs, (x + 1) * cs, y * cs, w.direction, this.colors.key, true); }
-                    }
-                }
-            }
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 1; x < this.width; x++) {
-                    const w = this.vWalls[y][x];
-                    if (!(this.activeCells[y][x] && this.activeCells[y][x - 1])) continue;
-                    const isVisible = !inGame || this.debugVision || this.seenCells[y][x - 1] || this.seenCells[y][x];
-                    if (isVisible) {
-                        if (w.type === WALL_TYPES.LOCKED) { drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, w.keys); }
-                        else if (w.type === WALL_TYPES.LETTER_DOOR) { drawNumber(x * cs, y * cs, x * cs, (y + 1) * cs, w.letter); }
-                        else if (w.type === WALL_TYPES.ONE_WAY && w.direction) { this.drawArrow(x * cs, y * cs, x * cs, (y + 1) * cs, w.direction, this.colors.key, true); }
-                    }
-                }
-            }
+            Renderer.drawWallOverlays(ctx, {
+                width: this.width,
+                height: this.height,
+                cellSize: this.cellSize,
+                hWalls: this.hWalls,
+                vWalls: this.vWalls,
+                activeCells: this.activeCells,
+                seenCells: this.seenCells,
+                debugVision: this.debugVision,
+                colors: this.colors,
+                inGame,
+                drawArrowFn: (x1, y1, x2, y2, dir, color, stroke) => this.drawArrow(x1, y1, x2, y2, dir, color, stroke)
+            });
         }
 
         drawCircle(x, y, color, alpha = 1.0) {
-            if (alpha <= 0) return; const cs = this.cellSize;
-            ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath();
-            ctx.arc(x * cs + cs / 2, y * cs + cs / 2, cs * 0.35, 0, 2 * Math.PI);
-            ctx.fill(); ctx.globalAlpha = 1.0;
+            Renderer.drawCircle(ctx, x, y, this.cellSize, color, alpha);
         }
 
         drawItem(item) {
-            if (item.type === 'key') {
-                const cs = this.cellSize; const centerX = item.x * cs + cs / 2; const centerY = item.y * cs + cs / 2; const size = cs * 0.3;
-                ctx.fillStyle = this.colors.key; ctx.beginPath();
-                ctx.moveTo(centerX, centerY - size); ctx.lineTo(centerX + size, centerY);
-                ctx.lineTo(centerX, centerY + size); ctx.lineTo(centerX - size, centerY);
-                ctx.closePath(); ctx.fill();
-            }
+            Renderer.drawItem(ctx, item, this.cellSize, this.colors);
         }
 
         drawStair(stair, isHighlight = false, alpha = 1.0) {
-            const cs = this.cellSize; const centerX = stair.x * cs + cs / 2; const centerY = stair.y * cs + cs / 2;
-            const scale = 0.8; const stairSize = cs * scale; const x = centerX - stairSize / 2; const y = centerY - stairSize / 2;
-            const padding = stairSize * 0.08; const innerWidth = stairSize - 2 * padding; const innerHeight = stairSize - 2 * padding;
-            const stepWidth = innerWidth / 3; const stepHeight = innerHeight / 3;
-            ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = isHighlight ? this.colors.hoverHighlight : this.colors.wall;
-            ctx.lineWidth = Math.max(2, cs / 15); ctx.beginPath();
-            const left = x + padding, right = x + stairSize - padding, bottom = y + stairSize - padding, top = y + padding;
-            if (stair.direction === 'up') {
-                ctx.moveTo(left, bottom); ctx.lineTo(left, bottom - stepHeight); ctx.lineTo(left + stepWidth, bottom - stepHeight);
-                ctx.lineTo(left + stepWidth, bottom - 2 * stepHeight); ctx.lineTo(left + 2 * stepWidth, bottom - 2 * stepHeight);
-                ctx.lineTo(left + 2 * stepWidth, top); ctx.lineTo(right, top); ctx.lineTo(right, bottom); ctx.lineTo(left, bottom);
-            } else {
-                ctx.moveTo(left, bottom); ctx.lineTo(left, top); ctx.lineTo(left + stepWidth, top);
-                ctx.lineTo(left + stepWidth, top + stepHeight); ctx.lineTo(left + 2 * stepWidth, top + stepHeight);
-                ctx.lineTo(left + 2 * stepWidth, top + 2 * stepHeight); ctx.lineTo(right, top + 2 * stepHeight);
-                ctx.lineTo(right, bottom); ctx.lineTo(left, bottom);
-            }
-            ctx.stroke(); ctx.restore();
+            Renderer.drawStair(ctx, stair, this.cellSize, this.colors, isHighlight, alpha);
         }
 
         drawButton(button, isHighlight = false) {
-            const cs = this.cellSize; const centerX = button.x * cs + cs / 2; const centerY = button.y * cs + cs / 2;
-            const buttonLength = cs * 0.5; const buttonWidth = cs * 0.2;
-            let p1, p2, p3, p4, letterCenterX, letterCenterY;
-            const setPoints = (x1, y1, x2, y2, x3, y3, x4, y4, lcx, lcy) => {
-                p1 = { x: x1, y: y1 }; p2 = { x: x2, y: y2 }; p3 = { x: x3, y: y3 }; p4 = { x: x4, y: y4 };
-                letterCenterX = lcx; letterCenterY = lcy;
-            };
-            if (button.direction.dy === -1) setPoints(centerX - buttonLength / 2, button.y * cs, centerX + buttonLength / 2, button.y * cs, centerX + buttonLength / 2, button.y * cs + buttonWidth, centerX - buttonLength / 2, button.y * cs + buttonWidth, centerX, button.y * cs + buttonWidth / 2);
-            else if (button.direction.dy === 1) setPoints(centerX - buttonLength / 2, (button.y + 1) * cs - buttonWidth, centerX + buttonLength / 2, (button.y + 1) * cs - buttonWidth, centerX + buttonLength / 2, (button.y + 1) * cs, centerX - buttonLength / 2, (button.y + 1) * cs, centerX, (button.y + 1) * cs - buttonWidth / 2);
-            else if (button.direction.dx === -1) setPoints(button.x * cs, centerY - buttonLength / 2, button.x * cs + buttonWidth, centerY - buttonLength / 2, button.x * cs + buttonWidth, centerY + buttonLength / 2, button.x * cs, centerY + buttonLength / 2, button.x * cs + buttonWidth / 2, centerY);
-            else if (button.direction.dx === 1) setPoints((button.x + 1) * cs - buttonWidth, centerY - buttonLength / 2, (button.x + 1) * cs, centerY - buttonLength / 2, (button.x + 1) * cs, centerY + buttonLength / 2, (button.x + 1) * cs - buttonWidth, centerY + buttonLength / 2, (button.x + 1) * cs - buttonWidth / 2, centerY);
-            ctx.strokeStyle = isHighlight ? this.colors.hoverHighlight : this.colors.wall;
-            ctx.lineWidth = isHighlight ? Math.max(3, cs / 8) : Math.max(2, cs / 10);
-            ctx.beginPath();
-            if (button.direction.dy === -1) { ctx.moveTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p2.x, p2.y); }
-            else if (button.direction.dy === 1) { ctx.moveTo(p4.x, p4.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); }
-            else if (button.direction.dx === -1) { ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); }
-            else if (button.direction.dx === 1) { ctx.moveTo(p2.x, p2.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.lineTo(p3.x, p3.y); }
-            ctx.stroke();
-            if (!isHighlight && button.letter) {
-                const fontSize = cs * 0.4; ctx.font = `bold ${fontSize}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.strokeText(button.letter, letterCenterX, letterCenterY);
-                ctx.fillStyle = this.colors.key; ctx.fillText(button.letter, letterCenterX, letterCenterY);
-            }
+            Renderer.drawButton(ctx, button, this.cellSize, this.colors, isHighlight);
         }
 
         enterEditorMode() {
@@ -1146,13 +811,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         addLayer() {
             if (this.layerCount >= 10) { this.showToast('最多只能添加10层地图！', 3000, 'error'); return; }
-            const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
-            const newLayer = {
-                hWalls: Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty)),
-                vWalls: Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty)),
-                activeCells: Array(this.height).fill(null).map(() => Array(this.width).fill(true)),
-                ghosts: [], items: [], buttons: [], stairs: [], endPos: null, customStartPos: null
-            };
+            const newLayer = LayerManager.createNewLayer(this.width, this.height);
             this.layers.push(newLayer); this.layerCount++;
             this.updateLayerPanel(); this.showToast(`已添加第 ${this.layerCount} 层`, 2000, 'success');
         }
@@ -1160,14 +819,27 @@ document.addEventListener('DOMContentLoaded', () => {
         removeLayer() {
             if (this.layerCount <= 1) { this.showToast('初始的1层不可删除！', 3000, 'error'); return; }
             this.showConfirm(`确定要删除第 ${this.layerCount} 层吗？`, () => {
+                // 保存当前层数据
+                this._saveCurrentLayerData();
+                
                 this.layers.pop(); this.layerCount--;
                 const removedLayerIndex = this.layerCount;
-                for (let i = 0; i < this.layers.length; i++) {
-                    this.layers[i].stairs = this.layers[i].stairs.filter(s => !(s.direction === 'up' && i === removedLayerIndex - 1));
-                }
+                LayerManager.cleanupStairsOnLayerRemove(this.layers, removedLayerIndex);
+                
+                // 清理全局楼梯数组中指向被删除层的楼梯
+                this.stairs = this.stairs.filter(s => s.layer < this.layerCount);
+                // 清理指向被删除层的成对楼梯
+                this.stairs = this.stairs.filter(s => {
+                    const targetLayer = s.direction === 'up' ? s.layer + 1 : s.layer - 1;
+                    return targetLayer >= 0 && targetLayer < this.layerCount;
+                });
+                
+                // 如果当前视图在被删除的顶层，强制切换到新的顶层
                 if (this.currentLayer >= this.layerCount) {
                     this.currentLayer = this.layerCount - 1;
                     this._switchToLayer(this.currentLayer);
+                    this._renderStaticLayer();
+                    this.drawEditor();
                 }
                 this.updateLayerPanel(); this.showToast(`已删除第 ${this.layerCount + 1} 层`, 2000, 'success');
             });
@@ -1213,25 +885,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateLayerPanel() {
-            const panel = document.getElementById('layer-panel');
-            if (!this.multiLayerMode) { panel.style.display = 'none'; return; }
-            panel.style.display = 'flex';
-            this._positionLayerPanel();
-            const container = document.getElementById('layer-buttons-container');
-            container.innerHTML = '';
-            for (let i = this.layerCount - 1; i >= 0; i--) {
-                const btn = document.createElement('button');
-                btn.className = 'layer-btn'; btn.textContent = (i + 1).toString();
-                if (i === this.currentLayer) btn.classList.add('active');
-                if (i === this.playerLayer) btn.classList.add('player-layer');
-                btn.addEventListener('click', () => this.switchToLayer(i));
-                container.appendChild(btn);
+            // 检查是否有起点设置
+            let hasStartPoint = false;
+            if (this.editor.active) {
+                // 编辑器模式下检查
+                if (this.editor.mode === 'regular') {
+                    hasStartPoint = true; // 常规模式总是有起点
+                } else {
+                    // 自由模式下检查所有层是否有 customStartPos
+                    if (this.multiLayerMode) {
+                        for (let i = 0; i < this.layerCount; i++) {
+                            if (this.layers[i] && this.layers[i].customStartPos) {
+                                hasStartPoint = true;
+                                break;
+                            }
+                        }
+                        // 也检查当前编辑层的 customStartPos
+                        if (!hasStartPoint && this.customStartPos) {
+                            hasStartPoint = true;
+                        }
+                    } else {
+                        hasStartPoint = !!this.customStartPos;
+                    }
+                }
+            } else {
+                // 游戏模式下总是有起点
+                hasStartPoint = true;
             }
-            document.getElementById('layer-edit-controls').style.display = this.editor.active ? 'flex' : 'none';
+            
+            LayerManager.updateLayerPanelUI({
+                multiLayerMode: this.multiLayerMode,
+                layerCount: this.layerCount,
+                currentLayer: this.currentLayer,
+                playerLayer: this.playerLayer,
+                editorActive: this.editor.active,
+                hasStartPoint: hasStartPoint,
+                onLayerClick: (i) => this.switchToLayer(i)
+            });
         }
-
-        _positionLayerPanel() { }
-        _initResizeListener() { }
 
         createBlankEditorMap() {
             this.padding = 15; this.cellSize = (canvas.width - 2 * this.padding) / this.width;
@@ -1263,12 +954,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        _createEmptyWalls(type, width, height) {
-            const empty = () => ({ type: WALL_TYPES.EMPTY, keys: 0 });
-            return type === 'h' ? Array(height + 1).fill(null).map(() => Array(width).fill(null).map(empty))
-                : Array(height).fill(null).map(() => Array(width + 1).fill(null).map(empty));
-        }
-
         resizeAndClearEditor() {
             const size = parseInt(this.editorMapSizeInput.value);
             if (size < 8 || size > 20) {
@@ -1284,7 +969,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.playerLayer = 0; this.stairs = []; this.layers = [];
                 for (let i = 0; i < savedLayerCount; i++) {
                     this.layers.push({
-                        hWalls: this._createEmptyWalls('h', size, size), vWalls: this._createEmptyWalls('v', size, size),
+                        hWalls: Editor.createEmptyWalls('h', size, size), vWalls: Editor.createEmptyWalls('v', size, size),
                         activeCells: Array(size).fill(null).map(() => Array(size).fill(true)),
                         ghosts: [], items: [], buttons: [], stairs: [], endPos: null, customStartPos: null
                     });
@@ -1338,6 +1023,22 @@ document.addEventListener('DOMContentLoaded', () => {
             this.hWalls = Array(this.height + 1).fill(null).map(() => Array(this.width).fill(null).map(empty));
             this.vWalls = Array(this.height).fill(null).map(() => Array(this.width + 1).fill(null).map(empty));
             this.endPos = null; this.customStartPos = null; this.ghosts = []; this.items = []; this.buttons = [];
+            
+            // 清空当前层的楼梯，同时清除成对的楼梯
+            const currentLayerStairs = this.stairs.filter(s => s.layer === this.currentLayer);
+            currentLayerStairs.forEach(stair => {
+                const pairedLayer = stair.direction === 'up' ? stair.layer + 1 : stair.layer - 1;
+                const pairedDirection = stair.direction === 'up' ? 'down' : 'up';
+                // 移除成对的楼梯
+                this.stairs = this.stairs.filter(s => 
+                    !(s.x === stair.x && s.y === stair.y && s.layer === pairedLayer && s.direction === pairedDirection)
+                );
+            });
+            // 移除当前层的所有楼梯
+            this.stairs = this.stairs.filter(s => s.layer !== this.currentLayer);
+            
+            // 更新层面板（起点被删除后不应显示黄色边框）
+            this.updateLayerPanel();
             this.drawEditor();
         }
 
@@ -1387,17 +1088,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (this.editor.mode === 'regular') { ctx.fillStyle = this.colors.startRoomHighlight; ctx.fillRect(0, (this.height - 3) * cs, 3 * cs, 3 * cs); }
             ctx.beginPath();
-            const shouldDrawBoundary = (bx, by, isH) => {
-                const up = (by > 0) ? this.activeCells[by - 1][bx] : false; const down = (by < this.height) ? this.activeCells[by][bx] : false;
-                const left = (bx > 0) ? this.activeCells[by][bx - 1] : false; const right = (bx < this.width) ? this.activeCells[by][bx] : false;
-                return isH ? up !== down : left !== right;
-            };
             for (let y = 0; y <= this.height; y++) {
                 for (let x = 0; x < this.width; x++) {
                     const isActiveRow = (y < this.height && this.activeCells[y][x]) || (y > 0 && this.activeCells[y - 1][x]);
                     if (!isActiveRow) continue;
                     if (this.hWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, this.hWalls[y][x]);
-                    else if (this.editor.mode === 'free' && shouldDrawBoundary(x, y, true)) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, { type: 1 });
+                    else if (this.editor.mode === 'free' && Renderer.shouldDrawBoundary(x, y, true, this.activeCells, this.width, this.height)) this.drawWallOrDoor(x * cs, y * cs, (x + 1) * cs, y * cs, { type: 1 });
                 }
             }
             for (let y = 0; y < this.height; y++) {
@@ -1405,7 +1101,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const isActiveCol = (x < this.width && this.activeCells[y][x]) || (x > 0 && this.activeCells[y][x - 1]);
                     if (!isActiveCol) continue;
                     if (this.vWalls[y][x].type > 0) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, this.vWalls[y][x]);
-                    else if (this.editor.mode === 'free' && shouldDrawBoundary(x, y, false)) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, { type: 1 });
+                    else if (this.editor.mode === 'free' && Renderer.shouldDrawBoundary(x, y, false, this.activeCells, this.width, this.height)) this.drawWallOrDoor(x * cs, y * cs, x * cs, (y + 1) * cs, { type: 1 });
                 }
             }
             ctx.stroke();
@@ -1458,42 +1154,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         isPosInStartRoom(cellX, cellY) {
             if (this.editor.mode === 'regular') {
-                const roomY = this.height - 3;
-                return cellX >= 0 && cellX < 3 && cellY >= roomY && cellY < roomY + 3;
+                return Editor.isPosInStartRoom(cellX, cellY, this.height);
             }
             return false;
         }
 
         isWallEditable(wall) {
-            if (!wall) return false;
-            if (this.editor.mode === 'free') {
-                const { x, y, type } = wall;
-                const up = (type === 'h' && y > 0) ? this.activeCells[y - 1][x] : false;
-                const down = (type === 'h' && y < this.height) ? this.activeCells[y][x] : false;
-                const left = (type === 'v' && x > 0) ? this.activeCells[y][x - 1] : false;
-                const right = (type === 'v' && x < this.width) ? this.activeCells[y][x] : false;
-                if (type === 'h') return up && down; if (type === 'v') return left && right;
-                return false;
-            }
-            const { x, y, type } = wall;
-            if (type === 'h' && (y === 0 || y === this.height)) return false;
-            if (type === 'v' && (x === 0 || x === this.width)) return false;
-            const roomY = this.height - 3;
-            if (type === 'h' && y === roomY && x >= 0 && x < 3) return false;
-            if (type === 'h' && y === roomY + 3 && x >= 0 && x < 3) return false;
-            if (type === 'v' && x === 0 && y >= roomY && y < roomY + 3) return false;
-            if (type === 'v' && x === 3 && y >= roomY && y < roomY + 3) return false;
-            if (x >= 0 && x < 3 && y > roomY && y < roomY + 3 && type === 'h') return false;
-            if (y >= roomY && y < roomY + 3 && x > 0 && x < 3 && type === 'v') return false;
-            return true;
+            return Editor.isWallEditable(wall, this.editor.mode, this.width, this.height, this.activeCells);
         }
 
         isCellOccupiedInEditor(x, y) {
-            if (this.endPos && this.endPos.x === x && this.endPos.y === y) return true;
-            if (this.customStartPos && this.customStartPos.x === x && this.customStartPos.y === y) return true;
-            if (this.ghosts.some(g => g.x === x && g.y === y)) return true;
-            if (this.items.some(i => i.x === x && i.y === y)) return true;
-            return false;
+            return Editor.isCellOccupied(x, y, {
+                ghosts: this.ghosts,
+                items: this.items,
+                buttons: this.buttons,
+                endPos: this.endPos,
+                customStartPos: this.customStartPos,
+                stairs: this.stairs,
+                currentLayer: this.currentLayer
+            });
         }
 
         eraseAtPos(pos) {
@@ -1721,6 +1400,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetLayer = direction === 'up' ? this.currentLayer + 1 : this.currentLayer - 1;
             if (targetLayer < 0 || targetLayer >= this.layerCount) return false;
             if (this.layers[targetLayer] && this.layers[targetLayer].activeCells && !this.layers[targetLayer].activeCells[y][x]) return false;
+            
+            // 检查当前层该位置是否有其他元素（起点、鬼、钥匙、其他楼梯等）
+            if (this.isCellOccupiedInEditor(x, y)) return false;
+            
+            // 检查目标层该位置是否有其他元素
+            if (this.layers[targetLayer]) {
+                const targetLayerData = this.layers[targetLayer];
+                // 检查目标层是否有起点
+                if (targetLayerData.customStartPos && targetLayerData.customStartPos.x === x && targetLayerData.customStartPos.y === y) return false;
+                // 检查目标层是否有终点
+                if (targetLayerData.endPos && targetLayerData.endPos.x === x && targetLayerData.endPos.y === y) return false;
+                // 检查目标层是否有鬼
+                if (targetLayerData.ghosts && targetLayerData.ghosts.some(g => g.x === x && g.y === y)) return false;
+                // 检查目标层是否有钥匙
+                if (targetLayerData.items && targetLayerData.items.some(i => i.x === x && i.y === y)) return false;
+                // 检查目标层该位置是否已有楼梯（不是配对的那个）
+                if (this.stairs.some(s => s.x === x && s.y === y && s.layer === targetLayer && s.direction !== (direction === 'up' ? 'down' : 'up'))) return false;
+            }
+            
             return true;
         }
 
@@ -1820,49 +1518,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         getWallAtPos(mouseX, mouseY) {
-            const cs = this.cellSize; const tolerance = cs / 5;
-            const gridX = mouseX / cs; const gridY = mouseY / cs;
-            const x = Math.floor(gridX); const y = Math.floor(gridY);
-            const nearHorizontal = Math.abs(gridY - Math.round(gridY)) * cs < tolerance;
-            const nearVertical = Math.abs(gridX - Math.round(gridX)) * cs < tolerance;
-            if (nearHorizontal && !nearVertical) return { type: 'h', x: x, y: Math.round(gridY) };
-            if (nearVertical && !nearHorizontal) return { type: 'v', x: Math.round(gridX), y: y };
-            return null;
+            return Editor.getWallAtPos(mouseX, mouseY, this.cellSize, this.width, this.height, this.editor.tool);
         }
 
         getButtonHotspotAtPos(mouseX, mouseY) {
-            const cs = this.cellSize; let cellX = Math.floor(mouseX / cs); let cellY = Math.floor(mouseY / cs);
-            const isValidCell = (cx, cy) => cx >= 0 && cx < this.width && cy >= 0 && cy < this.height;
-            if (!isValidCell(cellX, cellY)) {
-                const localX = mouseX - cellX * cs; const localY = mouseY - cellY * cs; const tolerance = cs * 0.3;
-                if (localX > cs - tolerance && isValidCell(cellX + 1, cellY)) cellX++;
-                else if (localX < tolerance && isValidCell(cellX - 1, cellY)) cellX--;
-                else if (localY > cs - tolerance && isValidCell(cellX, cellY + 1)) cellY++;
-                else if (localY < tolerance && isValidCell(cellX, cellY - 1)) cellY--;
-                else return null;
-            }
-            if (!isValidCell(cellX, cellY) || !this.activeCells[cellY][cellX]) return null;
-            const localX = mouseX - cellX * cs; const localY = mouseY - cellY * cs;
-            let direction = null;
-            if (localY < localX && localY < -localX + cs) direction = { dx: 0, dy: -1 };
-            else if (localY > localX && localY > -localX + cs) direction = { dx: 0, dy: 1 };
-            else if (localY > localX && localY < -localX + cs) direction = { dx: -1, dy: 0 };
-            else if (localY < localX && localY > -localX + cs) direction = { dx: 1, dy: 0 };
-            if (!direction) return null;
-            const isActive = (x, y) => (x >= 0 && x < this.width && y >= 0 && y < this.height) ? this.activeCells[y][x] : false;
-            let isAttachable = false;
-            if (direction.dy === -1) { if (this.hWalls[cellY][cellX].type === WALL_TYPES.SOLID || (isActive(cellX, cellY) && !isActive(cellX, cellY - 1))) isAttachable = true; }
-            else if (direction.dy === 1) { if (this.hWalls[cellY + 1][cellX].type === WALL_TYPES.SOLID || (isActive(cellX, cellY) && !isActive(cellX, cellY + 1))) isAttachable = true; }
-            else if (direction.dx === -1) { if (this.vWalls[cellY][cellX].type === WALL_TYPES.SOLID || (isActive(cellX, cellY) && !isActive(cellX - 1, cellY))) isAttachable = true; }
-            else if (direction.dx === 1) { if (this.vWalls[cellY][cellX + 1].type === WALL_TYPES.SOLID || (isActive(cellX, cellY) && !isActive(cellX + 1, cellY))) isAttachable = true; }
-            if (isAttachable) {
-                const roomYStart = this.height - 3;
-                const isTopBoundary = direction.dy === -1 && cellY === roomYStart && cellX >= 0 && cellX < 3;
-                const isRightBoundary = direction.dx === 1 && cellX === 2 && cellY >= roomYStart && cellY < this.height;
-                if (this.editor.mode === 'regular' && (isTopBoundary || isRightBoundary)) { return null; }
-                return { x: cellX, y: cellY, direction: direction };
-            }
-            return null;
+            return Pathfinding.getButtonHotspotAtPos(mouseX, mouseY, {
+                cellSize: this.cellSize,
+                width: this.width,
+                height: this.height,
+                activeCells: this.activeCells,
+                hWalls: this.hWalls,
+                vWalls: this.vWalls,
+                editorMode: this.editor.mode
+            });
         }
 
         toggleWall(wall, targetType = WALL_TYPES.SOLID) {
@@ -1882,50 +1550,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         calculateDistances(startNode) {
-            const distances = Array(this.height).fill(null).map(() => Array(this.width).fill(Infinity));
-            const queue = [{ x: startNode.x, y: startNode.y, dist: 0 }];
-            distances[startNode.y][startNode.x] = 0;
-            while (queue.length > 0) {
-                const { x, y, dist } = queue.shift();
-                const neighbors = [{ dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }];
-                for (const { dx, dy } of neighbors) {
-                    const nx = x + dx; const ny = y + dy;
-                    if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height) {
-                        let wall;
-                        if (dx === 1) wall = this.vWalls[y][x + 1]; if (dx === -1) wall = this.vWalls[y][x];
-                        if (dy === 1) wall = this.hWalls[y + 1][x]; if (dy === -1) wall = this.hWalls[y][x];
-                        if (wall && [WALL_TYPES.SOLID, WALL_TYPES.LOCKED, WALL_TYPES.ONE_WAY].includes(wall.type)) continue;
-                        if (distances[ny][nx] === Infinity) { distances[ny][nx] = dist + 1; queue.push({ x: nx, y: ny, dist: dist + 1 }); }
-                    }
-                }
-            }
-            return distances;
+            return Pathfinding.calculateDistances(startNode, this.width, this.height, this.hWalls, this.vWalls);
         }
 
         findPlayerPath(start, end) {
-            const queue = [[{ x: start.x, y: start.y }]];
-            const visited = new Set([`${start.x},${start.y}`]);
-            while (queue.length > 0) {
-                const path = queue.shift(); const { x, y } = path[path.length - 1];
-                if (x === end.x && y === end.y) return path;
-                const neighbors = [{ dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }];
-                for (const { dx, dy } of neighbors) {
-                    const nx = x + dx; const ny = y + dy; const key = `${nx},${ny}`;
-                    if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height && !visited.has(key)) {
-                        if (!this.seenCells[ny][nx] && !this.debugVision) continue;
-                        let wall, isBlocked = false;
-                        if (dx === 1) wall = this.vWalls[y][x + 1]; else if (dx === -1) wall = this.vWalls[y][x];
-                        else if (dy === 1) wall = this.hWalls[y + 1][x]; else if (dy === -1) wall = this.hWalls[y][x];
-                        if (wall) {
-                            if (wall.type === WALL_TYPES.SOLID || wall.type === WALL_TYPES.GLASS || (wall.type === WALL_TYPES.LOCKED && this.player.keys < wall.keys)) { isBlocked = true; }
-                            else if (wall.type === WALL_TYPES.ONE_WAY && (dx !== wall.direction.dx || dy !== wall.direction.dy)) { isBlocked = true; }
-                        }
-                        if (isBlocked) continue;
-                        visited.add(key); const newPath = [...path, { x: nx, y: ny }]; queue.push(newPath);
-                    }
-                }
-            }
-            return null;
+            return Pathfinding.findPlayerPath(start, end, {
+                width: this.width,
+                height: this.height,
+                hWalls: this.hWalls,
+                vWalls: this.vWalls,
+                seenCells: this.seenCells,
+                debugVision: this.debugVision,
+                playerKeys: this.player.keys
+            });
         }
 
         async _loadCodeFromClipboard(isEditor = false) {
@@ -2018,14 +1655,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateHistoryButtons() {
-            const undoBtn = document.getElementById('undo-btn');
-            const saveBtn = document.getElementById('save-btn');
-            const rewindBtn = document.getElementById('rewind-btn');
-            const canUndo = this.currentStep > 0 && !this.history[this.currentStep].isRevivalPoint;
-            undoBtn.disabled = !canUndo;
-            const lastCheckpoint = this.checkpoints.length > 0 ? this.checkpoints[this.checkpoints.length - 1] : -1;
-            saveBtn.disabled = !(this.currentStep > lastCheckpoint);
-            rewindBtn.disabled = !this.checkpoints.some(cp => cp < this.currentStep);
+            UI.updateHistoryButtons({
+                currentStep: this.currentStep,
+                history: this.history,
+                checkpoints: this.checkpoints
+            });
         }
 
         handleUndo() {
