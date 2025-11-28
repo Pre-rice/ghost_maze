@@ -421,13 +421,23 @@ button:disabled {
     display: flex;
     align-items: center;
     justify-content: center;
+    background-color: transparent;
+    border: 1px solid var(--wall-color);
+    border-radius: 4px;
+}
+
+.editor-toolbar .icon-btn:hover {
+    background-color: rgba(128, 128, 128, 0.2);
+}
+
+.editor-toolbar .icon-btn.active {
+    background-color: rgba(128, 128, 128, 0.4);
+    border-color: var(--primary-color);
 }
 
 .editor-toolbar .icon-btn svg {
     width: 20px;
     height: 20px;
-    color: white;
-    fill: currentColor;
 }
 
 /* === Toast Notification Styles === */

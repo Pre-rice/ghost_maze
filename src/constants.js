@@ -29,5 +29,6 @@ export const EDITOR_TOOLS = {
     START: 'start',
     END: 'end',
     STAIR: 'stair',
+    ERASER: 'eraser',
     GRID: 'grid'
 };
