@@ -134,24 +134,102 @@
                 <div id="editor-controls" style="display: none;">
                     <div class="control-group">
                         <h3>编辑器工具</h3>
+                        <!-- 编辑器模式下的右上角操作按钮 -->
+                        <div class="header-controls">
+                            <!-- Home 按钮 -->
+                            <div id="editor-home-btn" class="home-btn" title="回到首页">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                                </svg>
+                            </div>
+                            <!-- 帮助按钮 -->
+                            <a href="help.html" class="help-btn" title="查看帮助" target="_blank">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
+                                </svg>
+                            </a>
+                            <!-- 主题切换按钮 -->
+                            <div class="theme-toggle" id="editor-theme-toggle">
+                                <div class="theme-toggle-btn" id="editor-theme-toggle-btn">
+                                    <svg id="editor-theme-icon" viewBox="0 0 24 24"></svg>
+                                </div>
+                            </div>
+                        </div>
                         <div class="editor-toolbar">
-                            <button id="tool-wall" class="tool-btn active">墙壁</button>
-                            <button id="tool-glass" class="tool-btn">玻璃</button>
-                            <button id="tool-door" class="tool-btn">门</button>
-                            <button id="tool-oneway" class="tool-btn">单向门</button>
-                            <button id="tool-lock" class="tool-btn">数字门</button>
-                            <button id="tool-letter" class="tool-btn">字母门</button>
-                            <button id="tool-button" class="tool-btn">按钮</button>
-                            <button id="tool-ghost" class="tool-btn">鬼</button>
-                            <button id="tool-key" class="tool-btn">钥匙</button>
+                            <button id="tool-wall" class="tool-btn icon-btn active" title="墙壁">
+                                <svg viewBox="0 0 24 24" width="20" height="20"><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                            </button>
+                            <button id="tool-glass" class="tool-btn icon-btn" title="玻璃">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <line x1="6" y1="8" x2="10" y2="16" stroke="currentColor" stroke-width="2"/>
+                                    <line x1="10" y1="8" x2="14" y2="16" stroke="currentColor" stroke-width="2"/>
+                                    <line x1="14" y1="8" x2="18" y2="16" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </button>
+                            <button id="tool-door" class="tool-btn icon-btn" title="门">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <line x1="4" y1="12" x2="8" y2="12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                                    <line x1="16" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                                </svg>
+                            </button>
+                            <button id="tool-oneway" class="tool-btn icon-btn" title="单向门">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <rect x="6" y="9" width="12" height="6" fill="currentColor" rx="1"/>
+                                    <path d="M12 4 L17 9 L7 9 Z" fill="currentColor"/>
+                                </svg>
+                            </button>
+                            <button id="tool-lock" class="tool-btn icon-btn" title="数字门">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <rect x="6" y="9" width="12" height="6" fill="currentColor" rx="1"/>
+                                    <text x="12" y="14" font-size="6" fill="white" text-anchor="middle" font-weight="bold">1</text>
+                                </svg>
+                            </button>
+                            <button id="tool-letter" class="tool-btn icon-btn" title="字母门">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <rect x="6" y="9" width="12" height="6" fill="currentColor" rx="1"/>
+                                    <text x="12" y="14" font-size="6" fill="white" text-anchor="middle" font-weight="bold">A</text>
+                                </svg>
+                            </button>
+                            <button id="tool-button" class="tool-btn icon-btn" title="按钮">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <line x1="4" y1="4" x2="20" y2="4" stroke="currentColor" stroke-width="2"/>
+                                    <rect x="8" y="4" width="8" height="4" fill="currentColor"/>
+                                    <text x="12" y="7" font-size="4" fill="white" text-anchor="middle" font-weight="bold">A</text>
+                                </svg>
+                            </button>
+                            <button id="tool-ghost" class="tool-btn icon-btn" title="鬼">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <circle cx="12" cy="12" r="6" fill="#dc3545"/>
+                                </svg>
+                            </button>
+                            <button id="tool-key" class="tool-btn icon-btn" title="钥匙">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <polygon points="12,6 17,12 12,18 7,12" fill="#ffc107"/>
+                                </svg>
+                            </button>
                             <!-- 新增起点工具 (自由模式显示) -->
-                            <button id="tool-start" class="tool-btn" style="display:none;">起点</button>
-                            <button id="tool-end" class="tool-btn">终点</button>
+                            <button id="tool-start" class="tool-btn icon-btn" style="display:none;" title="起点">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <circle cx="12" cy="12" r="6" fill="#007bff"/>
+                                </svg>
+                            </button>
+                            <button id="tool-end" class="tool-btn icon-btn" title="终点">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <circle cx="12" cy="12" r="6" fill="#28a745"/>
+                                </svg>
+                            </button>
                             <!-- 新增楼梯工具 (仅多层地图模式显示) -->
-                            <button id="tool-stair" class="tool-btn" style="display:none;">楼梯</button>
-                            <button id="tool-eraser" class="tool-btn">橡皮擦</button>
+                            <button id="tool-stair" class="tool-btn icon-btn" style="display:none;" title="楼梯">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <path d="M4 20 L4 16 L8 16 L8 12 L12 12 L12 8 L16 8 L16 4 L20 4 L20 20 Z" fill="none" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </button>
                             <!-- 新增地图方格工具 (自由模式显示) -->
-                            <button id="tool-grid" class="tool-btn" style="display:none;">地图方格</button>
+                            <button id="tool-grid" class="tool-btn icon-btn" style="display:none;" title="地图方格">
+                                <svg viewBox="0 0 24 24" width="20" height="20">
+                                    <rect x="6" y="6" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3,2"/>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                     <div class="control-group">

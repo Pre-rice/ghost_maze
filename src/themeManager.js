@@ -13,26 +13,42 @@ const systemIcon = `
 `;
 
 /**
- * 应用主题
+ * 应用主题（更新所有主题图标按钮）
  * @param {string} mode - 'light' | 'dark' | 'auto'
- * @param {HTMLElement} toggleBtn - 切换按钮
- * @param {HTMLElement} themeIcon - 主题图标
  */
-export function applyTheme(mode, toggleBtn, themeIcon) {
+export function applyTheme(mode) {
     document.documentElement.classList.remove("light", "dark");
+    
+    // 获取所有主题图标和按钮
+    const themeToggles = [
+        { btn: document.getElementById("theme-toggle-btn"), icon: document.getElementById("theme-icon") },
+        { btn: document.getElementById("editor-theme-toggle-btn"), icon: document.getElementById("editor-theme-icon") }
+    ];
+    
+    let iconHtml;
+    let isActive;
+    
     if (mode === "light") {
         document.documentElement.classList.add("light");
-        themeIcon.innerHTML = sunIcon;
-        toggleBtn.classList.remove("active");
+        iconHtml = sunIcon;
+        isActive = false;
     } else if (mode === "dark") {
         document.documentElement.classList.add("dark");
-        themeIcon.innerHTML = moonIcon;
-        toggleBtn.classList.add("active");
+        iconHtml = moonIcon;
+        isActive = true;
     } else {
         const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        themeIcon.innerHTML = systemIcon;
-        toggleBtn.classList.toggle("active", systemDark);
+        iconHtml = systemIcon;
+        isActive = systemDark;
     }
+    
+    // 更新所有主题切换按钮
+    themeToggles.forEach(({ btn, icon }) => {
+        if (btn && icon) {
+            icon.innerHTML = iconHtml;
+            btn.classList.toggle("active", isActive);
+        }
+    });
 }
 
 /**
@@ -45,24 +61,35 @@ export function getNextTheme(current) {
 }
 
 /**
+ * 处理主题切换
+ * @param {function} onThemeChange - 主题变更回调
+ */
+function handleThemeToggle(onThemeChange) {
+    const current = localStorage.getItem("theme") || "auto";
+    const next = getNextTheme(current);
+    applyTheme(next);
+    localStorage.setItem("theme", next);
+    if (onThemeChange) {
+        onThemeChange();
+    }
+}
+
+/**
  * 初始化主题管理器
  * @param {function} onThemeChange - 主题变更回调
  */
 export function initThemeManager(onThemeChange) {
-    const toggleBtn = document.getElementById("theme-toggle-btn");
-    const themeIcon = document.getElementById("theme-icon");
-    
     const saved = localStorage.getItem("theme") || "auto";
-    applyTheme(saved, toggleBtn, themeIcon);
+    applyTheme(saved);
     
+    // 绑定游戏模式的主题切换
     document.getElementById("theme-toggle").addEventListener("click", () => {
-        const current = localStorage.getItem("theme") || "auto";
-        const next = getNextTheme(current);
-        applyTheme(next, toggleBtn, themeIcon);
-        localStorage.setItem("theme", next);
-        if (onThemeChange) {
-            onThemeChange();
-        }
+        handleThemeToggle(onThemeChange);
+    });
+    
+    // 绑定编辑器模式的主题切换
+    document.getElementById("editor-theme-toggle").addEventListener("click", () => {
+        handleThemeToggle(onThemeChange);
     });
 }
 

@@ -428,20 +428,38 @@ export function drawButton(ctx, button, cellSize, colors, isHighlight = false) {
     ctx.strokeStyle = isHighlight ? colors.hoverHighlight : colors.wall;
     ctx.lineWidth = isHighlight ? Math.max(3, cellSize / 8) : Math.max(2, cellSize / 10);
     ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.lineTo(p3.x, p3.y);
-    ctx.lineTo(p4.x, p4.y);
-    ctx.closePath();
+    // 只绘制三边（跳过与墙重合的一边）
+    if (button.direction.dy === -1) { // 上：跳过p1->p2（顶边）
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.lineTo(p2.x, p2.y);
+    } else if (button.direction.dy === 1) { // 下：跳过p3->p4（底边）
+        ctx.moveTo(p3.x, p3.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p4.x, p4.y);
+    } else if (button.direction.dx === -1) { // 左：跳过p1->p4（左边）
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.lineTo(p4.x, p4.y);
+    } else { // 右：跳过p2->p3（右边）
+        ctx.moveTo(p2.x, p2.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.lineTo(p3.x, p3.y);
+    }
     ctx.stroke();
     
     if (!isHighlight && button.letter) {
-        const fontSize = buttonWidth * 0.9;
+        // 与字母门使用相同的字体大小：cellSize * 0.4
+        const fontSize = cellSize * 0.4;
         ctx.font = `bold ${fontSize}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.strokeText(button.letter, letterCenterX, letterCenterY);
         ctx.fillStyle = colors.key;
         ctx.fillText(button.letter, letterCenterX, letterCenterY);
