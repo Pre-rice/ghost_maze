@@ -25,6 +25,7 @@
     --key-color: #ffc107;
     --start-room-highlight: rgba(173, 216, 230, 0.4);
     --hover-highlight-color: #ffc107;
+    --player-layer-color: #ffc107;
 
     /* 新增：自由编辑模式相关颜色 */
     --start-point-color: #00c9a7;
@@ -393,7 +394,7 @@ button:disabled {
 
 .editor-toolbar {
     display: flex;
-    gap: 10px;
+    gap: 6px;
     flex-wrap: wrap;
     /* 微调：左对齐以便新按钮排版 */
     justify-content: flex-start;
@@ -410,6 +411,33 @@ button:disabled {
 .editor-toolbar button.active {
     background-color: var(--primary-hover-color);
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* 编辑器工具图标按钮样式 */
+.editor-toolbar .icon-btn {
+    width: 36px;
+    height: 36px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    border: 1px solid var(--wall-color);
+    border-radius: 4px;
+}
+
+.editor-toolbar .icon-btn:hover {
+    background-color: rgba(128, 128, 128, 0.2);
+}
+
+.editor-toolbar .icon-btn.active {
+    background-color: rgba(128, 128, 128, 0.4);
+    border-color: var(--primary-color);
+}
+
+.editor-toolbar .icon-btn svg {
+    width: 24px;
+    height: 24px;
 }
 
 /* === Toast Notification Styles === */
@@ -537,6 +565,7 @@ button:disabled {
     .editor-toolbar {
         justify-content: center;
     }
+}
 
 @media (max-width: 768px) {
     #dpad-controls {
@@ -572,21 +601,19 @@ button:disabled {
     #dpad-left { grid-column: 1; grid-row: 2; }
     #dpad-right { grid-column: 3; grid-row: 2; }
     
-    /* === 新增: 拖动把手的样式 === */
-    #dpad-grip {
+    /* Fix 8: 中键样式 - 与空格键绑定 */
+    #dpad-center {
         grid-column: 2;
         grid-row: 2;
-        background-color: rgba(85, 85, 85, 0.8);
+        background-color: rgba(85, 85, 85, 0.9);
         border-radius: 50%;
-        cursor: move;
-        border: 2px solid #333;
+        font-size: 18px;
     }
 
     .dpad-btn:active {
         background-color: #555;
         transform: scale(0.95);
     }
-}
 }
 
 /* 1. 开关父容器的基础布局 */
@@ -632,4 +659,114 @@ display: none;
 /* 用于通过JS来强制隐藏方向键的类 */
 #dpad-controls.hidden {
 display: none !important;
+}
+
+/* ===========================
+   图层切换面板样式
+   =========================== */
+/* Fix 1: Canvas wrapper to position layer panel to the RIGHT of canvas (outside, not covering) */
+.canvas-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.layer-panel {
+    /* 固定在画布右侧，垂直居中（对宽 / 窄屏均生效） */
+    position: absolute;
+    /* 向左微调，避免遮挡（原为 calc(100% + 10px)） */
+    left: calc(100% - 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    background-color: var(--container-bg);
+    border-radius: 8px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.16);
+    z-index: 60;
+    min-width: 44px;
+}
+
+#layer-buttons-container {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.layer-btn {
+
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--container-bg);
+    color: var(--text-color);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.layer-btn:hover {
+    /* 与编辑器工具的高亮效果一致：主色悬停 + 内凹阴影 */
+    background-color: var(--primary-hover-color);
+    color: white;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.12);
+    transform: none;
+}
+
+.layer-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: rgba(0,0,0,0.06);
+}
+
+.layer-btn.player-layer {
+    border-color: var(--player-layer-color);
+    border-width: 2px;
+    border-style: solid;
+    /* 稍微加宽黄色高亮：更明显的外扩阴影与更高不透明度 */
+    box-shadow: 0 0 0 5px rgba(255,193,7,0.12);
+}
+
+#layer-edit-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 8px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 8px;
+}
+
+.layer-control-btn {
+    width: 40px;
+    height: 32px;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.layer-control-btn:hover {
+    background-color: var(--primary-hover-color);
+}
+
+.layer-control-btn:disabled {
+    background-color: var(--disabled-color);
+    color: var(--disabled-text-color);
+    cursor: not-allowed;
 }
