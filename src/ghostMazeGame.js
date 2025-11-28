@@ -1450,13 +1450,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // 橡皮擦工具拖动（保留兼容）
-            if (this.editor.tool === EDITOR_TOOLS.ERASER && this.editor.isDragging) {
-                this.editor.rightClickMousePos = pos;
-                this.eraseAtPos(pos);
-                return;
-            }
-            
             if (this.editor.tool === EDITOR_TOOLS.GRID && this.editor.mode === 'free') {
                 const cellX = Math.floor(pos.x / this.cellSize); const cellY = Math.floor(pos.y / this.cellSize);
                 if (this.editor.isDragging) {
